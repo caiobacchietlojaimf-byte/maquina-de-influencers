@@ -401,6 +401,17 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
      vez toma rate limit do Instagram ("link quebrado"). O valor é um contador
      de reload: o ↻ remonta o iframe (resolve o "assista novamente"). */
   const [players, setPlayers] = useState<Record<string, number>>({});
+  /* Vídeos nativos (public/reel-videos): quando o reel acaba, mostramos o
+     botão grande de reiniciar por cima — nada de "Assista no Instagram". */
+  const [ended, setEnded] = useState<Record<string, boolean>>({});
+  const restart = (code: string) => {
+    const v = document.getElementById(`rv-${code}`) as HTMLVideoElement | null;
+    if (v) {
+      v.currentTime = 0;
+      void v.play();
+    }
+    setEnded((prev) => ({ ...prev, [code]: false }));
+  };
   const [active, setActive] = useState<{ profile: AiProfile; post: ProfilePost } | null>(null);
   const [pickedInfluencer, setPickedInfluencer] = useState<string | null>(influencers[0]?.id ?? null);
   const [prompt, setPrompt] = useState("");
@@ -442,7 +453,7 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
             type="button"
             className="chip"
             data-active={handle === p.handle}
-            onClick={() => { setHandle(p.handle); setPlayers({}); }}
+            onClick={() => { setHandle(p.handle); setPlayers({}); setEnded({}); }}
             style={{ paddingLeft: 6 }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -464,7 +475,25 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
           const playerKey = players[post.code];
           return (
             <article key={post.code} className="reel-fs">
-              {playerKey !== undefined && post.embeddable ? (
+              {playerKey !== undefined && post.video ? (
+                /* Player nativo: vídeo hospedado no próprio sistema — clique
+                   pausa/retoma e o fim do vídeo mostra o botão de reiniciar. */
+                <video
+                  id={`rv-${post.code}`}
+                  className="native"
+                  src={post.video}
+                  poster={`/reel-thumbs/${post.code}.jpg`}
+                  autoPlay
+                  playsInline
+                  onEnded={() => setEnded((prev) => ({ ...prev, [post.code]: true }))}
+                  onPlay={() => setEnded((prev) => (prev[post.code] ? { ...prev, [post.code]: false } : prev))}
+                  onClick={(e) => {
+                    const v = e.currentTarget;
+                    if (v.paused) void v.play();
+                    else v.pause();
+                  }}
+                />
+              ) : playerKey !== undefined && post.embeddable ? (
                 <iframe
                   key={playerKey}
                   src={`https://www.instagram.com/reel/${post.code}/embed/`}
@@ -476,7 +505,7 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
                     top: `-${Math.round(54 * scale)}px`,
                   }}
                 />
-              ) : post.embeddable ? (
+              ) : post.video || post.embeddable ? (
                 <button
                   type="button"
                   className="cover"
@@ -503,6 +532,16 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
                   </span>
                 </a>
               )}
+              {playerKey !== undefined && post.video && ended[post.code] ? (
+                <button
+                  type="button"
+                  className="replay-ov"
+                  title="Assistir de novo"
+                  onClick={() => restart(post.code)}
+                >
+                  <RotateCw size={30} />
+                </button>
+              ) : null}
               <div className="top-ov">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={profile.avatar} alt={profile.name} className="ava" />
@@ -512,12 +551,16 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
                   </a>
                   <span>{profile.followers} seguidores</span>
                 </div>
-                {playerKey !== undefined && post.embeddable ? (
+                {playerKey !== undefined && (post.video || post.embeddable) ? (
                   <button
                     type="button"
                     className="igo"
                     title="Assistir de novo"
-                    onClick={() => setPlayers((prev) => ({ ...prev, [post.code]: (prev[post.code] ?? 0) + 1 }))}
+                    onClick={() =>
+                      post.video
+                        ? restart(post.code)
+                        : setPlayers((prev) => ({ ...prev, [post.code]: (prev[post.code] ?? 0) + 1 }))
+                    }
                   >
                     <RotateCw size={14} />
                   </button>
