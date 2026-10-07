@@ -19,6 +19,15 @@ A esteira completa dentro de um sistema só:
 | **Vídeos** | Galeria das gerações com polling automático, filtros, download e botão Publicar |
 | **Publicar** | Conexão de contas (TikTok OAuth oficial / Instagram Graph API), fila de publicação com agendamento, agendador rodando no servidor |
 
+## Produção
+
+**No ar:** https://maquina-de-influencers.vercel.app
+
+O deploy na Vercel clona este repositório (público) durante o build. Para atualizar:
+faça push na main e dispare um novo deploy. Atenção: na Vercel o banco JSON vive
+em /tmp (efêmero) — contas e gerações podem resetar entre instâncias/deploys.
+Para persistência real, troque por Postgres/Supabase.
+
 ## Rodando
 
 ```bash
