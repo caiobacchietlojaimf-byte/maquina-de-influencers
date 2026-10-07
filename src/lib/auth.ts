@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
@@ -82,13 +83,13 @@ export async function clearSessionCookie() {
   jar.set(SESSION_COOKIE, "", { ...SESSION_COOKIE_OPTIONS, maxAge: 0 });
 }
 
-/** Usuário logado ou null. */
-export async function currentUser(): Promise<User | null> {
+/** Usuário logado ou null. Cacheado por requisição (layout + página = 1 query). */
+export const currentUser = cache(async (): Promise<User | null> => {
   const jar = await cookies();
   const userId = readSessionToken(jar.get(SESSION_COOKIE)?.value);
   if (!userId) return null;
   return (await findUserById(userId)) ?? null;
-}
+});
 
 /** Usuário logado ou lança (para server actions protegidas). */
 export async function requireUser(): Promise<User> {

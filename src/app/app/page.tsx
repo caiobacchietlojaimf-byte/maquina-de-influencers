@@ -10,9 +10,11 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const user = await requirePageUser();
-  const influencers = await listInfluencers(user.id);
-  const videos = await listVideos(user.id);
-  const posts = await listPosts(user.id);
+  const [influencers, videos, posts] = await Promise.all([
+    listInfluencers(user.id),
+    listVideos(user.id),
+    listPosts(user.id),
+  ]);
   const configured = isConfigured();
 
   return (

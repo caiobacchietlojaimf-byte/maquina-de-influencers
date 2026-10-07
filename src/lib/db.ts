@@ -117,12 +117,14 @@ let supabase: SupabaseClient | null = null;
 function remote(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL?.trim();
   const key = process.env.SUPABASE_KEY?.trim();
-  const secret = process.env.MI_DB_SECRET?.trim();
-  if (!url || !key || !secret) return null;
+  if (!url || !key) return null;
   if (!supabase) {
+    // Com service_role a RLS é atravessada direto; com chave anon as policies
+    // exigem o cabeçalho x-mi-secret (MI_DB_SECRET) para liberar.
+    const secret = process.env.MI_DB_SECRET?.trim();
     supabase = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: { headers: { "x-mi-secret": secret } },
+      ...(secret ? { global: { headers: { "x-mi-secret": secret } } } : {}),
     });
   }
   return supabase;
@@ -700,4 +702,68 @@ export async function listDuePosts(now: number): Promise<Post[]> {
 
 export async function getPostOwnerAccount(post: Post): Promise<SocialAccount | undefined> {
   return getSocialAccount(post.userId, post.platform);
+}
+
+/* ================= perfis acompanhados ================= */
+
+export type Follow = {
+  id: string;
+  userId: string;
+  handle: string;
+  platform: "instagram" | "tiktok";
+  followedAt: number;
+};
+
+export async function listFollows(userId: string): Promise<Follow[]> {
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_follows").select("data").eq("user_id", userId);
+    if (error) fail("listar acompanhados", error);
+    return (data ?? []).map((row) => rowData<Follow>(row));
+  }
+  const schema = load() as Schema & { follows?: Follow[] };
+  return (schema.follows ?? []).filter((f) => f.userId === userId);
+}
+
+export async function followProfile(
+  userId: string,
+  handle: string,
+  platform: Follow["platform"],
+): Promise<Follow> {
+  const follow: Follow = { id: randomUUID(), userId, handle, platform, followedAt: Date.now() };
+  const sb = remote();
+  if (sb) {
+    const { error } = await sb
+      .from("mi_follows")
+      .upsert(
+        { id: follow.id, user_id: userId, handle, data: follow },
+        { onConflict: "user_id,handle", ignoreDuplicates: true },
+      );
+    if (error) fail("acompanhar perfil", error);
+    return follow;
+  }
+  return mutate((db) => {
+    const schema = db as Schema & { follows?: Follow[] };
+    schema.follows ??= [];
+    const existing = schema.follows.find((f) => f.userId === userId && f.handle === handle);
+    if (existing) return existing;
+    schema.follows.push(follow);
+    return follow;
+  });
+}
+
+export async function unfollowProfile(userId: string, handle: string): Promise<void> {
+  const sb = remote();
+  if (sb) {
+    const { error } = await sb.from("mi_follows").delete().eq("user_id", userId).eq("handle", handle);
+    if (error) fail("deixar de acompanhar", error);
+    return;
+  }
+  mutate((db) => {
+    const schema = db as Schema & { follows?: Follow[] };
+    schema.follows = (schema.follows ?? []).filter(
+      (f) => !(f.userId === userId && f.handle === handle),
+    );
+    return undefined;
+  });
 }

@@ -24,7 +24,9 @@ import {
   importViralAction,
   refreshViralsAction,
 } from "@/app/actions/virals";
+import { toggleFollowAction } from "@/app/actions/profiles";
 import { VIDEO_COST } from "@/lib/costs";
+import { AI_PROFILES } from "@/data/ai-profiles";
 import { formatViews } from "@/data/viral-effects";
 import type { Viral } from "@/lib/db";
 import { ViralGrid } from "./viral-grid";
@@ -41,15 +43,29 @@ const REGIONS = [
 export function MinedVirals({
   initialVirals,
   influencers,
+  initialFollows,
 }: {
   initialVirals: Viral[];
   influencers: MiniInfluencer[];
+  initialFollows: string[];
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"mined" | "effects">("mined");
+  const [tab, setTab] = useState<"mined" | "effects" | "profiles">("mined");
   const [region, setRegion] = useState("BR");
   const [virals, setVirals] = useState<Viral[]>(initialVirals);
+  const [follows, setFollows] = useState<string[]>(initialFollows);
   const [mining, startMining] = useTransition();
+
+  // Mineração em background: a página carrega na hora com o cache do banco e
+  // o feed fresco chega sozinho (sem travar o primeiro render).
+  useEffect(() => {
+    getMinedViralsAction("BR")
+      .then((result) => {
+        if (result.virals.length) setVirals(result.virals);
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [importUrl, setImportUrl] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -116,11 +132,25 @@ export function MinedVirals({
           <Sparkles size={14} />
           Efeitos virais
         </button>
+        <button type="button" className="chip" data-active={tab === "profiles"} onClick={() => setTab("profiles")}>
+          <Heart size={14} />
+          Perfis de IA em alta
+          {follows.length ? <span className="badge-new">{follows.length}</span> : null}
+        </button>
       </div>
+
+      {tab === "profiles" ? (
+        <ProfilesGrid follows={follows} onToggle={async (handle) => {
+          const updated = await toggleFollowAction(handle).catch(() => null);
+          if (updated) setFollows(updated);
+        }} />
+      ) : null}
 
       {tab === "effects" ? (
         <ViralGrid influencers={influencers} />
-      ) : (
+      ) : null}
+
+      {tab === "mined" ? (
         <>
           <div className="explore-bar" style={{ flexWrap: "wrap" }}>
             {REGIONS.map((r) => (
@@ -177,7 +207,7 @@ export function MinedVirals({
             </div>
           )}
         </>
-      )}
+      ) : null}
 
       {active ? (
         <div className="modal-backdrop" onClick={() => setActive(null)}>
@@ -355,5 +385,63 @@ function MinedCard({ viral, onDuplicate }: { viral: Viral; onDuplicate: () => vo
         </div>
       </div>
     </article>
+  );
+}
+
+function ProfilesGrid({
+  follows,
+  onToggle,
+}: {
+  follows: string[];
+  onToggle: (handle: string) => Promise<void>;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+
+  return (
+    <div>
+      <p style={{ color: "var(--tx2)", fontSize: 13.5, marginBottom: 16, maxWidth: 680 }}>
+        Influencers de IA reais que estão performando agora. Use como referência de estilo,
+        formato e ritmo de postagem — e acompanhe para voltar fácil ao perfil.
+      </p>
+      <div className="profiles-grid">
+        {AI_PROFILES.map((profile) => {
+          const following = follows.includes(profile.handle);
+          return (
+            <article key={profile.handle} className="profile-card" data-following={following}>
+              <div className="avatar">{profile.name.charAt(0)}</div>
+              <div className="info">
+                <b>{profile.name}</b>
+                <span className="handle">@{profile.handle}</span>
+                <p>{profile.bio}</p>
+              </div>
+              <div className="actions">
+                <button
+                  type="button"
+                  className={following ? "btn btn-sm btn-ghost" : "btn btn-sm btn-accent"}
+                  disabled={busy === profile.handle}
+                  onClick={async () => {
+                    setBusy(profile.handle);
+                    await onToggle(profile.handle);
+                    setBusy(null);
+                  }}
+                >
+                  {busy === profile.handle ? (
+                    <span className="spinner" style={{ width: 13, height: 13 }} />
+                  ) : following ? (
+                    "✓ Acompanhando"
+                  ) : (
+                    "Acompanhar"
+                  )}
+                </button>
+                <a className="btn btn-sm btn-outline" href={profile.url} target="_blank" rel="noreferrer">
+                  <ExternalLink size={13} />
+                  Ver posts
+                </a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </div>
   );
 }

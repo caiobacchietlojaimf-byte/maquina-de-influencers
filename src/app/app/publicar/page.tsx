@@ -14,7 +14,12 @@ export default async function PublicarPage({
   const user = await requirePageUser();
   const { video, conectado, erro } = await searchParams;
 
-  const completed = (await listVideos(user.id)).filter((v) => v.status === "completed" && v.resultUrl);
+  const [videosAll, accounts, posts] = await Promise.all([
+    listVideos(user.id),
+    listSocialAccounts(user.id),
+    listPosts(user.id),
+  ]);
+  const completed = videosAll.filter((v) => v.status === "completed" && v.resultUrl);
 
   return (
     <div>
@@ -30,13 +35,13 @@ export default async function PublicarPage({
         </div>
       </div>
       <PublishCenter
-        initialAccounts={(await listSocialAccounts(user.id)).map((a) => ({
+        initialAccounts={accounts.map((a) => ({
           platform: a.platform,
           status: a.status,
           username: a.username,
           connectedAt: a.connectedAt,
         }))}
-        initialPosts={await listPosts(user.id)}
+        initialPosts={posts}
         videos={completed.map((v) => ({
           id: v.id,
           name: v.presetName ?? "Vídeo",

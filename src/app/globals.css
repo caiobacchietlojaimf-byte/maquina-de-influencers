@@ -1853,6 +1853,69 @@ textarea.input {
   object-fit: cover;
 }
 
+/* perfis de IA em alta */
+.profiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
+  gap: 14px;
+}
+.profile-card {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.profile-card:hover {
+  border-color: var(--line-2);
+  transform: translateY(-2px);
+}
+.profile-card[data-following="true"] {
+  border-color: var(--accent-32);
+}
+.profile-card .avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), #7bc417);
+  color: var(--accent-ink);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+}
+.profile-card .info {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.profile-card .info b {
+  font-size: 15px;
+}
+.profile-card .handle {
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.profile-card .info p {
+  color: var(--tx2);
+  font-size: 12.5px;
+  margin-top: 4px;
+}
+.profile-card .actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.profile-card .actions .btn {
+  flex: 1;
+}
+
 /* esteira de 4 passos no Início */
 .pipeline {
   display: grid;

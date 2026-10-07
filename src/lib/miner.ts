@@ -76,17 +76,46 @@ function toViral(item: TikwmItem, region: string): Omit<Viral, "id"> | null {
   };
 }
 
+/* ---------- filtro de duplicáveis ----------
+   O feed bruto vem com notícia, novela, publicidade e corte longo — nada disso
+   serve para trocar o protagonista. Só entra no catálogo o que tem cara de
+   trend duplicável: curto (3–35s, faixa do motion transfer) e sem termos de
+   mídia/anúncio no título ou no autor. */
+
+const MEDIA_AUTHOR = /(news|jornal|portal|noticia|not[ií]cias|g1|globo|sbt|record|band|cnn|metropoles|uol|r7|folha|estadao|tv[^a-z]|official.*news)/i;
+const BLOCKED_TITLE = /(elei[cç][õo]|pol[ií]tica|presidente|governo|governador|prefeit|senador|deputad|pol[ií]cia|acidente|motorista|caminh[ãa]o|rodovia|urgente|not[ií]cia|jornal|morre|morte|faleceu|trag[eé]dia|incêndio|assalto|cap[ií]tulo|novela|epis[oó]dio|\bep\s?\d|#ad\b|publicidade|promo[cç][ãa]o|desconto|sorteio|regulamento|cupom)/i;
+const TREND_HINT = /(#(trend|dance|danc[ao]|challenge|meme|humor|comedia|com[eé]dia|fy|fyp|foryou|viral|pov|transition|outfit|grwm|lipsync|dueto))/i;
+
+export function isDuplicable(viral: Pick<Viral, "duration" | "title" | "authorHandle" | "authorName">): boolean {
+  if (viral.duration < 3 || viral.duration > 35) return false;
+  const author = `${viral.authorHandle} ${viral.authorName}`;
+  if (MEDIA_AUTHOR.test(author)) return false;
+  if (BLOCKED_TITLE.test(viral.title)) return false;
+  return true;
+}
+
+/** Pontuação de "duplicabilidade": curto + engajado + com hashtag de trend. */
+function trendScore(viral: Omit<Viral, "id">): number {
+  let score = viral.views;
+  if (TREND_HINT.test(viral.title)) score *= 1.6;
+  if (viral.duration >= 5 && viral.duration <= 20) score *= 1.3;
+  if (viral.views > 0 && viral.likes / viral.views > 0.05) score *= 1.2;
+  return score;
+}
+
 /** Minera o feed de tendências de uma região. Respeita o TTL salvo no banco,
     a menos que `force`. Devolve quantos vídeos novos entraram. */
 export async function mineTrending(region: string, options?: { force?: boolean }): Promise<number> {
   if (!options?.force && Date.now() - (await lastMinedAt(region)) < FEED_TTL_MS) return 0;
-  const data = (await tikwm(`/feed/list?region=${encodeURIComponent(region)}&count=18`)) as
+  const data = (await tikwm(`/feed/list?region=${encodeURIComponent(region)}&count=30`)) as
     | TikwmItem[]
     | null;
   if (!Array.isArray(data)) throw new Error("Feed de tendências vazio");
   const virals = data
     .map((item) => toViral(item, region))
-    .filter((v): v is Omit<Viral, "id"> => v !== null);
+    .filter((v): v is Omit<Viral, "id"> => v !== null)
+    .filter(isDuplicable)
+    .sort((a, b) => trendScore(b) - trendScore(a));
   return upsertVirals(virals);
 }
 

@@ -4,16 +4,36 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BicepsFlexed,
+  Blend,
+  CalendarDays,
   ChevronDown,
   Clock,
   Compass,
   Dices,
   Download,
+  Drama,
+  Eye,
+  Gem,
+  Glasses,
+  Globe,
   ImagePlus,
+  MoveVertical,
+  Palette,
+  Proportions,
   RotateCcw,
+  Ruler,
+  ScanEye,
+  Scissors,
+  Shirt,
+  Skull,
+  Smile,
+  SmilePlus,
   Sparkles,
   Trash2,
+  VenusAndMars,
   X,
+  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -48,6 +68,28 @@ type ExploreScope = "influencers" | "presets" | "trends";
 const TIER_LABEL: Record<string, string> = Object.fromEntries(
   CHARACTER_TYPES.map((t) => [t.id, t.label]),
 );
+
+/** Ícone de cada grupo de traços (mesma linguagem visual do Higgsfield). */
+const GROUP_ICONS: Record<string, LucideIcon> = {
+  gender: VenusAndMars,
+  body_type: BicepsFlexed,
+  hair: Scissors,
+  hair_colour: Palette,
+  aesthetic: Shirt,
+  ethnicity_origin_base: Globe,
+  age: CalendarDays,
+  skin_tone: Blend,
+  height: Ruler,
+  proportions: Proportions,
+  freak_head: Skull,
+  freak_neck: MoveVertical,
+  eye_shape: Eye,
+  eye_color: ScanEye,
+  freak_face: SmilePlus,
+  facial_hair: Smile,
+  distinctive: Gem,
+  accessory: Glasses,
+};
 
 export function InfluencerStudio({
   initialInfluencers,
@@ -264,6 +306,7 @@ export function InfluencerStudio({
 
               <section className="trait-section" data-open="true">
                 <div className="trait-head" style={{ cursor: "default" }}>
+                  <Drama size={15} style={{ color: "var(--tx3)" }} />
                   <span>Tipo de personagem</span>
                   <span className="count">⋅ {CHARACTER_TYPES.length}</span>
                 </div>
@@ -291,6 +334,7 @@ export function InfluencerStudio({
                   .map((id) => opts.find((opt) => opt.id === id)?.label)
                   .filter(Boolean)
                   .join(", ");
+                const GroupIcon = GROUP_ICONS[group.id];
                 return (
                   <section key={group.id} className="trait-section" data-open={open}>
                     <button
@@ -298,6 +342,7 @@ export function InfluencerStudio({
                       className="trait-head"
                       onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))}
                     >
+                      {GroupIcon ? <GroupIcon size={15} style={{ color: "var(--tx3)", flexShrink: 0 }} /> : null}
                       <span>{group.label}</span>
                       <span className="count">⋅ {opts.length}</span>
                       {pickedLabels ? <span className="picked">{pickedLabels}</span> : null}
