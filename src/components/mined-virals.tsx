@@ -396,7 +396,6 @@ function timeAgo(timestamp?: number): string | null {
 function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
   const router = useRouter();
   const [handle, setHandle] = useState(AI_PROFILES[0].handle);
-  const [playing, setPlaying] = useState<string | null>(null);
   const [active, setActive] = useState<{ profile: AiProfile; post: ProfilePost } | null>(null);
   const [pickedInfluencer, setPickedInfluencer] = useState<string | null>(influencers[0]?.id ?? null);
   const [prompt, setPrompt] = useState("");
@@ -438,7 +437,7 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
             type="button"
             className="chip"
             data-active={handle === p.handle}
-            onClick={() => { setHandle(p.handle); setPlaying(null); }}
+            onClick={() => setHandle(p.handle)}
             style={{ paddingLeft: 6 }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -452,22 +451,24 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
         {profile.posts.map((post) => {
           const metrics = post.metrics;
           const ago = timeAgo(metrics?.postedAt);
-          const isPlaying = playing === post.code;
+          /* O embed do IG prende a mídia numa área 4:5 (vídeo 9:16 fica em
+             contain, com sobras). Escala calculada pela proporção real do
+             vídeo faz ele COBRIR o card: s = 1/(1.25·ar), com piso que
+             garante altura. Header de 54px sai pelo deslocamento. */
+          const scale = Math.max(1 / (1.25 * post.ar), 1.34);
           return (
             <article key={post.code} className="reel-fs">
-              {isPlaying ? (
-                <iframe
-                  src={`https://www.instagram.com/reel/${post.code}/embed/`}
-                  allowFullScreen
-                  title={post.scene}
-                />
-              ) : (
-                <button type="button" className="cover" onClick={() => setPlaying(post.code)} title="Assistir">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={`/reel-thumbs/${post.code}.jpg`} alt={post.scene} loading="lazy" />
-                  <span className="play">▶</span>
-                </button>
-              )}
+              <iframe
+                src={`https://www.instagram.com/reel/${post.code}/embed/`}
+                loading="lazy"
+                allowFullScreen
+                title={post.scene}
+                style={{
+                  transform: `scale(${scale.toFixed(3)})`,
+                  transformOrigin: "top center",
+                  top: `-${Math.round(54 * scale)}px`,
+                }}
+              />
               <div className="top-ov">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={profile.avatar} alt={profile.name} className="ava" />
