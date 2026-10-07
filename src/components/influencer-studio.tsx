@@ -51,6 +51,7 @@ import { MOTION_PRESETS, type MotionKind } from "@/data/motion-presets";
 import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection } from "@/data/traits";
 import { VIDEO_PRESETS } from "@/data/video-presets";
 import type { Influencer } from "@/lib/db";
+import { RenderProbe } from "./render-probe";
 
 type Preset = {
   id: string;
@@ -241,6 +242,7 @@ export function InfluencerStudio({
 
   return (
     <div className="studio">
+      <RenderProbe />
       {/* ------------------- construtor (esquerda) ------------------- */}
       <aside className="builder">
         <div className="builder-head">

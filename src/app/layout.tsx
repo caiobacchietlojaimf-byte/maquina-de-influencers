@@ -37,6 +37,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="pt-BR" translate="no" className={`${inter.variable} ${grotesk.variable}`}>
       <head>
         <meta name="google" content="notranslate" />
+        {/* O app já é nativamente escuro: pede ao Dark Reader para não reprocessar
+            (a extensão respeita esta meta e evita apagar textos/imagens). */}
+        <meta name="darkreader-lock" />
       </head>
       <body>{children}</body>
     </html>
