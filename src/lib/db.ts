@@ -58,10 +58,70 @@ export type Video = {
   createdAt: number;
 };
 
+/** Vídeo viral minerado do TikTok/Instagram (global, compartilhado entre contas). */
+export type Viral = {
+  id: string;
+  source: "tiktok" | "instagram" | "url";
+  /** id do vídeo na rede de origem (dedupe). */
+  videoId?: string;
+  /** Página original do vídeo. */
+  pageUrl: string;
+  /** URL direta do mp4 (sem marca d'água) — driving video da duplicação. */
+  playUrl: string;
+  coverUrl: string;
+  title: string;
+  authorName: string;
+  authorHandle: string;
+  duration: number;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  musicTitle?: string;
+  region: string;
+  minedAt: number;
+};
+
+export type SocialPlatform = "tiktok" | "instagram";
+
+export type SocialAccount = {
+  id: string;
+  userId: string;
+  platform: SocialPlatform;
+  /** "connected" = credenciais reais; "demo" = simulação local. */
+  status: "connected" | "demo";
+  username: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
+  /** Instagram Graph: id da conta profissional. */
+  igUserId?: string;
+  connectedAt: number;
+};
+
+export type PostStatus = "scheduled" | "posting" | "posted" | "failed";
+
+export type Post = {
+  id: string;
+  userId: string;
+  videoId: string;
+  platform: SocialPlatform;
+  caption: string;
+  scheduledAt: number;
+  status: PostStatus;
+  postedUrl?: string;
+  error?: string;
+  createdAt: number;
+  postedAt?: number;
+};
+
 type Schema = {
   users: User[];
   influencers: Influencer[];
   videos: Video[];
+  virals: Viral[];
+  socialAccounts: SocialAccount[];
+  posts: Post[];
 };
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -73,18 +133,21 @@ function load(): Schema {
   if (cache) return cache;
   mkdirSync(DATA_DIR, { recursive: true });
   if (!existsSync(DB_FILE)) {
-    cache = { users: [], influencers: [], videos: [] };
+    cache = { users: [], influencers: [], videos: [], virals: [], socialAccounts: [], posts: [] };
     persist(cache);
     return cache;
   }
   try {
     cache = JSON.parse(readFileSync(DB_FILE, "utf8")) as Schema;
   } catch {
-    cache = { users: [], influencers: [], videos: [] };
+    cache = { users: [], influencers: [], videos: [], virals: [], socialAccounts: [], posts: [] };
   }
   cache.users ??= [];
   cache.influencers ??= [];
   cache.videos ??= [];
+  cache.virals ??= [];
+  cache.socialAccounts ??= [];
+  cache.posts ??= [];
   return cache;
 }
 
@@ -201,4 +264,131 @@ export function deleteVideo(userId: string, id: string): boolean {
     db.videos = db.videos.filter((v) => !(v.id === id && v.userId === userId));
     return db.videos.length < before;
   });
+}
+
+/* ---------- virais minerados ---------- */
+
+export function listVirals(region?: string): Viral[] {
+  return load()
+    .virals.filter((v) => !region || v.region === region || v.source === "url")
+    .sort((a, b) => b.views - a.views);
+}
+
+export function getViral(id: string): Viral | undefined {
+  return load().virals.find((v) => v.id === id);
+}
+
+/** Momento da última mineração de uma região (cache do feed). */
+export function lastMinedAt(region: string): number {
+  const mined = load().virals.filter((v) => v.region === region && v.source === "tiktok");
+  return mined.length ? Math.max(...mined.map((v) => v.minedAt)) : 0;
+}
+
+/** Insere/atualiza virais dedupe por videoId; devolve quantos entraram novos. */
+export function upsertVirals(items: Omit<Viral, "id">[]): number {
+  return mutate((db) => {
+    let added = 0;
+    for (const item of items) {
+      const existing = item.videoId
+        ? db.virals.find((v) => v.videoId === item.videoId)
+        : db.virals.find((v) => v.pageUrl === item.pageUrl);
+      if (existing) {
+        Object.assign(existing, item);
+        continue;
+      }
+      db.virals.push({ ...item, id: randomUUID() });
+      added += 1;
+    }
+    // Mantém o catálogo enxuto: 400 virais mais recentes.
+    if (db.virals.length > 400) {
+      db.virals.sort((a, b) => b.minedAt - a.minedAt);
+      db.virals = db.virals.slice(0, 400);
+    }
+    return added;
+  });
+}
+
+/* ---------- contas sociais ---------- */
+
+export function listSocialAccounts(userId: string): SocialAccount[] {
+  return load().socialAccounts.filter((a) => a.userId === userId);
+}
+
+export function getSocialAccount(userId: string, platform: SocialPlatform): SocialAccount | undefined {
+  return load().socialAccounts.find((a) => a.userId === userId && a.platform === platform);
+}
+
+export function upsertSocialAccount(
+  data: Omit<SocialAccount, "id" | "connectedAt">,
+): SocialAccount {
+  return mutate((db) => {
+    const existing = db.socialAccounts.find(
+      (a) => a.userId === data.userId && a.platform === data.platform,
+    );
+    if (existing) {
+      Object.assign(existing, data, { connectedAt: Date.now() });
+      return existing;
+    }
+    const account: SocialAccount = { ...data, id: randomUUID(), connectedAt: Date.now() };
+    db.socialAccounts.push(account);
+    return account;
+  });
+}
+
+export function deleteSocialAccount(userId: string, platform: SocialPlatform): boolean {
+  return mutate((db) => {
+    const before = db.socialAccounts.length;
+    db.socialAccounts = db.socialAccounts.filter(
+      (a) => !(a.userId === userId && a.platform === platform),
+    );
+    return db.socialAccounts.length < before;
+  });
+}
+
+/* ---------- publicações ---------- */
+
+export function listPosts(userId: string): Post[] {
+  return load()
+    .posts.filter((p) => p.userId === userId)
+    .sort((a, b) => b.scheduledAt - a.scheduledAt);
+}
+
+export function createPost(data: Omit<Post, "id" | "createdAt">): Post {
+  return mutate((db) => {
+    const post: Post = { ...data, id: randomUUID(), createdAt: Date.now() };
+    db.posts.push(post);
+    return post;
+  });
+}
+
+export function updatePost(id: string, patch: Partial<Post>): Post | undefined {
+  return mutate((db) => {
+    const post = db.posts.find((p) => p.id === id);
+    if (!post) return undefined;
+    Object.assign(post, patch);
+    return post;
+  });
+}
+
+export function deletePost(userId: string, id: string): boolean {
+  return mutate((db) => {
+    const before = db.posts.length;
+    db.posts = db.posts.filter((p) => !(p.id === id && p.userId === userId));
+    return db.posts.length < before;
+  });
+}
+
+/** Publicações vencidas de TODOS os usuários (para o agendador processar). */
+export function listDuePosts(now: number): Post[] {
+  return load().posts.filter((p) => p.status === "scheduled" && p.scheduledAt <= now);
+}
+
+export function getPostOwnerAccount(post: Post): SocialAccount | undefined {
+  return load().socialAccounts.find(
+    (a) => a.userId === post.userId && a.platform === post.platform,
+  );
+}
+
+export function getVideoById(id: string): Video | undefined {
+  return load().videos.find((v) => v.id === id);
 }

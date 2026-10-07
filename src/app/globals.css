@@ -1688,6 +1688,201 @@ textarea.input {
   color: var(--accent);
 }
 
+/* ================= PUBLICAR ================= */
+
+.accounts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.account-card[data-connected="true"] {
+  border-color: var(--accent-32);
+}
+.account-card .icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: var(--accent-08);
+  border: 1px solid var(--accent-14);
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.account-card .info {
+  display: grid;
+  line-height: 1.3;
+  min-width: 0;
+  flex: 1;
+}
+.account-card .info b {
+  font-size: 14.5px;
+}
+.account-card .info span {
+  color: var(--tx3);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-card .info span.ok {
+  color: var(--accent);
+}
+
+.queue {
+  display: grid;
+  gap: 10px;
+}
+.queue-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 12px 14px;
+}
+.queue-card[data-status="posted"] {
+  border-color: var(--accent-14);
+}
+.queue-card[data-status="failed"] {
+  border-color: var(--danger-line);
+}
+.queue-card .thumb {
+  width: 58px;
+  height: 76px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--s1);
+  flex-shrink: 0;
+}
+.queue-card .thumb video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.queue-card .info {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 3px;
+}
+.queue-card .line1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.queue-card .line1 b {
+  font-size: 14px;
+}
+.q-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--s2);
+  border: 1px solid var(--line);
+  color: var(--tx2);
+}
+.q-status[data-status="posted"] {
+  color: var(--accent);
+  border-color: var(--accent-14);
+  background: var(--accent-08);
+}
+.q-status[data-status="failed"] {
+  color: var(--danger);
+  border-color: var(--danger-line);
+  background: var(--danger-bg);
+}
+.queue-card .caption {
+  color: var(--tx2);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.queue-card .meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tx3);
+  font-size: 11.5px;
+}
+.queue-card .q-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.dur-tag {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(6, 9, 8, 0.7);
+  backdrop-filter: blur(6px);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.influencer-pick .pick video {
+  width: 76px;
+  height: 100px;
+  object-fit: cover;
+}
+
+/* esteira de 4 passos no Início */
+.pipeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.pipeline .step {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 4px;
+}
+.pipeline .step .n {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 13px;
+}
+.pipeline .step b {
+  font-size: 14px;
+}
+.pipeline .step span {
+  color: var(--tx3);
+  font-size: 12px;
+}
+
 /* ================= responsivo ================= */
 
 @media (max-width: 1060px) {

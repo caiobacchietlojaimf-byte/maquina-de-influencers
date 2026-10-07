@@ -134,23 +134,28 @@ export default async function LandingPage() {
       </section>
 
       <section className="land-section" id="como-funciona" style={{ paddingTop: 0 }}>
-        <h2>Do zero ao viral em 3 passos</h2>
+        <h2>Do zero ao viral em 4 passos</h2>
         <div className="feature-grid">
           {[
             {
               n: "01",
+              title: "Minere o viral",
+              text: "A máquina puxa as tendências do TikTok em tempo real, por região, com views e música. Ou importe qualquer vídeo por link.",
+            },
+            {
+              n: "02",
               title: "Crie o personagem",
               text: "Escolha o tipo, ajuste os traços ou jogue o dado para sortear um visual. A ficha do personagem sai em segundos.",
             },
             {
-              n: "02",
-              title: "Escolha o movimento",
-              text: "Pegue uma tendência viral ou um preset de movimento Genjutsu. O prompt de duplicação já vem montado.",
+              n: "03",
+              title: "Gere o vídeo",
+              text: "O influencer performa o movimento exato do viral: mesma câmera, mesmo ritmo, novo protagonista.",
             },
             {
-              n: "03",
-              title: "Poste o vídeo",
-              text: "O vídeo sai pronto no formato da rede: 9:16 para TikTok e Reels. Baixe e publique.",
+              n: "04",
+              title: "Publique",
+              text: "Conecte TikTok e Instagram, escreva a legenda e publique na hora ou agende. A fila roda sozinha.",
             },
           ].map((step) => (
             <div key={step.n} className="feature-card">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Download, Film, Flame, Trash2, Wand2 } from "lucide-react";
+import { Download, Film, Flame, Send, Trash2, Wand2 } from "lucide-react";
 
 import { deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
 import type { Video } from "@/lib/db";
@@ -99,9 +99,14 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               </span>
               <div className="actions">
                 {video.status === "completed" && video.resultUrl ? (
-                  <a href={video.resultUrl} target="_blank" rel="noreferrer" title="Baixar vídeo">
-                    <Download size={14} />
-                  </a>
+                  <>
+                    <Link href={`/app/publicar?video=${video.id}`} title="Publicar nas redes">
+                      <Send size={14} />
+                    </Link>
+                    <a href={video.resultUrl} target="_blank" rel="noreferrer" title="Baixar vídeo">
+                      <Download size={14} />
+                    </a>
+                  </>
                 ) : null}
                 <button
                   type="button"

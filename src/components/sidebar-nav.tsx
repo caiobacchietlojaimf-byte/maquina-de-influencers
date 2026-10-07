@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clapperboard, Flame, Home, Users } from "lucide-react";
+import { Clapperboard, Flame, Home, Send, Users } from "lucide-react";
 
 const ITEMS = [
   { href: "/app", label: "Início", icon: Home, exact: true },
   { href: "/app/virais", label: "Vídeos Virais", icon: Flame, badge: "Hot" },
   { href: "/app/influencers", label: "Influencers", icon: Users, badge: "Novo" },
   { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
+  { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },
 ] as const;
 
 export function SidebarNav() {

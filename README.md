@@ -3,9 +3,9 @@
 > Fábrica de criadores virtuais no estilo [Higgsfield AI Influencer Studio](https://higgsfield.ai/ai-influencer-studio),
 > construída sobre a arquitetura open-source do [open-higgsfield](https://github.com/wide-trace/open-higgsfield).
 
-Crie influencers de IA com rosto, corpo e estilo sob medida, aplique movimentos
-virais (Genjutsu motion transfer) e duplique tendências do TikTok/Instagram com
-o seu personagem como protagonista.
+A esteira completa dentro de um sistema só:
+
+**minera o viral → cria o influencer → gera o vídeo → publica**
 
 ## O que tem dentro
 
@@ -13,10 +13,11 @@ o seu personagem como protagonista.
 | --- | --- |
 | **Landing page** | Visual Higgsfield: fundo quase preto, acento lima `#d1fe17`, Space Grotesk |
 | **Login / Cadastro** | Conta com e-mail e senha (scrypt + cookie HMAC httpOnly), 10.000 créditos iniciais |
-| **Início** | Dashboard com créditos, contadores e atalhos |
-| **Vídeos Virais** | Tendências com milhões de views; prompt de duplicação pronto, escolha o influencer e gere |
+| **Início** | Esteira dos 4 passos, créditos, contadores e atalhos |
+| **Vídeos Virais** | **Mineração real do TikTok**: feed de tendências por região (BR/US/ES/JP) com views, likes, música e download sem marca d'água; import por link do TikTok ou .mp4 direto; galeria curada de efeitos virais; duplicação em um clique |
 | **Influencers** | Clone do AI Influencer Studio: 9 tipos de personagem, 18 grupos de traços (150+ opções), dado de sorteio, galeria Explorar com presets oficiais e botão Recriar, aba Movimento com presets Genjutsu |
-| **Vídeos** | Galeria das gerações com polling automático, filtros, download e exclusão |
+| **Vídeos** | Galeria das gerações com polling automático, filtros, download e botão Publicar |
+| **Publicar** | Conexão de contas (TikTok OAuth oficial / Instagram Graph API), fila de publicação com agendamento, agendador rodando no servidor |
 
 ## Rodando
 
@@ -25,58 +26,79 @@ pnpm install
 pnpm dev        # http://localhost:3000
 ```
 
-Sem chave de API o app roda em **modo demonstração**: as gerações resolvem em
-segundos com resultados de exemplo (presets oficiais), então dá para navegar o
-produto inteiro.
+Sem chaves de API o app roda em **modo demonstração** de ponta a ponta: a
+mineração do TikTok é real, e as gerações e publicações resolvem em segundos
+com resultados simulados — o fluxo inteiro é navegável.
 
-### Gerar de verdade
+## Ligando as integrações reais
 
-Copie `.env.example` para `.env.local` e preencha:
+Copie `.env.example` para `.env.local`:
 
-```bash
-HF_API_KEY=id:secret                           # chave da Higgsfield Platform API
-HF_API_BASE_URL=https://platform.higgsfield.ai # origem da Platform API
-```
+| Variável | Para quê |
+| --- | --- |
+| `HF_API_KEY` (`id:secret`) + `HF_API_BASE_URL` | Geração real (Higgsfield Platform API) |
+| `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` | Publicação real no TikTok (Content Posting API via OAuth; callback em `/api/oauth/tiktok/callback`) |
+| `PUBLIC_BASE_URL` | URL pública do app (necessária para o OAuth do TikTok) |
+| Instagram | Sem .env: cole o IG User ID + access token do Graph API (escopo `instagram_content_publish`) na página Publicar |
 
-A integração usa a mesma API do open-higgsfield:
+### Mapeamento de geração (mesma API do open-higgsfield)
 
 - **Character sheet** → `higgsfield-ai/soul/v2/standard` (batch 4, 3:4) com o
-  brief montado a partir dos traços escolhidos (mesmo formato dos presets
-  oficiais do estúdio).
-- **Movimento (Genjutsu)** → `kling-video/v3/motion-control/std` com
-  `image_url` (seu influencer) + `video_url` (driving video do preset).
-- **Viral** → `kling-video/v3.0/std/image-to-video` com o prompt de duplicação.
-- Submit é `POST /{model}`, status é `GET /requests/{id}/status`, auth é
-  `Authorization: Key id:secret`. Polling a cada 4s até status terminal.
+  brief montado a partir dos traços escolhidos.
+- **Duplicação de viral / Movimento** → `kling-video/v3/motion-control/std`
+  com `image_url` (influencer) + `video_url` (vídeo minerado ou driving video
+  do preset Genjutsu).
+- **Efeitos virais** → `kling-video/v3.0/std/image-to-video` com prompt de
+  duplicação.
+- Submit `POST /{model}` · status `GET /requests/{id}/status` · auth
+  `Authorization: Key id:secret` · polling 4s até status terminal.
+
+### Mineração
+
+- TikTok: feed de tendências por região e resolução de URL via API pública do
+  tikwm.com (sem chave). Cache de 30min no banco; botão "Minerar agora" força.
+- Instagram: a Meta não expõe feed de tendências nem o arquivo do Reel
+  publicamente — importe pela URL direta do vídeo (.mp4) ou use as tendências
+  do TikTok.
+- O servidor também minera sozinho (região BR) a cada 30min via
+  `instrumentation.ts`.
+
+### Publicação
+
+- Fila processada pelo agendador do servidor (60s) e pelo polling da página.
+- TikTok: `POST /v2/post/publish/video/init/` com `PULL_FROM_URL` (o TikTok
+  baixa o vídeo da URL de resultado da geração). Publicação entra como
+  `SELF_ONLY` (padrão de app em sandbox).
+- Instagram: container `REELS` → poll de processamento → `media_publish`.
+- Conta sem credenciais = modo demo: a publicação é simulada e marcada com uma
+  URL fictícia.
 
 ## Arquitetura
 
 ```
 src/
   app/
-    page.tsx              landing
-    login/                login + cadastro (server actions)
-    app/                  shell autenticado (sidebar)
-      page.tsx            início
-      virais/             vídeos virais
-      influencers/        estúdio (criar + movimento + explorar + histórico)
-      videos/             galeria
-    actions/              server actions (auth, influencers, vídeos)
-  components/             client components (estúdio, grids, galeria)
-  data/                   catálogos: tipos, traços, presets, efeitos virais
-  lib/                    db (JSON), auth, cliente da plataforma, prompts
-data/db.json              banco local (criado em runtime, fora do git)
+    page.tsx                landing
+    login/                  login + cadastro
+    app/                    shell autenticado (sidebar)
+      virais/               mineração + efeitos + duplicação
+      influencers/          estúdio (criar + movimento + explorar + histórico)
+      videos/               galeria
+      publicar/             contas + fila de publicação
+    actions/                server actions (auth, influencers, vídeos, virais, posts)
+    api/oauth/tiktok/       callback do OAuth do TikTok
+  components/               client components
+  data/                     catálogos (tipos, traços, presets, efeitos)
+  lib/                      db (JSON), auth, platform, miner, social, publisher
+  instrumentation.ts        loops de fundo: agendador (60s) + mineração (30min)
+data/db.json                banco local (criado em runtime, fora do git)
 ```
 
-- **Banco**: arquivo JSON com escrita atômica — zero dependências, ideal para
-  rodar local ou num VPS pequeno. Troque por Postgres/SQLite quando escalar.
-- **Créditos**: ficha de personagem ✦ 125, vídeo ✦ 1000 (ajuste em
-  `src/lib/costs.ts`; créditos iniciais em `INITIAL_CREDITS`).
-- **Catálogo é a fonte da verdade**: tipos, traços e presets vivem em
-  `src/data/` com os mesmos ids da API da Higgsfield, então o brief gerado é
-  compatível com os presets oficiais.
+- **Banco**: arquivo JSON com escrita atômica — zero dependências. Troque por
+  Postgres/SQLite quando escalar.
+- **Créditos**: ficha ✦ 125, vídeo ✦ 1000 (`src/lib/costs.ts`).
+- **Catálogo é a fonte da verdade**: ids idênticos aos da API da Higgsfield.
 
 ## Stack
 
-Next.js 16 App Router · React 19 · CSS puro (design system próprio) · Zustand-free
-(estado local por página) · lucide-react.
+Next.js 16 App Router · React 19 · CSS puro (design system próprio) · lucide-react.

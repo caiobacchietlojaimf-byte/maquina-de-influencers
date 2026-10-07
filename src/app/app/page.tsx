@@ -1,16 +1,18 @@
 import Link from "next/link";
-import { Clapperboard, Flame, Users, Wand2 } from "lucide-react";
+import { Clapperboard, Flame, Send, Users } from "lucide-react";
 
 import { currentUser } from "@/lib/auth";
-import { listInfluencers, listVideos } from "@/lib/db";
+import { listInfluencers, listPosts, listVideos } from "@/lib/db";
 import { isConfigured } from "@/lib/platform";
 
 export const metadata = { title: "Início" };
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const user = (await currentUser())!;
   const influencers = listInfluencers(user.id);
   const videos = listVideos(user.id);
+  const posts = listPosts(user.id);
   const configured = isConfigured();
 
   return (
@@ -20,7 +22,10 @@ export default async function HomePage() {
           <h1>
             Fala, <span style={{ color: "var(--accent)" }}>{user.name.split(" ")[0]}</span>
           </h1>
-          <p className="sub">Sua fábrica de criadores virtuais. Escolha por onde começar.</p>
+          <p className="sub">
+            A esteira completa da máquina: minerar o viral, criar o influencer, gerar o vídeo e
+            publicar. Tudo aqui dentro.
+          </p>
         </div>
       </div>
 
@@ -31,6 +36,29 @@ export default async function HomePage() {
           <b>HF_API_BASE_URL</b> no .env.local para gerar de verdade.
         </div>
       ) : null}
+
+      <div className="pipeline">
+        <div className="step">
+          <span className="n">PASSO 01</span>
+          <b>Minerar o viral</b>
+          <span>Tendências reais do TikTok, por região</span>
+        </div>
+        <div className="step">
+          <span className="n">PASSO 02</span>
+          <b>Criar o influencer</b>
+          <span>9 tipos, 150+ traços, dado de sorteio</span>
+        </div>
+        <div className="step">
+          <span className="n">PASSO 03</span>
+          <b>Gerar o vídeo</b>
+          <span>Motion transfer com o viral de referência</span>
+        </div>
+        <div className="step">
+          <span className="n">PASSO 04</span>
+          <b>Publicar</b>
+          <span>Agora ou agendado, TikTok e Instagram</span>
+        </div>
+      </div>
 
       <div className="stat-row">
         <div className="stat" data-accent="true">
@@ -46,12 +74,23 @@ export default async function HomePage() {
           <div className="l">vídeos gerados</div>
         </div>
         <div className="stat">
-          <div className="n">{videos.filter((v) => v.status === "processing").length}</div>
-          <div className="l">gerações em andamento</div>
+          <div className="n">{posts.filter((p) => p.status === "posted").length}</div>
+          <div className="l">publicações feitas</div>
         </div>
       </div>
 
       <div className="home-grid">
+        <Link href="/app/virais" className="home-card">
+          <div className="icon">
+            <Flame size={19} />
+          </div>
+          <h3>Minerar virais</h3>
+          <p>
+            Feed de tendências do TikTok minerado em tempo real, com views, música e download sem
+            marca d&apos;água. Importe também por link.
+          </p>
+          <span className="go">Ver tendências →</span>
+        </Link>
         <Link href="/app/influencers" className="home-card">
           <div className="icon">
             <Users size={19} />
@@ -63,35 +102,24 @@ export default async function HomePage() {
           </p>
           <span className="go">Abrir estúdio →</span>
         </Link>
-        <Link href="/app/virais" className="home-card">
-          <div className="icon">
-            <Flame size={19} />
-          </div>
-          <h3>Duplicar um viral</h3>
-          <p>
-            Tendências com milhões de views no TikTok e Instagram, com prompt pronto para rodar
-            com o seu influencer.
-          </p>
-          <span className="go">Ver tendências →</span>
-        </Link>
-        <Link href="/app/influencers?aba=movimento" className="home-card">
-          <div className="icon">
-            <Wand2 size={19} />
-          </div>
-          <h3>Aplicar movimento</h3>
-          <p>
-            Presets Genjutsu de motion transfer: o personagem performa o movimento exato do vídeo
-            de referência.
-          </p>
-          <span className="go">Escolher movimento →</span>
-        </Link>
         <Link href="/app/videos" className="home-card">
           <div className="icon">
             <Clapperboard size={19} />
           </div>
           <h3>Meus vídeos</h3>
-          <p>Acompanhe as gerações em andamento, baixe os prontos e refaça o que falhou.</p>
+          <p>Acompanhe as gerações em andamento, baixe os prontos e mande para publicação.</p>
           <span className="go">Abrir galeria →</span>
+        </Link>
+        <Link href="/app/publicar" className="home-card">
+          <div className="icon">
+            <Send size={19} />
+          </div>
+          <h3>Publicar</h3>
+          <p>
+            Conecte TikTok e Instagram, escreva a legenda e publique na hora ou agende. A fila
+            roda sozinha.
+          </p>
+          <span className="go">Abrir central →</span>
         </Link>
       </div>
     </div>
