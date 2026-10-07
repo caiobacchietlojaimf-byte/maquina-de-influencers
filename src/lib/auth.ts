@@ -75,7 +75,12 @@ export const SESSION_COOKIE_OPTIONS = {
 
 export async function setSessionCookie(userId: string) {
   const jar = await cookies();
-  jar.set(SESSION_COOKIE, mintSession(userId), SESSION_COOKIE_OPTIONS);
+  // expires explícito além do maxAge: elimina qualquer chance de o navegador
+  // tratar como cookie de sessão (que morre ao fechar o browser).
+  jar.set(SESSION_COOKIE, mintSession(userId), {
+    ...SESSION_COOKIE_OPTIONS,
+    expires: new Date(Date.now() + SESSION_TTL_S * 1000),
+  });
 }
 
 export async function clearSessionCookie() {

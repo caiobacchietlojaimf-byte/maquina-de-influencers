@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { HERO_VIDEOS } from "@/data/hero";
+import { HeroReel } from "@/components/hero-reel";
 import { currentUser } from "@/lib/auth";
 import { LogoMark } from "@/components/logo";
 
@@ -58,11 +59,7 @@ export default async function LandingPage() {
         </div>
       </header>
 
-      <div className="hero-strip" aria-hidden>
-        {HERO_VIDEOS.map((video) => (
-          <video key={video.src} src={video.src} poster={video.poster} autoPlay muted loop playsInline />
-        ))}
-      </div>
+      <HeroReel videos={HERO_VIDEOS} />
 
       <div className="marquee" aria-hidden>
         <div className="marquee-track">

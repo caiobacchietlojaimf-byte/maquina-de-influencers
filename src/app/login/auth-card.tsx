@@ -1,8 +1,57 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { loginAction, registerAction, type AuthState } from "@/app/actions/auth";
+
+function PasswordInput({
+  id,
+  name,
+  autoComplete,
+  minLength,
+}: {
+  id: string;
+  name: string;
+  autoComplete: string;
+  minLength?: number;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        id={id}
+        className="input"
+        name={name}
+        type={visible ? "text" : "password"}
+        required
+        minLength={minLength}
+        autoComplete={autoComplete}
+        style={{ paddingRight: 46 }}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((v) => !v)}
+        title={visible ? "Esconder senha" : "Mostrar senha"}
+        aria-label={visible ? "Esconder senha" : "Mostrar senha"}
+        style={{
+          position: "absolute",
+          right: 6,
+          top: 5,
+          width: 36,
+          height: 36,
+          borderRadius: 9,
+          display: "grid",
+          placeItems: "center",
+          color: visible ? "var(--accent)" : "var(--tx3)",
+        }}
+      >
+        {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+      </button>
+    </div>
+  );
+}
 
 export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" }) {
   const [mode, setMode] = useState<"login" | "cadastro">(initialMode);
@@ -36,14 +85,7 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" })
           </div>
           <div className="field">
             <label htmlFor="login-password">Senha</label>
-            <input
-              id="login-password"
-              className="input"
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-            />
+            <PasswordInput id="login-password" name="password" autoComplete="current-password" />
           </div>
           <button className="btn btn-accent" disabled={pending} type="submit">
             {pending ? <span className="spinner" /> : "Entrar"}
@@ -62,15 +104,7 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" })
           </div>
           <div className="field">
             <label htmlFor="reg-password">Senha</label>
-            <input
-              id="reg-password"
-              className="input"
-              name="password"
-              type="password"
-              required
-              minLength={6}
-              autoComplete="new-password"
-            />
+            <PasswordInput id="reg-password" name="password" autoComplete="new-password" minLength={6} />
           </div>
           <button className="btn btn-accent" disabled={pending} type="submit">
             {pending ? <span className="spinner" /> : "Criar conta e ganhar créditos"}

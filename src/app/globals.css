@@ -828,14 +828,16 @@ textarea.input {
 }
 
 .builder {
-  position: sticky;
-  top: 20px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 20px;
   display: flex;
   flex-direction: column;
-  max-height: calc(100dvh - 40px);
+  align-self: start;
+  /* SEM altura fixa nem rolagem interna: builder com scroller aninhado não é
+     rasterizado pelo Chrome em várias máquinas (os "grupos vazios" — o DOM
+     media certo, mas o conteúdo nunca era pintado). O painel flui e a página
+     rola, como no mobile. */
 }
 .builder-head {
   padding: 18px 18px 12px;
@@ -874,12 +876,10 @@ textarea.input {
   color: #0a0a0b;
 }
 .builder-scroll {
-  overflow-y: auto;
   padding: 14px;
   display: grid;
   gap: 12px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--s3) transparent;
+  align-content: start;
 }
 
 .upload-box {
@@ -1972,10 +1972,6 @@ textarea.input {
 @media (max-width: 1060px) {
   .studio {
     grid-template-columns: 1fr;
-  }
-  .builder {
-    position: static;
-    max-height: none;
   }
 }
 

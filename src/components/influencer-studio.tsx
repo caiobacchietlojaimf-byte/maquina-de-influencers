@@ -496,7 +496,8 @@ export function InfluencerStudio({
             <div className="studio-hero">
               <div className="videos" aria-hidden>
                 {HERO_VIDEOS.map((video) => (
-                  <video key={video.src} src={video.src} poster={video.poster} autoPlay muted loop playsInline />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={video.src} src={video.poster} alt="" loading="lazy" />
                 ))}
               </div>
               <h2>
@@ -550,8 +551,13 @@ export function InfluencerStudio({
             {scope === "presets" ? (
               <div className="masonry" style={{ columns: "3 280px" }}>
                 {VIDEO_PRESETS.map((preset) => (
-                  <figure key={preset.id} className="video-card">
-                    <video src={preset.video} poster={preset.poster} muted loop playsInline autoPlay preload="metadata" />
+                  <figure
+                    key={preset.id}
+                    className="video-card"
+                    onMouseEnter={(e) => e.currentTarget.querySelector("video")?.play().catch(() => undefined)}
+                    onMouseLeave={(e) => e.currentTarget.querySelector("video")?.pause()}
+                  >
+                    <video src={preset.video} poster={preset.poster} muted loop playsInline preload="none" />
                     <div className="meta">
                       <div className="faces">
                         {preset.faces.map((face) => (
