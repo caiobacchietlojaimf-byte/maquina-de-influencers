@@ -46,6 +46,7 @@ import { createMotionVideoAction } from "@/app/actions/videos";
 import { SHEET_COST, VIDEO_COST } from "@/lib/costs";
 import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
+import { HeroReel } from "./hero-reel";
 import PRESETS from "@/data/influencer-presets.json";
 import { MOTION_PRESETS, type MotionKind } from "@/data/motion-presets";
 import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection } from "@/data/traits";
@@ -494,12 +495,7 @@ export function InfluencerStudio({
         {rightTab === "explore" && builderTab === "create" ? (
           <>
             <div className="studio-hero">
-              <div className="videos" aria-hidden>
-                {HERO_VIDEOS.map((video) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={video.src} src={video.poster} alt="" loading="lazy" />
-                ))}
-              </div>
+              <HeroReel videos={HERO_VIDEOS} className="videos" />
               <h2>
                 Seu influencer,
                 <br />

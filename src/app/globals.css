@@ -1937,6 +1937,122 @@ textarea.input {
   font-weight: 500;
 }
 
+/* Reel tela cheia: o embed do Instagram cropado (header/rodapé dele ficam
+   fora do recorte) com overlays nossos de criador e insights. */
+.reel-fs {
+  position: relative;
+  aspect-ratio: 9 / 15;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: #000;
+}
+.reel-fs iframe {
+  position: absolute;
+  top: -54px;
+  left: 0;
+  width: 100%;
+  height: calc(100% + 264px);
+  border: 0;
+  background: #000;
+}
+.reel-fs .top-ov {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  background: linear-gradient(rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.35) 70%, transparent);
+  pointer-events: none;
+}
+.reel-fs .top-ov .ava {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--accent);
+  flex-shrink: 0;
+}
+.reel-fs .top-ov .who {
+  display: grid;
+  line-height: 1.2;
+  min-width: 0;
+}
+.reel-fs .top-ov .who a {
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  pointer-events: auto;
+}
+.reel-fs .top-ov .who a:hover {
+  color: var(--accent);
+}
+.reel-fs .top-ov .who span {
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 11px;
+}
+.reel-fs .top-ov .igo {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  pointer-events: auto;
+}
+.reel-fs .top-ov .igo:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.reel-fs .bot-ov {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  display: grid;
+  gap: 8px;
+  padding: 40px 12px 12px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.62) 35%, rgba(0, 0, 0, 0.92));
+  pointer-events: none;
+}
+.reel-fs .bot-ov .scene {
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+.reel-fs .insights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.reel-fs .insights span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.reel-fs .insights span svg {
+  color: var(--accent);
+}
+.reel-fs .insights .ago {
+  background: rgba(209, 254, 23, 0.2);
+  color: var(--accent);
+}
+.reel-fs .bot-ov .btn {
+  pointer-events: auto;
+}
+
 /* esteira de 4 passos no Início */
 .pipeline {
   display: grid;
@@ -1982,4 +2098,40 @@ textarea.input {
   .landing-nav .links {
     display: none;
   }
+}
+
+/* capa do reel (antes do play) */
+.reel-fs .cover {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.reel-fs .cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.reel-fs .cover .play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #fff;
+  font-size: 20px;
+  display: grid;
+  place-items: center;
+  padding-left: 4px;
+  transition: transform 0.15s var(--ease), background 0.15s var(--ease);
+}
+.reel-fs .cover:hover .play {
+  transform: translate(-50%, -50%) scale(1.1);
+  background: rgba(209, 254, 23, 0.9);
+  color: var(--accent-ink);
+  border-color: var(--accent);
 }

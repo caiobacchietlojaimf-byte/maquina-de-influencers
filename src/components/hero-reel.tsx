@@ -9,8 +9,10 @@ import { useEffect, useRef } from "react";
 
 export function HeroReel({
   videos,
+  className = "hero-strip",
 }: {
   videos: ReadonlyArray<{ src: string; poster: string }>;
+  className?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +37,7 @@ export function HeroReel({
   }, []);
 
   return (
-    <div ref={wrapRef} className="hero-strip" aria-hidden>
+    <div ref={wrapRef} className={className} aria-hidden>
       {videos.map((video) => (
         <video
           key={video.src}

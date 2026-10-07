@@ -11,6 +11,7 @@ import {
   Flame,
   Heart,
   Link2,
+  MessageCircle,
   Music2,
   Pickaxe,
   RefreshCw,
@@ -48,7 +49,7 @@ export function MinedVirals({
   influencers: MiniInfluencer[];
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"mined" | "effects" | "profiles">("mined");
+  const [tab, setTab] = useState<"mined" | "effects" | "profiles">("profiles");
   const [region, setRegion] = useState("BR");
   const [virals, setVirals] = useState<Viral[]>(initialVirals);
   const [mining, startMining] = useTransition();
@@ -121,6 +122,10 @@ export function MinedVirals({
   return (
     <div>
       <div className="explore-bar" style={{ flexWrap: "wrap" }}>
+        <button type="button" className="chip" data-active={tab === "profiles"} onClick={() => setTab("profiles")}>
+          <Sparkles size={14} />
+          Perfis de IA em alta
+        </button>
         <button type="button" className="chip" data-active={tab === "mined"} onClick={() => setTab("mined")}>
           <Pickaxe size={14} />
           Tendências agora
@@ -128,10 +133,6 @@ export function MinedVirals({
         <button type="button" className="chip" data-active={tab === "effects"} onClick={() => setTab("effects")}>
           <Sparkles size={14} />
           Efeitos virais
-        </button>
-        <button type="button" className="chip" data-active={tab === "profiles"} onClick={() => setTab("profiles")}>
-          <Sparkles size={14} />
-          Perfis de IA em alta
         </button>
       </div>
 
@@ -379,11 +380,23 @@ function MinedCard({ viral, onDuplicate }: { viral: Viral; onDuplicate: () => vo
   );
 }
 
-/* ---------- vídeos dos perfis de IA, com prompt de duplicação ---------- */
+/* ---------- vídeos dos perfis de IA: cards tela cheia com insights ---------- */
+
+function timeAgo(timestamp?: number): string | null {
+  if (!timestamp) return null;
+  const seconds = Math.max(1, Math.floor(Date.now() / 1000 - timestamp));
+  if (seconds < 3600) return `há ${Math.max(1, Math.floor(seconds / 60))} min`;
+  if (seconds < 86400) return `há ${Math.floor(seconds / 3600)} h`;
+  const days = Math.floor(seconds / 86400);
+  if (days < 30) return `há ${days} dia${days > 1 ? "s" : ""}`;
+  const months = Math.floor(days / 30);
+  return `há ${months} ${months > 1 ? "meses" : "mês"}`;
+}
 
 function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
   const router = useRouter();
   const [handle, setHandle] = useState(AI_PROFILES[0].handle);
+  const [playing, setPlaying] = useState<string | null>(null);
   const [active, setActive] = useState<{ profile: AiProfile; post: ProfilePost } | null>(null);
   const [pickedInfluencer, setPickedInfluencer] = useState<string | null>(influencers[0]?.id ?? null);
   const [prompt, setPrompt] = useState("");
@@ -425,46 +438,86 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
             type="button"
             className="chip"
             data-active={handle === p.handle}
-            onClick={() => setHandle(p.handle)}
+            onClick={() => { setHandle(p.handle); setPlaying(null); }}
+            style={{ paddingLeft: 6 }}
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={p.avatar} alt="" style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }} />
             @{p.handle}
           </button>
         ))}
-        <a
-          className="chip"
-          style={{ marginLeft: "auto" }}
-          href={profile.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <ExternalLink size={13} />
-          Abrir @{profile.handle} no Instagram
-        </a>
       </div>
 
-      <p style={{ color: "var(--tx2)", fontSize: 13, marginBottom: 14, maxWidth: 720 }}>
-        {profile.bio} Os reels abaixo são do perfil real — cada um com prompt pronto para o seu
-        influencer estrelar a mesma cena.
-      </p>
-
       <div className="reels-grid">
-        {profile.posts.map((post) => (
-          <article key={post.code} className="reel-card">
-            <iframe
-              src={`https://www.instagram.com/reel/${post.code}/embed/`}
-              loading="lazy"
-              allowFullScreen
-              title={post.scene}
-            />
-            <div className="body">
-              <p className="scene">{post.scene}</p>
-              <button type="button" className="btn btn-accent btn-sm" onClick={() => open(post)}>
-                <Flame size={14} />
-                Duplicar com meu influencer
-              </button>
-            </div>
-          </article>
-        ))}
+        {profile.posts.map((post) => {
+          const metrics = post.metrics;
+          const ago = timeAgo(metrics?.postedAt);
+          const isPlaying = playing === post.code;
+          return (
+            <article key={post.code} className="reel-fs">
+              {isPlaying ? (
+                <iframe
+                  src={`https://www.instagram.com/reel/${post.code}/embed/`}
+                  allowFullScreen
+                  title={post.scene}
+                />
+              ) : (
+                <button type="button" className="cover" onClick={() => setPlaying(post.code)} title="Assistir">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/reel-thumbs/${post.code}.jpg`} alt={post.scene} loading="lazy" />
+                  <span className="play">▶</span>
+                </button>
+              )}
+              <div className="top-ov">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={profile.avatar} alt={profile.name} className="ava" />
+                <div className="who">
+                  <a href={profile.url} target="_blank" rel="noreferrer">
+                    @{profile.handle}
+                  </a>
+                  <span>{profile.followers} seguidores</span>
+                </div>
+                <a className="igo" href={`https://www.instagram.com/reel/${post.code}/`} target="_blank" rel="noreferrer" title="Abrir no Instagram">
+                  <ExternalLink size={14} />
+                </a>
+              </div>
+              <div className="bot-ov">
+                <p className="scene">{post.scene}</p>
+                <div className="insights">
+                  {metrics?.views ? (
+                    <span>
+                      <Eye size={13} />
+                      {formatViews(metrics.views)}
+                    </span>
+                  ) : null}
+                  {metrics?.likes ? (
+                    <span>
+                      <Heart size={13} />
+                      {formatViews(metrics.likes)}
+                    </span>
+                  ) : null}
+                  {metrics?.comments ? (
+                    <span>
+                      <MessageCircle size={13} />
+                      {formatViews(metrics.comments)}
+                    </span>
+                  ) : null}
+                  {metrics?.duration ? (
+                    <span>
+                      <Clock3 size={13} />
+                      {Math.round(metrics.duration)}s
+                    </span>
+                  ) : null}
+                  {ago ? <span className="ago">{ago}</span> : null}
+                </div>
+                <button type="button" className="btn btn-accent btn-sm" onClick={() => open(post)}>
+                  <Flame size={14} />
+                  Duplicar com meu influencer
+                </button>
+              </div>
+            </article>
+          );
+        })}
       </div>
 
       {active ? (
