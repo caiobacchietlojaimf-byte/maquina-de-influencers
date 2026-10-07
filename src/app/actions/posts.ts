@@ -27,7 +27,7 @@ export type AccountsSnapshot = {
 export async function getAccountsAction(): Promise<AccountsSnapshot> {
   const user = await requireUser();
   return {
-    accounts: listSocialAccounts(user.id).map((a) => ({
+    accounts: (await listSocialAccounts(user.id)).map((a) => ({
       platform: a.platform,
       status: a.status,
       username: a.username,
@@ -44,7 +44,7 @@ export async function connectTiktokAction(): Promise<{ redirect?: string }> {
   if (tiktokOAuthConfigured()) {
     return { redirect: tiktokAuthorizeUrl(user.id) };
   }
-  upsertSocialAccount({
+  await upsertSocialAccount({
     userId: user.id,
     platform: "tiktok",
     status: "demo",
@@ -64,7 +64,7 @@ export async function connectInstagramAction(input: {
   const accessToken = input.accessToken?.trim();
 
   if (!igUserId || !accessToken) {
-    upsertSocialAccount({
+    await upsertSocialAccount({
       userId: user.id,
       platform: "instagram",
       status: "demo",
@@ -76,7 +76,7 @@ export async function connectInstagramAction(input: {
 
   try {
     const username = await instagramVerify(igUserId, accessToken);
-    upsertSocialAccount({
+    await upsertSocialAccount({
       userId: user.id,
       platform: "instagram",
       status: "connected",
@@ -93,7 +93,7 @@ export async function connectInstagramAction(input: {
 
 export async function disconnectAccountAction(platform: SocialPlatform): Promise<void> {
   const user = await requireUser();
-  deleteSocialAccount(user.id, platform);
+  await deleteSocialAccount(user.id, platform);
   revalidatePath("/app", "layout");
 }
 
@@ -106,16 +106,16 @@ export async function schedulePostAction(input: {
   scheduledAt?: number;
 }): Promise<{ id: string } | { error: string }> {
   const user = await requireUser();
-  const video = getVideo(user.id, input.videoId);
+  const video = await getVideo(user.id, input.videoId);
   if (!video) return { error: "Vídeo não encontrado" };
   if (video.status !== "completed" || !video.resultUrl) {
     return { error: "Espere o vídeo terminar de gerar antes de publicar" };
   }
-  if (!getSocialAccount(user.id, input.platform)) {
+  if (!(await getSocialAccount(user.id, input.platform))) {
     return { error: "Conecte a conta dessa rede primeiro (página Publicar)" };
   }
 
-  const post = createPost({
+  const post = await createPost({
     userId: user.id,
     videoId: video.id,
     platform: input.platform,
@@ -139,6 +139,6 @@ export async function pollPostsAction(): Promise<Post[]> {
 
 export async function deletePostAction(id: string): Promise<void> {
   const user = await requireUser();
-  deletePost(user.id, id);
+  await deletePost(user.id, id);
   revalidatePath("/app", "layout");
 }

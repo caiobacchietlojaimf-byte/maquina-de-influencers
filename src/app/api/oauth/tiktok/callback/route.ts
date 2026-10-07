@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const token = await tiktokExchangeCode(code);
-    upsertSocialAccount({
+    await upsertSocialAccount({
       userId: sessionUserId,
       platform: "tiktok",
       status: "connected",

@@ -21,7 +21,7 @@ export default async function VideosPage() {
           </p>
         </div>
       </div>
-      <VideosGallery initialVideos={listVideos(user.id)} />
+      <VideosGallery initialVideos={await listVideos(user.id)} />
     </div>
   );
 }

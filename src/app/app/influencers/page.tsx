@@ -15,7 +15,7 @@ export default async function InfluencersPage({
 
   return (
     <InfluencerStudio
-      initialInfluencers={listInfluencers(user.id)}
+      initialInfluencers={await listInfluencers(user.id)}
       initialTab={aba === "movimento" ? "motion" : "create"}
       credits={user.credits}
     />

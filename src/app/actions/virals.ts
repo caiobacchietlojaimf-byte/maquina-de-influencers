@@ -26,9 +26,9 @@ export async function getMinedViralsAction(region: string): Promise<MinedState> 
   await requireUser();
   try {
     await mineTrending(region);
-    return { virals: listVirals(region) };
+    return { virals: await listVirals(region) };
   } catch (caught) {
-    const cached = listVirals(region);
+    const cached = await listVirals(region);
     return {
       virals: cached,
       ...(cached.length
@@ -43,10 +43,10 @@ export async function refreshViralsAction(region: string): Promise<MinedState> {
   await requireUser();
   try {
     await mineTrending(region, { force: true });
-    return { virals: listVirals(region) };
+    return { virals: await listVirals(region) };
   } catch (caught) {
     return {
-      virals: listVirals(region),
+      virals: await listVirals(region),
       error: caught instanceof Error ? caught.message : "Mineração indisponível agora",
     };
   }
@@ -57,10 +57,10 @@ export async function importViralAction(url: string): Promise<MinedState> {
   await requireUser();
   try {
     await mineByUrl(url);
-    return { virals: listVirals() };
+    return { virals: await listVirals() };
   } catch (caught) {
     return {
-      virals: listVirals(),
+      virals: await listVirals(),
       error: caught instanceof Error ? caught.message : "Import falhou",
     };
   }
@@ -73,15 +73,15 @@ export async function duplicateMinedViralAction(input: {
   extraPrompt?: string;
 }): Promise<{ id: string } | { error: string }> {
   const user = await requireUser();
-  const influencer = getInfluencer(user.id, input.influencerId);
+  const influencer = await getInfluencer(user.id, input.influencerId);
   if (!influencer?.imageUrl) return { error: "Escolha um influencer já gerado" };
-  const viral = getViral(input.viralId);
+  const viral = await getViral(input.viralId);
   if (!viral) return { error: "Viral não encontrado — minere de novo" };
 
   if (user.credits < VIDEO_COST) {
     return { error: `Créditos insuficientes (precisa de ${VIDEO_COST})` };
   }
-  adjustCredits(user.id, -VIDEO_COST);
+  await adjustCredits(user.id, -VIDEO_COST);
 
   const prompt = [
     `Recreate this viral video with the character from the reference image as the protagonist.`,
@@ -92,7 +92,7 @@ export async function duplicateMinedViralAction(input: {
     .filter(Boolean)
     .join(" ");
 
-  const video = createVideo({
+  const video = await createVideo({
     userId: user.id,
     influencerId: influencer.id,
     kind: "viral",
@@ -104,7 +104,7 @@ export async function duplicateMinedViralAction(input: {
   });
 
   if (!isConfigured()) {
-    updateVideo(video.id, { requestId: "demo" });
+    await updateVideo(video.id, { requestId: "demo" });
     revalidatePath("/app", "layout");
     return { id: video.id };
   }
@@ -117,13 +117,13 @@ export async function duplicateMinedViralAction(input: {
       keep_original_sound: "yes",
       character_orientation: "video",
     });
-    updateVideo(video.id, { requestId: queued.requestId });
+    await updateVideo(video.id, { requestId: queued.requestId });
     revalidatePath("/app", "layout");
     return { id: video.id };
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    updateVideo(video.id, { status: "failed", error: message });
-    adjustCredits(user.id, VIDEO_COST);
+    await updateVideo(video.id, { status: "failed", error: message });
+    await adjustCredits(user.id, VIDEO_COST);
     return { error: message };
   }
 }

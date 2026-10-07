@@ -14,7 +14,7 @@ export default async function PublicarPage({
   const user = await requirePageUser();
   const { video, conectado, erro } = await searchParams;
 
-  const completed = listVideos(user.id).filter((v) => v.status === "completed" && v.resultUrl);
+  const completed = (await listVideos(user.id)).filter((v) => v.status === "completed" && v.resultUrl);
 
   return (
     <div>
@@ -30,13 +30,13 @@ export default async function PublicarPage({
         </div>
       </div>
       <PublishCenter
-        initialAccounts={listSocialAccounts(user.id).map((a) => ({
+        initialAccounts={(await listSocialAccounts(user.id)).map((a) => ({
           platform: a.platform,
           status: a.status,
           username: a.username,
           connectedAt: a.connectedAt,
         }))}
-        initialPosts={listPosts(user.id)}
+        initialPosts={await listPosts(user.id)}
         videos={completed.map((v) => ({
           id: v.id,
           name: v.presetName ?? "Vídeo",

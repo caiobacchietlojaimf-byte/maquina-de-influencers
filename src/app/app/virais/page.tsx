@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ViraisPage() {
   const user = await requirePageUser();
-  const ready = listInfluencers(user.id).filter((i) => i.status === "completed" && i.imageUrl);
+  const ready = (await listInfluencers(user.id)).filter((i) => i.status === "completed" && i.imageUrl);
 
   // Minera o feed BR na primeira visita (cache de 30min no banco).
   await mineTrending("BR").catch(() => undefined);
@@ -28,7 +28,7 @@ export default async function ViraisPage() {
         </div>
       </div>
       <MinedVirals
-        initialVirals={listVirals("BR")}
+        initialVirals={await listVirals("BR")}
         influencers={ready.map((i) => ({ id: i.id, name: i.name, imageUrl: i.imageUrl! }))}
       />
     </div>

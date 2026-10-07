@@ -22,10 +22,10 @@ export async function registerAction(_prev: AuthState, formData: FormData): Prom
   if (name.length < 2) return { error: "Informe seu nome" };
   if (!EMAIL.test(email)) return { error: "E-mail inválido" };
   if (password.length < 6) return { error: "A senha precisa de pelo menos 6 caracteres" };
-  if (findUserByEmail(email)) return { error: "Já existe uma conta com esse e-mail" };
+  if (await findUserByEmail(email)) return { error: "Já existe uma conta com esse e-mail" };
 
   const { hash, salt } = hashPassword(password);
-  const user = createUser({ name, email, passwordHash: hash, salt, credits: initialCredits() });
+  const user = await createUser({ name, email, passwordHash: hash, salt, credits: initialCredits() });
   await setSessionCookie(user.id);
   redirect("/app");
 }
@@ -34,7 +34,7 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
-  const user = findUserByEmail(email);
+  const user = await findUserByEmail(email);
   if (!user || !verifyPassword(password, user.salt, user.passwordHash)) {
     return { error: "E-mail ou senha incorretos" };
   }

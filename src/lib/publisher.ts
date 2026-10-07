@@ -22,7 +22,7 @@ export async function publisherTick(): Promise<void> {
   if (running) return;
   running = true;
   try {
-    const due = listDuePosts(Date.now());
+    const due = await listDuePosts(Date.now());
     for (const post of due) {
       await processPost(post).catch(() => undefined);
     }
@@ -32,27 +32,27 @@ export async function publisherTick(): Promise<void> {
 }
 
 async function processPost(post: Post): Promise<void> {
-  const account = getPostOwnerAccount(post);
+  const account = await getPostOwnerAccount(post);
   if (!account) {
-    updatePost(post.id, {
+    await updatePost(post.id, {
       status: "failed",
       error: "Nenhuma conta conectada para essa rede. Conecte em Publicar.",
     });
     return;
   }
-  const video = getVideoById(post.videoId);
+  const video = await getVideoById(post.videoId);
   if (!video?.resultUrl) {
-    updatePost(post.id, { status: "failed", error: "O vídeo da publicação não está pronto" });
+    await updatePost(post.id, { status: "failed", error: "O vídeo da publicação não está pronto" });
     return;
   }
 
-  updatePost(post.id, { status: "posting" });
+  await updatePost(post.id, { status: "posting" });
 
   if (account.status === "demo") {
     // Modo demonstração: simula o tempo de upload e marca como publicado.
     await new Promise((resolve) => setTimeout(resolve, DEMO_POSTING_DELAY_MS));
     const fakeId = Math.random().toString(36).slice(2, 10);
-    updatePost(post.id, {
+    await updatePost(post.id, {
       status: "posted",
       postedAt: Date.now(),
       postedUrl:
@@ -69,7 +69,7 @@ async function processPost(post: Post): Promise<void> {
         videoUrl: video.resultUrl,
         caption: post.caption,
       });
-      updatePost(post.id, {
+      await updatePost(post.id, {
         status: "posted",
         postedAt: Date.now(),
         postedUrl: `https://www.tiktok.com/@${account.username}`,
@@ -81,7 +81,7 @@ async function processPost(post: Post): Promise<void> {
         videoUrl: video.resultUrl,
         caption: post.caption,
       });
-      updatePost(post.id, {
+      await updatePost(post.id, {
         status: "posted",
         postedAt: Date.now(),
         postedUrl: `https://www.instagram.com/${account.username}/`,
@@ -90,7 +90,7 @@ async function processPost(post: Post): Promise<void> {
       void mediaId;
     }
   } catch (caught) {
-    updatePost(post.id, {
+    await updatePost(post.id, {
       status: "failed",
       error: caught instanceof Error ? caught.message : String(caught),
     });

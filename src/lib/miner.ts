@@ -79,7 +79,7 @@ function toViral(item: TikwmItem, region: string): Omit<Viral, "id"> | null {
 /** Minera o feed de tendências de uma região. Respeita o TTL salvo no banco,
     a menos que `force`. Devolve quantos vídeos novos entraram. */
 export async function mineTrending(region: string, options?: { force?: boolean }): Promise<number> {
-  if (!options?.force && Date.now() - lastMinedAt(region) < FEED_TTL_MS) return 0;
+  if (!options?.force && Date.now() - (await lastMinedAt(region)) < FEED_TTL_MS) return 0;
   const data = (await tikwm(`/feed/list?region=${encodeURIComponent(region)}&count=18`)) as
     | TikwmItem[]
     | null;
@@ -103,12 +103,12 @@ export async function mineByUrl(url: string): Promise<{ added: boolean; title: s
     const viral = data ? toViral(data, "BR") : null;
     if (!viral) throw new Error("Não consegui ler esse vídeo do TikTok");
     viral.pageUrl = clean;
-    upsertVirals([viral]);
+    await upsertVirals([viral]);
     return { added: true, title: viral.title };
   }
   if (DIRECT_VIDEO.test(clean)) {
     const title = decodeURIComponent(clean.split("/").pop()?.split("?")[0] ?? "Vídeo importado");
-    upsertVirals([
+    await upsertVirals([
       {
         source: "url",
         pageUrl: clean,

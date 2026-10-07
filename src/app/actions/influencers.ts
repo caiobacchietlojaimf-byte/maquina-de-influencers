@@ -43,7 +43,7 @@ export async function createInfluencerAction(input: CreateInfluencerInput): Prom
     return { error: `Créditos insuficientes (precisa de ${SHEET_COST})` };
   }
 
-  const influencer = createInfluencer({
+  const influencer = await createInfluencer({
     userId: user.id,
     name,
     tier,
@@ -57,8 +57,8 @@ export async function createInfluencerAction(input: CreateInfluencerInput): Prom
   if (!isConfigured()) {
     // Modo demonstração: sem HF_API_KEY, a geração resolve sozinha com um
     // preset oficial compatível com o tier, para o fluxo inteiro ser navegável.
-    updateInfluencer(influencer.id, { requestId: "demo" });
-    adjustCredits(user.id, -SHEET_COST);
+    await updateInfluencer(influencer.id, { requestId: "demo" });
+    await adjustCredits(user.id, -SHEET_COST);
     revalidatePath("/app", "layout");
     return { id: influencer.id };
   }
@@ -71,13 +71,13 @@ export async function createInfluencerAction(input: CreateInfluencerInput): Prom
       aspect_ratio: "3:4",
       enhance_prompt: false,
     });
-    updateInfluencer(influencer.id, { requestId: queued.requestId, status: "processing" });
-    adjustCredits(user.id, -SHEET_COST);
+    await updateInfluencer(influencer.id, { requestId: queued.requestId, status: "processing" });
+    await adjustCredits(user.id, -SHEET_COST);
     revalidatePath("/app", "layout");
     return { id: influencer.id };
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
-    updateInfluencer(influencer.id, { status: "failed", error: message });
+    await updateInfluencer(influencer.id, { status: "failed", error: message });
     return { error: message };
   }
 }
@@ -85,7 +85,7 @@ export async function createInfluencerAction(input: CreateInfluencerInput): Prom
 /** Snapshot dos influencers do usuário; resolve os pendentes em uma passada. */
 export async function pollInfluencersAction(): Promise<Influencer[]> {
   const user = await requireUser();
-  const pending = listInfluencers(user.id).filter((i) => i.status === "processing" || i.status === "queued");
+  const pending = (await listInfluencers(user.id)).filter((i) => i.status === "processing" || i.status === "queued");
 
   await Promise.all(
     pending.map(async (influencer) => {
@@ -96,7 +96,7 @@ export async function pollInfluencersAction(): Promise<Influencer[]> {
           );
           const all = pool.length ? pool : (PRESETS as Array<{ preview: { url: string }; sheet: { url: string } }>);
           const pick = all[Math.floor(Math.random() * all.length)];
-          updateInfluencer(influencer.id, {
+          await updateInfluencer(influencer.id, {
             status: "completed",
             imageUrl: pick.preview.url,
             gallery: [pick.sheet.url],
@@ -109,13 +109,13 @@ export async function pollInfluencersAction(): Promise<Influencer[]> {
         const status = await getStatus(influencer.requestId);
         if (!TERMINAL_STATUSES.has(status.status)) return;
         if (status.status === "completed" && status.images?.length) {
-          updateInfluencer(influencer.id, {
+          await updateInfluencer(influencer.id, {
             status: "completed",
             imageUrl: status.images[0].url,
             gallery: status.images.slice(1).map((image) => image.url),
           });
         } else {
-          updateInfluencer(influencer.id, {
+          await updateInfluencer(influencer.id, {
             status: "failed",
             error: typeof status.error === "string" ? status.error : `Geração ${status.status}`,
           });
@@ -131,13 +131,13 @@ export async function pollInfluencersAction(): Promise<Influencer[]> {
 
 export async function deleteInfluencerAction(id: string): Promise<void> {
   const user = await requireUser();
-  deleteInfluencer(user.id, id);
+  await deleteInfluencer(user.id, id);
   revalidatePath("/app", "layout");
 }
 
 export async function retryInfluencerAction(id: string): Promise<{ id: string } | { error: string }> {
   const user = await requireUser();
-  const influencer = getInfluencer(user.id, id);
+  const influencer = await getInfluencer(user.id, id);
   if (!influencer) return { error: "Influencer não encontrado" };
   return createInfluencerAction({
     name: influencer.name,

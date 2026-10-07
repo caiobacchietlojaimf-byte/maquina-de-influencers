@@ -87,7 +87,7 @@ export async function currentUser(): Promise<User | null> {
   const jar = await cookies();
   const userId = readSessionToken(jar.get(SESSION_COOKIE)?.value);
   if (!userId) return null;
-  return findUserById(userId) ?? null;
+  return (await findUserById(userId)) ?? null;
 }
 
 /** Usuário logado ou lança (para server actions protegidas). */
