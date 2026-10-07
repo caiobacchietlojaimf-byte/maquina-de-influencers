@@ -1,4 +1,4 @@
-import { currentUser } from "@/lib/auth";
+import { requirePageUser } from "@/lib/auth";
 import { listPosts, listSocialAccounts, listVideos } from "@/lib/db";
 import { tiktokOAuthConfigured } from "@/lib/social";
 import { PublishCenter } from "@/components/publish-center";
@@ -11,7 +11,7 @@ export default async function PublicarPage({
 }: {
   searchParams: Promise<{ video?: string; conectado?: string; erro?: string }>;
 }) {
-  const user = (await currentUser())!;
+  const user = await requirePageUser();
   const { video, conectado, erro } = await searchParams;
 
   const completed = listVideos(user.id).filter((v) => v.status === "completed" && v.resultUrl);

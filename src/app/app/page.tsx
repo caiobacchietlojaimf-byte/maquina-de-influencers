@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Clapperboard, Flame, Send, Users } from "lucide-react";
 
-import { currentUser } from "@/lib/auth";
+import { requirePageUser } from "@/lib/auth";
 import { listInfluencers, listPosts, listVideos } from "@/lib/db";
 import { isConfigured } from "@/lib/platform";
 
@@ -9,7 +9,7 @@ export const metadata = { title: "Início" };
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const user = (await currentUser())!;
+  const user = await requirePageUser();
   const influencers = listInfluencers(user.id);
   const videos = listVideos(user.id);
   const posts = listPosts(user.id);

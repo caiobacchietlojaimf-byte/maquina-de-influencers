@@ -4,6 +4,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { findUserById, type User } from "./db";
 
@@ -90,5 +91,12 @@ export async function currentUser(): Promise<User | null> {
 export async function requireUser(): Promise<User> {
   const user = await currentUser();
   if (!user) throw new Error("Faça login para continuar");
+  return user;
+}
+
+/** Usuário logado ou redireciona para /login (para páginas do /app). */
+export async function requirePageUser(): Promise<User> {
+  const user = await currentUser();
+  if (!user) redirect("/login");
   return user;
 }

@@ -1,4 +1,4 @@
-import { currentUser } from "@/lib/auth";
+import { requirePageUser } from "@/lib/auth";
 import { listInfluencers } from "@/lib/db";
 import { InfluencerStudio } from "@/components/influencer-studio";
 
@@ -10,7 +10,7 @@ export default async function InfluencersPage({
 }: {
   searchParams: Promise<{ aba?: string }>;
 }) {
-  const user = (await currentUser())!;
+  const user = await requirePageUser();
   const { aba } = await searchParams;
 
   return (

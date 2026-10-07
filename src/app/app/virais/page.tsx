@@ -1,4 +1,4 @@
-import { currentUser } from "@/lib/auth";
+import { requirePageUser } from "@/lib/auth";
 import { listInfluencers, listVirals } from "@/lib/db";
 import { mineTrending } from "@/lib/miner";
 import { MinedVirals } from "@/components/mined-virals";
@@ -7,7 +7,7 @@ export const metadata = { title: "Vídeos Virais" };
 export const dynamic = "force-dynamic";
 
 export default async function ViraisPage() {
-  const user = (await currentUser())!;
+  const user = await requirePageUser();
   const ready = listInfluencers(user.id).filter((i) => i.status === "completed" && i.imageUrl);
 
   // Minera o feed BR na primeira visita (cache de 30min no banco).

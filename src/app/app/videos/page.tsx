@@ -1,4 +1,4 @@
-import { currentUser } from "@/lib/auth";
+import { requirePageUser } from "@/lib/auth";
 import { listVideos } from "@/lib/db";
 import { VideosGallery } from "@/components/videos-gallery";
 
@@ -6,7 +6,7 @@ export const metadata = { title: "Vídeos" };
 export const dynamic = "force-dynamic";
 
 export default async function VideosPage() {
-  const user = (await currentUser())!;
+  const user = await requirePageUser();
 
   return (
     <div>
