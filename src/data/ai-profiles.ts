@@ -17,6 +17,8 @@ export type ProfilePost = {
   prompt: string;
   /** proporção largura/altura do vídeo (da capa). */
   ar: number;
+  /** false = o Instagram bloqueia este reel em /embed/ (abrir no IG). */
+  embeddable: boolean;
   metrics?: ReelMetrics;
 };
 
@@ -46,6 +48,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Trend em alta do perfil: performance completa",
         prompt: "The character from the reference image stars in this reel: performing this trending reel scene with sharp timing and charisma, same framing and energy as the original. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: false,
         metrics: { likes: 234920, comments: 3102, postedAt: 1791061358 },
       },
       {
@@ -53,6 +56,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Cena viral com gente ao redor",
         prompt: "The character from the reference image stars in this reel: starring in this viral group scene, natural interactions around, confident close framing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5624,
+        embeddable: true,
         metrics: { likes: 182691, comments: 2535, postedAt: 1791201871 },
       },
       {
@@ -60,6 +64,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Momento viral noturno",
         prompt: "The character from the reference image stars in this reel: in a lively night scene filming themselves, city lights and movement around, viral-reel energy. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5624,
+        embeddable: true,
         metrics: { likes: 60053, comments: 692, postedAt: 1791112952 },
       },
       {
@@ -67,6 +72,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Sequência viral do rolê",
         prompt: "The character from the reference image stars in this reel: in a fun night-out sequence, quick cuts and real reactions, handheld energy. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: false,
         metrics: { likes: 52979, comments: 597, postedAt: 1791250524 },
       },
       {
@@ -74,6 +80,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Trend de humor do perfil",
         prompt: "The character from the reference image stars in this reel: acting out this comedic trending bit with exaggerated expressions and punchy timing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5634,
+        embeddable: true,
         metrics: { likes: 41829, comments: 998, postedAt: 1791018055 },
       },
       {
@@ -81,6 +88,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Cena viral do dia a dia",
         prompt: "The character from the reference image stars in this reel: in a relatable day-in-the-life viral moment, casual styling, close engaging framing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5624,
+        embeddable: true,
         metrics: { likes: 41704, comments: 308, postedAt: 1791224674 },
       },
       {
@@ -88,6 +96,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Reel de humor em alta",
         prompt: "The character from the reference image stars in this reel: acting this trending comedy reel with expressive timing and close framing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5624,
+        embeddable: true,
         metrics: { likes: 39887, comments: 438, postedAt: 1791019092 },
       },
       {
@@ -95,6 +104,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Trend viral do perfil",
         prompt: "The character from the reference image stars in this reel: performing this viral trend with the same pacing and attitude as the original. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 38015, comments: 566, postedAt: 1790945748 },
       },
     ],
@@ -113,6 +123,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Reel em alta do perfil",
         prompt: "The character from the reference image stars in this reel: starring in this trending reel with the same vibe and pacing as the original. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: false,
         metrics: { likes: 1557, comments: 49, postedAt: 1791304351 },
       },
       {
@@ -120,6 +131,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Momento viral do perfil",
         prompt: "The character from the reference image stars in this reel: recreating this viral moment with natural charisma and close framing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 1400, comments: 47, postedAt: 1791263748 },
       },
       {
@@ -127,6 +139,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Meme fit esportivo",
         prompt: "The character from the reference image stars in this reel: in sporty sweats acting out a relatable meme skit, exaggerated reactions, jump cuts. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 1116, comments: 89, postedAt: 1791326538 },
       },
       {
@@ -134,6 +147,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Selfie aconchegante de parka",
         prompt: "The character from the reference image stars in this reel: in a cozy parka filming a close selfie video, soft daylight, talking to camera with playful energy. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 989, comments: 75, postedAt: 1791344407 },
       },
       {
@@ -141,6 +155,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Selfie com gente querida",
         prompt: "The character from the reference image stars in this reel: filming a warm selfie video with friends, genuine laughs, close framing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 667, comments: 7, postedAt: 1791342682 },
       },
       {
@@ -148,6 +163,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Fit check: moletom e gola alta",
         prompt: "The character from the reference image stars in this reel: doing a street-style fit check in an oversized hoodie and turtleneck, slow spin, posing between looks. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 3, comments: 1, postedAt: 1791377265 },
       },
     ],
@@ -166,6 +182,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Dança de figurino completo",
         prompt: "The character from the reference image stars in this reel: performing an energetic dance in full costume, sharp choreography, dramatic stage-like lighting. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 23200, comments: 126, postedAt: 1791222099 },
       },
       {
@@ -173,6 +190,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Kilt e barba: presença de personagem",
         prompt: "The character from the reference image stars in this reel: in a bold kilt outfit with striking styling, powerful poses, slow camera push-in, theatrical presence. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 2174, comments: 31, postedAt: 1791307600 },
       },
     ],
@@ -191,6 +209,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Selfie de boina: papo com a câmera",
         prompt: "The character from the reference image stars in this reel: in a beret filming a close selfie video, charismatic talking-head energy, city background. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 55300, comments: 696, postedAt: 1790889870 },
       },
       {
@@ -198,6 +217,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Reel viral do personagem",
         prompt: "The character from the reference image stars in this reel: starring in this trending character reel, same framing, pacing and attitude as the original. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 7829, comments: 181, postedAt: 1791161010 },
       },
       {
@@ -205,6 +225,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Cena em alta do perfil",
         prompt: "The character from the reference image stars in this reel: recreating this popular reel scene with confident presence and clean cinematography. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 6974, comments: 53, postedAt: 1791264051 },
       },
       {
@@ -212,6 +233,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Cowboy dândi: brogues e gravata de caubói",
         prompt: "The character from the reference image stars in this reel: in dandy-cowboy style with brogues and a bolo tie, slow walk toward camera, western-fashion attitude. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 5557, comments: 120, postedAt: 1790800440 },
       },
       {
@@ -219,6 +241,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Figurino experimental de alumínio",
         prompt: "The character from the reference image stars in this reel: wearing an experimental foil-like outfit, avant-garde fashion reel, strong poses, studio flashes. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 4057, comments: 14, postedAt: 1791355487 },
       },
       {
@@ -226,6 +249,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Momento viral do personagem",
         prompt: "The character from the reference image stars in this reel: acting this viral character moment with expressive timing and close framing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 3995, comments: 87, postedAt: 1790865896 },
       },
     ],
@@ -244,6 +268,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Dança com violino e pandeiros",
         prompt: "The character from the reference image stars in this reel: dancing joyfully surrounded by musicians with violins and tambourines, festive golden lighting. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 279000, comments: 26303, postedAt: 1790950148 },
       },
       {
@@ -251,6 +276,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Hit do perfil: cena de luxo",
         prompt: "The character from the reference image stars in this reel: starring in this hit luxury-lifestyle reel, rich styling, controlled camera moves. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 189620, comments: 8987, postedAt: 1790542213 },
       },
       {
@@ -258,6 +284,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Reel viral premium",
         prompt: "The character from the reference image stars in this reel: recreating this high-performing premium reel with elegant styling and confident pacing. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: false,
         metrics: { likes: 135918, comments: 4524, postedAt: 1790770234 },
       },
       {
@@ -265,6 +292,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Rolê de conversível no deserto",
         prompt: "The character from the reference image stars in this reel: cruising in an open roadster through desert roads, scarf in the wind, luxury travel-reel energy. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 114341, comments: 2794, postedAt: 1790845184 },
       },
       {
@@ -272,6 +300,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Cena viral de celebração",
         prompt: "The character from the reference image stars in this reel: in a festive viral celebration scene, warm lights, rhythm and joy all around. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 106086, comments: 3779, postedAt: 1790762269 },
       },
       {
@@ -279,6 +308,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         scene: "Momento em alta do perfil",
         prompt: "The character from the reference image stars in this reel: starring in this trending scene with premium art direction and smooth camera moves. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
+        embeddable: true,
         metrics: { likes: 63436, comments: 2690, postedAt: 1790886086 },
       },
     ],

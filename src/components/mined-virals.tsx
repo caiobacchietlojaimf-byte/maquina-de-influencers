@@ -15,6 +15,7 @@ import {
   Music2,
   Pickaxe,
   RefreshCw,
+  RotateCw,
   Sparkles,
   X,
 } from "lucide-react";
@@ -396,6 +397,10 @@ function timeAgo(timestamp?: number): string | null {
 function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
   const router = useRouter();
   const [handle, setHandle] = useState(AI_PROFILES[0].handle);
+  /* Player do IG montado sob demanda (1 clique) — carregar 8 embeds de uma
+     vez toma rate limit do Instagram ("link quebrado"). O valor é um contador
+     de reload: o ↻ remonta o iframe (resolve o "assista novamente"). */
+  const [players, setPlayers] = useState<Record<string, number>>({});
   const [active, setActive] = useState<{ profile: AiProfile; post: ProfilePost } | null>(null);
   const [pickedInfluencer, setPickedInfluencer] = useState<string | null>(influencers[0]?.id ?? null);
   const [prompt, setPrompt] = useState("");
@@ -437,7 +442,7 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
             type="button"
             className="chip"
             data-active={handle === p.handle}
-            onClick={() => setHandle(p.handle)}
+            onClick={() => { setHandle(p.handle); setPlayers({}); }}
             style={{ paddingLeft: 6 }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -456,19 +461,48 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
              vídeo faz ele COBRIR o card: s = 1/(1.25·ar), com piso que
              garante altura. Header de 54px sai pelo deslocamento. */
           const scale = Math.max(1 / (1.25 * post.ar), 1.34);
+          const playerKey = players[post.code];
           return (
             <article key={post.code} className="reel-fs">
-              <iframe
-                src={`https://www.instagram.com/reel/${post.code}/embed/`}
-                loading="lazy"
-                allowFullScreen
-                title={post.scene}
-                style={{
-                  transform: `scale(${scale.toFixed(3)})`,
-                  transformOrigin: "top center",
-                  top: `-${Math.round(54 * scale)}px`,
-                }}
-              />
+              {playerKey !== undefined && post.embeddable ? (
+                <iframe
+                  key={playerKey}
+                  src={`https://www.instagram.com/reel/${post.code}/embed/`}
+                  allowFullScreen
+                  title={post.scene}
+                  style={{
+                    transform: `scale(${scale.toFixed(3)})`,
+                    transformOrigin: "top center",
+                    top: `-${Math.round(54 * scale)}px`,
+                  }}
+                />
+              ) : post.embeddable ? (
+                <button
+                  type="button"
+                  className="cover"
+                  title="Assistir"
+                  onClick={() => setPlayers((prev) => ({ ...prev, [post.code]: 0 }))}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/reel-thumbs/${post.code}.jpg`} alt={post.scene} loading="lazy" />
+                  <span className="play">▶</span>
+                </button>
+              ) : (
+                /* O IG bloqueia este reel em /embed/ — a capa abre direto no Instagram. */
+                <a
+                  className="cover"
+                  href={`https://www.instagram.com/reel/${post.code}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Este reel só toca no Instagram (embed bloqueado pelo IG)"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/reel-thumbs/${post.code}.jpg`} alt={post.scene} loading="lazy" />
+                  <span className="play">
+                    <ExternalLink size={22} />
+                  </span>
+                </a>
+              )}
               <div className="top-ov">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={profile.avatar} alt={profile.name} className="ava" />
@@ -478,6 +512,16 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
                   </a>
                   <span>{profile.followers} seguidores</span>
                 </div>
+                {playerKey !== undefined && post.embeddable ? (
+                  <button
+                    type="button"
+                    className="igo"
+                    title="Assistir de novo"
+                    onClick={() => setPlayers((prev) => ({ ...prev, [post.code]: (prev[post.code] ?? 0) + 1 }))}
+                  >
+                    <RotateCw size={14} />
+                  </button>
+                ) : null}
                 <a className="igo" href={`https://www.instagram.com/reel/${post.code}/`} target="_blank" rel="noreferrer" title="Abrir no Instagram">
                   <ExternalLink size={14} />
                 </a>
@@ -489,6 +533,11 @@ function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
                     <span>
                       <Eye size={13} />
                       {formatViews(metrics.views)}
+                    </span>
+                  ) : metrics?.likes ? (
+                    <span title="Views estimadas pelo engajamento (o Instagram só mostra views exatas a contas logadas)">
+                      <Eye size={13} />
+                      ~{formatViews(metrics.likes * 24)}
                     </span>
                   ) : null}
                   {metrics?.likes ? (
