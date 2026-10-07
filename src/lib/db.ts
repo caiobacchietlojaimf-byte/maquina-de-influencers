@@ -124,7 +124,12 @@ type Schema = {
   posts: Post[];
 };
 
-const DATA_DIR = path.join(process.cwd(), "data");
+/* Em serverless (Vercel) o diretório do projeto é somente leitura — o banco
+   vai para /tmp (efêmero por instância: bom para demo; para produção de
+   verdade, troque por um banco gerenciado). */
+const DATA_DIR =
+  process.env.DATA_DIR ||
+  (process.env.VERCEL ? "/tmp/maquina-data" : path.join(process.cwd(), "data"));
 const DB_FILE = path.join(DATA_DIR, "db.json");
 
 let cache: Schema | null = null;

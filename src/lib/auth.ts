@@ -17,7 +17,10 @@ const SESSION_TTL_S = 60 * 60 * 24 * 30;
 function secret(): string {
   const env = process.env.AUTH_SECRET?.trim();
   if (env) return env;
-  const file = path.join(process.cwd(), "data", ".secret");
+  const dataDir =
+    process.env.DATA_DIR ||
+    (process.env.VERCEL ? "/tmp/maquina-data" : path.join(process.cwd(), "data"));
+  const file = path.join(dataDir, ".secret");
   if (existsSync(file)) return readFileSync(file, "utf8").trim();
   mkdirSync(path.dirname(file), { recursive: true });
   const generated = randomBytes(32).toString("hex");

@@ -6,6 +6,9 @@
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  // Em serverless não há processo persistente: o agendador roda pelo polling
+  // das páginas (pollPostsAction) e a mineração na visita à página de virais.
+  if (process.env.VERCEL) return;
 
   const { publisherTick } = await import("./lib/publisher");
   const { mineTrending } = await import("./lib/miner");
