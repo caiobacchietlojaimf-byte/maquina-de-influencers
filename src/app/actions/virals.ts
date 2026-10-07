@@ -127,3 +127,63 @@ export async function duplicateMinedViralAction(input: {
     return { error: message };
   }
 }
+
+/** Modelo image-to-video para duplicar cenas dos perfis de IA (sem driving video). */
+const I2V_MODEL = "kling-video/v3.0/std/image-to-video";
+
+/** Duplica um reel de perfil de IA: o influencer estrela a mesma cena. */
+export async function duplicateProfilePostAction(input: {
+  influencerId: string;
+  handle: string;
+  code: string;
+  prompt: string;
+}): Promise<{ id: string } | { error: string }> {
+  const { getProfile } = await import("@/data/ai-profiles");
+  const user = await requireUser();
+  const influencer = await getInfluencer(user.id, input.influencerId);
+  if (!influencer?.imageUrl) return { error: "Escolha um influencer já gerado" };
+  const profile = getProfile(input.handle);
+  const postRef = profile?.posts.find((p) => p.code === input.code);
+  if (!profile || !postRef) return { error: "Vídeo do perfil não encontrado" };
+  const prompt = input.prompt?.trim() || postRef.prompt;
+
+  if (user.credits < VIDEO_COST) {
+    return { error: `Créditos insuficientes (precisa de ${VIDEO_COST})` };
+  }
+  await adjustCredits(user.id, -VIDEO_COST);
+
+  const video = await createVideo({
+    userId: user.id,
+    influencerId: influencer.id,
+    kind: "viral",
+    presetId: `profile:${profile.handle}:${postRef.code}`,
+    presetName: `@${profile.handle} · ${postRef.scene}`.slice(0, 60),
+    prompt,
+    status: "processing",
+  });
+
+  if (!isConfigured()) {
+    await updateVideo(video.id, { requestId: "demo" });
+    revalidatePath("/app", "layout");
+    return { id: video.id };
+  }
+
+  try {
+    const queued = await submitGeneration(I2V_MODEL, {
+      prompt,
+      image_url: influencer.imageUrl,
+      sound: "on",
+      duration: 5,
+      cfg_scale: 0.5,
+      multi_shots: false,
+    });
+    await updateVideo(video.id, { requestId: queued.requestId });
+    revalidatePath("/app", "layout");
+    return { id: video.id };
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : String(caught);
+    await updateVideo(video.id, { status: "failed", error: message });
+    await adjustCredits(user.id, VIDEO_COST);
+    return { error: message };
+  }
+}

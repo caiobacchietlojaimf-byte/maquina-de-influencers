@@ -23,10 +23,10 @@ import {
   getMinedViralsAction,
   importViralAction,
   refreshViralsAction,
+  duplicateProfilePostAction,
 } from "@/app/actions/virals";
-import { toggleFollowAction } from "@/app/actions/profiles";
 import { VIDEO_COST } from "@/lib/costs";
-import { AI_PROFILES } from "@/data/ai-profiles";
+import { AI_PROFILES, type AiProfile, type ProfilePost } from "@/data/ai-profiles";
 import { formatViews } from "@/data/viral-effects";
 import type { Viral } from "@/lib/db";
 import { ViralGrid } from "./viral-grid";
@@ -43,17 +43,14 @@ const REGIONS = [
 export function MinedVirals({
   initialVirals,
   influencers,
-  initialFollows,
 }: {
   initialVirals: Viral[];
   influencers: MiniInfluencer[];
-  initialFollows: string[];
 }) {
   const router = useRouter();
   const [tab, setTab] = useState<"mined" | "effects" | "profiles">("mined");
   const [region, setRegion] = useState("BR");
   const [virals, setVirals] = useState<Viral[]>(initialVirals);
-  const [follows, setFollows] = useState<string[]>(initialFollows);
   const [mining, startMining] = useTransition();
 
   // Mineração em background: a página carrega na hora com o cache do banco e
@@ -133,18 +130,12 @@ export function MinedVirals({
           Efeitos virais
         </button>
         <button type="button" className="chip" data-active={tab === "profiles"} onClick={() => setTab("profiles")}>
-          <Heart size={14} />
+          <Sparkles size={14} />
           Perfis de IA em alta
-          {follows.length ? <span className="badge-new">{follows.length}</span> : null}
         </button>
       </div>
 
-      {tab === "profiles" ? (
-        <ProfilesGrid follows={follows} onToggle={async (handle) => {
-          const updated = await toggleFollowAction(handle).catch(() => null);
-          if (updated) setFollows(updated);
-        }} />
-      ) : null}
+      {tab === "profiles" ? <ProfileVideos influencers={influencers} /> : null}
 
       {tab === "effects" ? (
         <ViralGrid influencers={influencers} />
@@ -388,60 +379,163 @@ function MinedCard({ viral, onDuplicate }: { viral: Viral; onDuplicate: () => vo
   );
 }
 
-function ProfilesGrid({
-  follows,
-  onToggle,
-}: {
-  follows: string[];
-  onToggle: (handle: string) => Promise<void>;
-}) {
-  const [busy, setBusy] = useState<string | null>(null);
+/* ---------- vídeos dos perfis de IA, com prompt de duplicação ---------- */
+
+function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }) {
+  const router = useRouter();
+  const [handle, setHandle] = useState(AI_PROFILES[0].handle);
+  const [active, setActive] = useState<{ profile: AiProfile; post: ProfilePost } | null>(null);
+  const [pickedInfluencer, setPickedInfluencer] = useState<string | null>(influencers[0]?.id ?? null);
+  const [prompt, setPrompt] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const profile = AI_PROFILES.find((p) => p.handle === handle) ?? AI_PROFILES[0];
+
+  const open = (post: ProfilePost) => {
+    setActive({ profile, post });
+    setPrompt(post.prompt);
+    setError(null);
+  };
+
+  const duplicate = async () => {
+    if (!active || !pickedInfluencer) return;
+    setSubmitting(true);
+    setError(null);
+    const result = await duplicateProfilePostAction({
+      influencerId: pickedInfluencer,
+      handle: active.profile.handle,
+      code: active.post.code,
+      prompt,
+    }).catch((caught: unknown) => ({ error: caught instanceof Error ? caught.message : String(caught) }));
+    setSubmitting(false);
+    if ("error" in result) {
+      setError(result.error);
+      return;
+    }
+    router.push("/app/videos");
+  };
 
   return (
     <div>
-      <p style={{ color: "var(--tx2)", fontSize: 13.5, marginBottom: 16, maxWidth: 680 }}>
-        Influencers de IA reais que estão performando agora. Use como referência de estilo,
-        formato e ritmo de postagem — e acompanhe para voltar fácil ao perfil.
-      </p>
-      <div className="profiles-grid">
-        {AI_PROFILES.map((profile) => {
-          const following = follows.includes(profile.handle);
-          return (
-            <article key={profile.handle} className="profile-card" data-following={following}>
-              <div className="avatar">{profile.name.charAt(0)}</div>
-              <div className="info">
-                <b>{profile.name}</b>
-                <span className="handle">@{profile.handle}</span>
-                <p>{profile.bio}</p>
-              </div>
-              <div className="actions">
-                <button
-                  type="button"
-                  className={following ? "btn btn-sm btn-ghost" : "btn btn-sm btn-accent"}
-                  disabled={busy === profile.handle}
-                  onClick={async () => {
-                    setBusy(profile.handle);
-                    await onToggle(profile.handle);
-                    setBusy(null);
-                  }}
-                >
-                  {busy === profile.handle ? (
-                    <span className="spinner" style={{ width: 13, height: 13 }} />
-                  ) : following ? (
-                    "✓ Acompanhando"
-                  ) : (
-                    "Acompanhar"
-                  )}
-                </button>
-                <a className="btn btn-sm btn-outline" href={profile.url} target="_blank" rel="noreferrer">
-                  <ExternalLink size={13} />
-                  Ver posts
-                </a>
-              </div>
-            </article>
-          );
-        })}
+      <div className="explore-bar" style={{ flexWrap: "wrap" }}>
+        {AI_PROFILES.map((p) => (
+          <button
+            key={p.handle}
+            type="button"
+            className="chip"
+            data-active={handle === p.handle}
+            onClick={() => setHandle(p.handle)}
+          >
+            @{p.handle}
+          </button>
+        ))}
+        <a
+          className="chip"
+          style={{ marginLeft: "auto" }}
+          href={profile.url}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <ExternalLink size={13} />
+          Abrir @{profile.handle} no Instagram
+        </a>
       </div>
+
+      <p style={{ color: "var(--tx2)", fontSize: 13, marginBottom: 14, maxWidth: 720 }}>
+        {profile.bio} Os reels abaixo são do perfil real — cada um com prompt pronto para o seu
+        influencer estrelar a mesma cena.
+      </p>
+
+      <div className="reels-grid">
+        {profile.posts.map((post) => (
+          <article key={post.code} className="reel-card">
+            <iframe
+              src={`https://www.instagram.com/reel/${post.code}/embed/`}
+              loading="lazy"
+              allowFullScreen
+              title={post.scene}
+            />
+            <div className="body">
+              <p className="scene">{post.scene}</p>
+              <button type="button" className="btn btn-accent btn-sm" onClick={() => open(post)}>
+                <Flame size={14} />
+                Duplicar com meu influencer
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+
+      {active ? (
+        <div className="modal-backdrop" onClick={() => setActive(null)}>
+          <div className="modal" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="modal-close" onClick={() => setActive(null)}>
+              <X size={16} />
+            </button>
+            <h2>Duplicar cena de @{active.profile.handle}</h2>
+            <p className="modal-sub">{active.post.scene}</p>
+
+            <div style={{ display: "grid", gap: 16, marginTop: 18 }}>
+              <div className="field">
+                <label>Quem vai estrelar o vídeo?</label>
+                {influencers.length ? (
+                  <div className="influencer-pick">
+                    {influencers.map((inf) => (
+                      <button
+                        type="button"
+                        key={inf.id}
+                        className="pick"
+                        data-active={pickedInfluencer === inf.id}
+                        onClick={() => setPickedInfluencer(inf.id)}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={inf.imageUrl} alt={inf.name} />
+                        <span>{inf.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: "var(--tx3)", fontSize: 13 }}>
+                    Você ainda não tem influencer pronto.{" "}
+                    <Link href="/app/influencers" style={{ color: "var(--accent)" }}>
+                      Criar um agora →
+                    </Link>
+                  </p>
+                )}
+              </div>
+
+              <div className="field">
+                <label htmlFor="profile-prompt">Prompt de duplicação (edite à vontade)</label>
+                <textarea
+                  id="profile-prompt"
+                  className="input"
+                  style={{ minHeight: 120 }}
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                />
+              </div>
+
+              {error ? <div className="auth-error">{error}</div> : null}
+
+              <button
+                type="button"
+                className="generate-btn"
+                disabled={submitting || !pickedInfluencer}
+                onClick={duplicate}
+              >
+                {submitting ? (
+                  <span className="spinner" />
+                ) : (
+                  <>
+                    Duplicar cena <span className="cost">✦ {VIDEO_COST}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

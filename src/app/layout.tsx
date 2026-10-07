@@ -32,7 +32,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${inter.variable} ${grotesk.variable}`}>
+    /* translate="no": o app já é PT-BR; o auto-tradutor do Chrome reescreve o
+       DOM e quebra a hidratação do React (textos somem nos accordions). */
+    <html lang="pt-BR" translate="no" className={`${inter.variable} ${grotesk.variable}`}>
+      <head>
+        <meta name="google" content="notranslate" />
+      </head>
       <body>{children}</body>
     </html>
   );
