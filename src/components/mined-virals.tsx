@@ -363,7 +363,7 @@ function MinedCard({ viral, onDuplicate }: { viral: Viral; onDuplicate: () => vo
             href={viral.playUrl}
             target="_blank"
             rel="noreferrer"
-            title="Baixar vídeo sem marca d'água"
+            title="Baixar vídeo"
           >
             <DownloadIcon size={14} />
           </a>

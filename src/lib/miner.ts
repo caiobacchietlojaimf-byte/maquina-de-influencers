@@ -125,12 +125,13 @@ function viralKey(viral: Pick<Viral, "source" | "videoId" | "pageUrl">): string 
 export async function seedProfileVirals(): Promise<number> {
   if (seeding) return seeding;
   const task = (async () => {
-    const known = new Set((await listVirals(AI_REGION)).map(viralKey));
-    const missing = catalogVirals().filter((viral) => {
+    const existing = await listVirals(AI_REGION);
+    const known = new Map(existing.map((viral) => [viralKey(viral), viral]));
+    const missing = catalogVirals().flatMap((viral): Omit<Viral, "id">[] => {
       const key = viralKey(viral);
-      if (known.has(key)) return false;
-      known.add(key);
-      return true;
+      const saved = known.get(key);
+      if (saved) return !saved.duration && viral.duration > 0 ? [{ ...saved, duration: viral.duration }] : [];
+      return [viral];
     });
     return missing.length ? upsertVirals(missing) : 0;
   })();

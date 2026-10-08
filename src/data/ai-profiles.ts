@@ -65,7 +65,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5624,
         embeddable: true,
         video: "/reel-videos/DeHKjppIP1s.mp4",
-        metrics: { likes: 182691, comments: 2535, postedAt: 1791201871 },
+        metrics: { duration: 9.587, likes: 182691, comments: 2535, postedAt: 1791201871 },
       },
       {
         code: "DeEhBi9I2J6",
@@ -74,7 +74,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5624,
         embeddable: true,
         video: "/reel-videos/DeEhBi9I2J6.mp4",
-        metrics: { likes: 60053, comments: 692, postedAt: 1791112952 },
+        metrics: { duration: 23.868, likes: 60053, comments: 692, postedAt: 1791112952 },
       },
       {
         code: "DeEhbmKImr8",
@@ -91,7 +91,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5634,
         embeddable: true,
         video: "/reel-videos/DeBsCZbIQ2k.mp4",
-        metrics: { views: 2700000, likes: 47300, comments: 1075, postedAt: 1791018055, observedAt: "2026-10-08" },
+        metrics: { duration: 16.159, views: 2700000, likes: 47300, comments: 1075, postedAt: 1791018055, observedAt: "2026-10-08" },
       },
       {
         code: "DeH2G83ISgh",
@@ -100,7 +100,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5624,
         embeddable: true,
         video: "/reel-videos/DeH2G83ISgh.mp4",
-        metrics: { likes: 41704, comments: 308, postedAt: 1791224674 },
+        metrics: { duration: 15.114, likes: 41704, comments: 308, postedAt: 1791224674 },
       },
       {
         code: "DeBt7SjIQzG",
@@ -109,7 +109,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5624,
         embeddable: true,
         video: "/reel-videos/DeBt7SjIQzG.mp4",
-        metrics: { likes: 39887, comments: 438, postedAt: 1791019092 },
+        metrics: { duration: 28.465, likes: 39887, comments: 438, postedAt: 1791019092 },
       },
       {
         code: "Dd_iAosITdb",
@@ -118,7 +118,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd_iAosITdb.mp4",
-        metrics: { likes: 38015, comments: 566, postedAt: 1790945748 },
+        metrics: { duration: 18.62, likes: 38015, comments: 566, postedAt: 1790945748 },
       },
       {
         code: "DeEgs-dIaFQ",
@@ -317,7 +317,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeJAqOXPm6y.mp4",
-        metrics: { likes: 1400, comments: 47, postedAt: 1791263748 },
+        metrics: { duration: 13.14, likes: 1400, comments: 47, postedAt: 1791263748 },
       },
       {
         code: "DeK4ToYpvE9",
@@ -326,7 +326,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeK4ToYpvE9.mp4",
-        metrics: { likes: 1116, comments: 89, postedAt: 1791326538 },
+        metrics: { duration: 18.202, likes: 1116, comments: 89, postedAt: 1791326538 },
       },
       {
         code: "DeLahYVPpNm",
@@ -335,7 +335,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeLahYVPpNm.mp4",
-        metrics: { likes: 989, comments: 75, postedAt: 1791344407 },
+        metrics: { duration: 11.19, likes: 989, comments: 75, postedAt: 1791344407 },
       },
       {
         code: "DeLXNtpPg4M",
@@ -344,7 +344,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeLXNtpPg4M.mp4",
-        metrics: { likes: 667, comments: 7, postedAt: 1791342682 },
+        metrics: { duration: 15.137, likes: 667, comments: 7, postedAt: 1791342682 },
       },
       {
         code: "DeMZGZ6v1l4",
@@ -353,7 +353,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeMZGZ6v1l4.mp4",
-        metrics: { likes: 3, comments: 1, postedAt: 1791377265 },
+        metrics: { duration: 9.286, likes: 3, comments: 1, postedAt: 1791377265 },
       },
     ],
   },
@@ -373,7 +373,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeHw_w_sB6e.mp4",
-        metrics: { likes: 23200, comments: 126, postedAt: 1791222099 },
+        metrics: { duration: 14.162, likes: 23200, comments: 126, postedAt: 1791222099 },
       },
       {
         code: "DeKURUQsgK9",
@@ -382,7 +382,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeKURUQsgK9.mp4",
-        metrics: { likes: 2174, comments: 31, postedAt: 1791307600 },
+        metrics: { duration: 15.16, likes: 2174, comments: 31, postedAt: 1791307600 },
       },
     ],
   },
@@ -402,7 +402,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd93agdySBq.mp4",
-        metrics: { likes: 55300, comments: 696, postedAt: 1790889870 },
+        metrics: { duration: 39.657, likes: 55300, comments: 696, postedAt: 1790889870 },
       },
       {
         code: "DeF8cKxgGd6",
@@ -411,7 +411,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeF8cKxgGd6.mp4",
-        metrics: { likes: 7829, comments: 181, postedAt: 1791161010 },
+        metrics: { duration: 22.173, likes: 7829, comments: 181, postedAt: 1791161010 },
       },
       {
         code: "DeJBOWGAUmV",
@@ -420,7 +420,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeJBOWGAUmV.mp4",
-        metrics: { likes: 6974, comments: 53, postedAt: 1791264051 },
+        metrics: { duration: 12.397, likes: 6974, comments: 53, postedAt: 1791264051 },
       },
       {
         code: "Dd7M365SS0X",
@@ -429,7 +429,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd7M365SS0X.mp4",
-        metrics: { likes: 5557, comments: 120, postedAt: 1790800440 },
+        metrics: { duration: 20.176, likes: 5557, comments: 120, postedAt: 1790800440 },
       },
       {
         code: "DeLvkyKAPnR",
@@ -438,7 +438,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DeLvkyKAPnR.mp4",
-        metrics: { likes: 4057, comments: 14, postedAt: 1791355487 },
+        metrics: { duration: 12.397, likes: 4057, comments: 14, postedAt: 1791355487 },
       },
       {
         code: "Dd9Junogz7L",
@@ -447,7 +447,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd9Junogz7L.mp4",
-        metrics: { likes: 3995, comments: 87, postedAt: 1790865896 },
+        metrics: { duration: 26.422, likes: 3995, comments: 87, postedAt: 1790865896 },
       },
     ],
   },
@@ -467,7 +467,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd_qcXdgsdb.mp4",
-        metrics: { likes: 279000, comments: 26303, postedAt: 1790950148 },
+        metrics: { duration: 17.157, likes: 279000, comments: 26303, postedAt: 1790950148 },
       },
       {
         code: "DdzgbbAR4VM",
@@ -476,7 +476,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/DdzgbbAR4VM.mp4",
-        metrics: { likes: 189620, comments: 8987, postedAt: 1790542213 },
+        metrics: { duration: 14.162, likes: 189620, comments: 8987, postedAt: 1790542213 },
       },
       {
         code: "Dd6TVXUgWqh",
@@ -493,7 +493,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd8iR7XAS9H.mp4",
-        metrics: { likes: 114341, comments: 2794, postedAt: 1790845184 },
+        metrics: { duration: 7.173, likes: 114341, comments: 2794, postedAt: 1790845184 },
       },
       {
         code: "Dd6EKbigwTw",
@@ -502,7 +502,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd6EKbigwTw.mp4",
-        metrics: { likes: 106086, comments: 3779, postedAt: 1790762269 },
+        metrics: { duration: 12.165, likes: 106086, comments: 3779, postedAt: 1790762269 },
       },
       {
         code: "Dd9wTCTRwtx",
@@ -511,7 +511,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd9wTCTRwtx.mp4",
-        metrics: { likes: 63436, comments: 2690, postedAt: 1790886086 },
+        metrics: { duration: 15.16, likes: 63436, comments: 2690, postedAt: 1790886086 },
       },
     ],
   },

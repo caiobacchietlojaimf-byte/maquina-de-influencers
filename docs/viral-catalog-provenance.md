@@ -105,3 +105,5 @@ Os 16 vídeos e suas capas foram captados do player oficial do TikTok na aba do 
 - As curtidas abreviadas pela interface foram convertidas numericamente sem atribuir precisão adicional à fonte.
 
 Após a captação, o catálogo contém **63 referências**: **40 com mídia local** (incluindo os 16 TikToks) e **23 referências externas sem mídia local verificada**.
+
+Os 24 MP4 anteriores também tiveram duração extraída do cabeçalho mvhd dos arquivos locais em 08/10/2026. As durações antes ausentes foram preenchidas, sem estimar pelo texto ou pela capa; 38 dos 40 arquivos ficam entre 3 e 30 segundos.
