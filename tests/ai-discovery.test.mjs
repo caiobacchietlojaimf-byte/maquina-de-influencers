@@ -30,12 +30,14 @@ test("social URL validation rejects spoofed hosts, arbitrary MP4s, credentials a
   for (const url of ["https://tiktok.com.attacker.invalid/@a/video/123", "https://attacker.invalid/?tiktok.com/@a/video/123", "https://user:pw@tiktok.com/@a/video/123", "https://www.tiktok.com/@a", "https://example.com/video.mp4", "http://127.0.0.1/video.mp4"]) assert.equal(rules.parseSocialVideoUrl(url), null, url);
 });
 
-async function minerFixture(seed = []) {
-  const dbUrl = asModule(`export const stored = ${JSON.stringify(seed)}; export async function listVirals() { return stored; } export async function upsertVirals(items) { let added = 0; for (const item of items) { const old = stored.find(v => v.videoId === item.videoId); if (old) Object.assign(old,item); else { stored.push({...item,id: String(stored.length + 1)}); added++; } } return added; } //${Math.random()}`);
+async function minerFixture(seed = [], profiles = []) {
+  const dbUrl = asModule(`export const stored = ${JSON.stringify(seed)}; export async function listVirals() { return stored; } export async function upsertVirals(items) { let added = 0; for (const item of items) { const old = stored.find(v => item.videoId ? v.videoId === item.videoId : v.pageUrl === item.pageUrl); if (old) Object.assign(old,item); else { stored.push({...item,id: String(stored.length + 1)}); added++; } } return added; } //${Math.random()}`);
+  const profilesUrl = asModule(`export const AI_PROFILES = ${JSON.stringify(profiles)};`);
   const source = (await readFile(new URL("../src/lib/miner.ts", import.meta.url), "utf8"))
     .replace('import "server-only";', "")
     .replace('from "./db"', `from ${JSON.stringify(dbUrl)}`)
-    .replace('from "./ai-discovery"', `from ${JSON.stringify(rulesUrl)}`);
+    .replace('from "./ai-discovery"', `from ${JSON.stringify(rulesUrl)}`)
+    .replace('from "@/data/ai-profiles"', `from ${JSON.stringify(profilesUrl)}`);
   return { miner: await import(asModule(compile(source))), db: await import(dbUrl) };
 }
 
@@ -94,4 +96,59 @@ test("expired media renews only when the resolver returns the same AI video", as
   assert.equal(refreshed.playUrl, "https://renewed.example/video.mp4");
   assert.equal(db.stored.length, 1);
   assert.equal(db.stored[0].playUrl, refreshed.playUrl);
+});
+
+const localProfiles = [
+  { handle: "moroniduarte0", name: "Morôni Duarte", platform: "tiktok", posts: [
+    { code: "7692575243730160916", scene: "No rolê", video: "/reel-videos/7692575243730160916.mp4", metrics: { likes: 207400, duration: 12.79 } },
+  ] },
+  { handle: "dahab.daddy", name: "Dahab Daddy", platform: "instagram", posts: [
+    { code: "AbCd123", scene: "Uma nova cena", video: "/reel-videos/AbCd123.mp4", metrics: { likes: 200 } },
+    { code: "NoFile", scene: "Referência sem arquivo" },
+  ] },
+];
+
+test("local catalog seeds stable database IDs once with correct platforms and observed metrics", async (t) => {
+  const { miner, db } = await minerFixture([], localProfiles);
+  t.mock.method(globalThis, "fetch", async () => { throw new Error("Network must not be used"); });
+  const first = await miner.listAiVirals();
+  const second = await miner.listAiVirals();
+  assert.equal(first.length, 2);
+  assert.equal(db.stored.length, 2);
+  assert.deepEqual(first.map(v => v.id), second.map(v => v.id));
+  assert.equal(first[0].source, "tiktok");
+  assert.equal(first[0].videoId, "7692575243730160916");
+  assert.equal(first[0].likes, 207400);
+  assert.equal(first[0].views, 0);
+  assert.equal(first[0].minedAt, 0);
+  assert.equal(first[1].source, "instagram");
+  assert.equal(first[1].pageUrl, "https://www.instagram.com/reel/AbCd123/");
+  assert.equal(first[1].duration, 0);
+  assert.equal(miner.isDuplicable(first[1]), false);
+});
+
+test("seeded local videos do not suppress first discovery and remain available after provider 403", async (t) => {
+  const { miner } = await minerFixture([], localProfiles);
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () => { calls++; return new Response("blocked", { status: 403 }); });
+  await assert.rejects(miner.mineTrending(), /bloqueando/);
+  assert.equal(calls, 1);
+  assert.equal((await miner.listAiVirals()).length, 2);
+});
+
+test("known TikTok import and expired-media refresh use stable local file without replacing fresher metrics", async (t) => {
+  const existing = { id: "persisted", source: "tiktok", videoId: "7692575243730160916", pageUrl: "https://www.tiktok.com/@moroniduarte0/video/7692575243730160916", playUrl: "https://expired.example/video.mp4", coverUrl: "https://expired.example/cover.jpg", title: "No rolê", authorName: "Morôni Duarte", authorHandle: "moroniduarte0", duration: 12, views: 876543, likes: 240000, minedAt: 456 };
+  const { miner, db } = await minerFixture([existing], localProfiles);
+  t.mock.method(globalThis, "fetch", async () => { throw new Error("Network must not be used"); });
+  await miner.seedProfileVirals();
+  assert.equal(db.stored[0].likes, 240000);
+  const result = await miner.mineByUrl(existing.pageUrl);
+  assert.equal(result.added, false);
+  const refreshed = await miner.refreshViralMedia(existing);
+  assert.equal(refreshed.id, "persisted");
+  assert.equal(refreshed.playUrl, "/reel-videos/7692575243730160916.mp4");
+  assert.equal(refreshed.likes, 240000);
+  assert.equal(refreshed.views, 876543);
+  assert.equal(refreshed.minedAt, 456);
+  assert.equal(db.stored.length, 2);
 });

@@ -49,3 +49,59 @@ Foram acrescentadas estas 19 referências:
 - A inclusão no catálogo permite localizar a referência e abrir sua origem. Reprodução interna e transferência fiel de movimento dependem de mídia acessível e verificada.
 
 Os demais perfis e métricas do catálogo mantêm seus snapshots anteriores; esta atualização não implica nova verificação deles.
+
+## Snapshot de @moroniduarte0 no TikTok — 8 de outubro de 2026
+
+Fonte: [perfil de Morôni Duarte no TikTok](https://www.tiktok.com/@moroniduarte0), consultado na aba TikTok do navegador durante esta tarefa. O perfil exibia **16,6 mil seguidores**. Os IDs, títulos e números de curtidas foram observados nessa consulta. Os títulos genéricos “Reel de Morôni Duarte” não atribuem uma cena específica ao vídeo.
+
+| Vídeo | Título registrado | Curtidas |
+| --- | --- | ---: |
+| [7693293371095256340](https://www.tiktok.com/@moroniduarte0/video/7693293371095256340) | Com ele @Nino Abravanel | 2.434 |
+| [7692575243730160916](https://www.tiktok.com/@moroniduarte0/video/7692575243730160916) | Reel de Morôni Duarte | 207.400 |
+| [7692858978816052532](https://www.tiktok.com/@moroniduarte0/video/7692858978816052532) | Reel de Morôni Duarte | 1.272 |
+| [7694083795787533588](https://www.tiktok.com/@moroniduarte0/video/7694083795787533588) | @TOGURO | 569 |
+| [7692954176405409044](https://www.tiktok.com/@moroniduarte0/video/7692954176405409044) | Com ela @Antonela Braga | 594 |
+| [7692835947087449365](https://www.tiktok.com/@moroniduarte0/video/7692835947087449365) | Meu mano @Coringa | 20.000 |
+| [7692836005384080646](https://www.tiktok.com/@moroniduarte0/video/7692836005384080646) | O líder @Wesley Alemão | 18.900 |
+| [7693291183086292244](https://www.tiktok.com/@moroniduarte0/video/7693291183086292244) | Quem conhece? | 750 |
+| [7693173863080922389](https://www.tiktok.com/@moroniduarte0/video/7693173863080922389) | Foi mídia esse | 2.566 |
+| [7694102830642105620](https://www.tiktok.com/@moroniduarte0/video/7694102830642105620) | Alguém conhece? | 268 |
+| [7693745847539944725](https://www.tiktok.com/@moroniduarte0/video/7693745847539944725) | O líder | 422 |
+| [7692792584602651924](https://www.tiktok.com/@moroniduarte0/video/7692792584602651924) | Satisfação rapaziada @Podpah TV | 704 |
+| [7693732035298331924](https://www.tiktok.com/@moroniduarte0/video/7693732035298331924) | @Boiadeira com elaaa | 114 |
+| [7693742715128859925](https://www.tiktok.com/@moroniduarte0/video/7693742715128859925) | Alguém marca o dono da música? | 297 |
+| [7693338412522245396](https://www.tiktok.com/@moroniduarte0/video/7693338412522245396) | Reel de Morôni Duarte | 1.380 |
+| [7694239617540771092](https://www.tiktok.com/@moroniduarte0/video/7694239617540771092) | Reel de Morôni Duarte | 119 |
+
+O vídeo [7692575243730160916](https://www.tiktok.com/@moroniduarte0/video/7692575243730160916) também teve **1.341 comentários** e **12,791666 segundos** de duração observados inicialmente no player. Depois, o MP4 obtido do player oficial indicou **12,656009 segundos**, valor utilizado no catálogo. Os demais registros não receberam valores desconhecidos de comentários, visualizações ou data de publicação. As durações abaixo foram verificadas nas mídias captadas do player oficial.
+
+### Reprodução e identificação visual no TikTok
+
+Os 16 vídeos e suas capas foram captados do player oficial do TikTok na aba do navegador durante esta tarefa. Os arquivos originais em Downloads foram preservados; cópias passaram a integrar o catálogo em `/reel-videos/{id}.mp4` e `/reel-thumbs/{id}.jpg`.
+
+| Vídeo | Duração verificada (s) |
+| --- | ---: |
+| 7692575243730160916 | 12,656009 |
+| 7692835947087449365 | 13,538005 |
+| 7693293371095256340 | 9,498005 |
+| 7692858978816052532 | 25,125 |
+| 7694083795787533588 | 20,758005 |
+| 7692954176405409044 | 12,006009 |
+| 7692836005384080646 | 18,042993 |
+| 7693291183086292244 | 28,352971 |
+| 7693173863080922389 | 12,656009 |
+| 7694102830642105620 | 24,101995 |
+| 7693745847539944725 | 18,065011 |
+| 7692792584602651924 | 24,73 |
+| 7693732035298331924 | 21,526009 |
+| 7693742715128859925 | 9,52 |
+| 7693338412522245396 | 15,023991 |
+| 7694239617540771092 | 35,410998 |
+
+- A assinatura `ftyp` dos MP4 e a assinatura JPEG das capas foram verificadas antes da cópia. As capas JFIF já eram imagens JPEG, portanto foram copiadas com extensão `.jpg` sem recodificação.
+- Cada registro usa seu próprio MP4 e sua própria capa, preservando o ID do TikTok como string. Não foram reutilizadas capas de Reels do Instagram.
+- O player oficial `https://www.tiktok.com/player/v1/{id}` também foi reproduzido com sucesso no navegador. `embeddable: true` mantém essa opção de reprodução, sem garantir disponibilidade futura da plataforma.
+- A proporção 9:16 é o padrão de apresentação do card. Os prompts propõem vídeos autorais genéricos e não alegam copiar movimentos ou cenas não analisados.
+- As curtidas abreviadas pela interface foram convertidas numericamente sem atribuir precisão adicional à fonte.
+
+Após a captação, o catálogo contém **63 referências**: **40 com mídia local** (incluindo os 16 TikToks) e **23 referências externas sem mídia local verificada**.

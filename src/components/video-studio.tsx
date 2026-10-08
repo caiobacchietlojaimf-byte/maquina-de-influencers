@@ -191,7 +191,7 @@ export function VideoStudio({
               <h2 id={`${formId}-gallery`}>Galeria de movimentos</h2>
               <p>Escolha o ritmo, a câmera e a energia da sua cena.</p>
             </div>
-            <span className={styles.count} aria-live="polite">{list.length} referências</span>
+            <span className={styles.count} aria-live="polite">{list.length} referência{list.length !== 1 ? "s" : ""}</span>
           </div>
           <div className={styles.toolbar}>
             <div className={styles.filters} aria-label="Filtrar referências">

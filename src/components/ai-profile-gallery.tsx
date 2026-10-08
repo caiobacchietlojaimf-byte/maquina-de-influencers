@@ -8,6 +8,7 @@ import { VIDEO_COST } from "@/lib/costs";
 import { AI_PROFILES, type AiProfile, type ProfilePost } from "@/data/ai-profiles";
 import { formatViews } from "@/data/viral-effects";
 import styles from "./ai-profile-gallery.module.css";
+import { TikTokReferencePlayer } from "./tiktok-reference-player";
 type MiniInfluencer = { id: string; name: string; imageUrl: string };
 const catalog = AI_PROFILES.flatMap(profile => profile.posts.map(post => ({ profile, post })));
 function ProfileCard({ profile, post, activeCode, onPlay, onCreate }: {
@@ -19,7 +20,8 @@ function ProfileCard({ profile, post, activeCode, onPlay, onCreate }: {
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const poster = post.thumbnail ?? `/reel-thumbs/${post.code}.jpg`;
-  const source = `https://www.instagram.com/reel/${post.code}/`;
+  const platform = profile.platform === "tiktok" ? "TikTok" : "Instagram";
+  const source = profile.platform === "tiktok" ? `https://www.tiktok.com/@${profile.handle}/video/${post.code}` : `https://www.instagram.com/reel/${post.code}/`;
   useEffect(() => { if (activeCode !== post.code) video.current?.pause(); }, [activeCode, post.code]);
   const play = async () => {
     setStarted(true); onPlay(post.code);
@@ -31,7 +33,7 @@ function ProfileCard({ profile, post, activeCode, onPlay, onCreate }: {
         <video key={retry} ref={video} src={post.video} poster={poster} controls={started} playsInline preload="none"
           aria-label={`Vídeo: ${post.scene}`} onPlay={() => { setStarted(true); onPlay(post.code); }} onError={() => setFailed(true)} />
         {!started && <button className={styles.play} type="button" onClick={play} aria-label={`Assistir: ${post.scene}`}><Play size={27} fill="currentColor" /></button>}
-      </> : <>
+      </> : profile.platform === "tiktok" ? <TikTokReferencePlayer id={post.code} title={post.scene} poster={poster} sourceUrl={source} active={activeCode === post.code} onPlay={() => onPlay(post.code)} /> : <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className={styles.poster} src={poster} alt={post.scene} loading="lazy" onError={e => { if (!e.currentTarget.src.endsWith(profile.avatar)) e.currentTarget.src = profile.avatar; }} />
         <div className={styles.unavailable}>
@@ -47,11 +49,11 @@ function ProfileCard({ profile, post, activeCode, onPlay, onCreate }: {
       <div className={styles.author}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={profile.avatar} alt="" />
-        <a href={profile.url} target="_blank" rel="noreferrer">@{profile.handle}</a>
-        <a href={source} target="_blank" rel="noreferrer" aria-label={`Abrir ${post.scene} no Instagram`}><ExternalLink size={15} /></a>
+        <a href={profile.url} target="_blank" rel="noreferrer">@{profile.handle}<small className={styles.platform}>{platform}</small></a>
+        <a href={source} target="_blank" rel="noreferrer" aria-label={`Abrir ${post.scene} no ${platform}`}><ExternalLink size={15} /></a>
       </div>
       <p className={styles.title}>{post.scene}</p>
-      <div className={styles.metrics} aria-label="Métricas observadas no Instagram">
+      <div className={styles.metrics} aria-label={`Métricas observadas no ${platform}`}>
         {post.metrics?.views !== undefined && <span title="Visualizações observadas"><Eye size={13} />{formatViews(post.metrics.views)}</span>}
         {post.metrics?.likes !== undefined && <span title="Curtidas"><Heart size={13} />{formatViews(post.metrics.likes)}</span>}
         {post.metrics?.comments !== undefined && <span title="Comentários"><MessageCircle size={13} />{formatViews(post.metrics.comments)}</span>}
@@ -99,7 +101,7 @@ export function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }
       {AI_PROFILES.map(profile => <button key={profile.handle} type="button" className="chip" data-active={handle === profile.handle}
         onClick={() => { setHandle(profile.handle); setActiveCode(null); }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={profile.avatar} alt="" width={24} height={24} style={{borderRadius:"50%",objectFit:"cover"}} />@{profile.handle}<span className={styles.count}>{profile.posts.length}</span>
+        <img src={profile.avatar} alt="" width={24} height={24} style={{borderRadius:"50%",objectFit:"cover"}} />@{profile.handle}<span className={styles.count}>{profile.posts.length} · {profile.platform === "tiktok" ? "TikTok" : "IG"}</span>
       </button>)}
     </div>
     <div className={styles.filters}>
@@ -180,7 +182,3 @@ export function ProfileVideos({ influencers }: { influencers: MiniInfluencer[] }
     </div>
   );
 }
-
-
-
-

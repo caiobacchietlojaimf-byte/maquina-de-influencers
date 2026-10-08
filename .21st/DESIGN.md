@@ -62,5 +62,3 @@ Generated from project sources at 2026-10-08T14:22:21.504Z.
 ## Decisions
 
 - None recorded
-
-

@@ -55,7 +55,7 @@ export async function importViralAction(url: string): Promise<MinedState> {
   await requireUser();
   try {
     const result = await mineByUrl(url);
-    return { virals: await listAiVirals(), notice: result.added ? "Vídeo de IA importado." : "Vídeo já captado: arquivo e métricas atualizados." };
+    return { virals: await listAiVirals(), notice: result.added ? "Vídeo de IA importado." : "Vídeo já está no catálogo." };
   } catch (caught) {
     return {
       virals: await listAiVirals(),

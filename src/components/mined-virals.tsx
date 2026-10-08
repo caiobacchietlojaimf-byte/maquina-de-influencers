@@ -232,7 +232,7 @@ export function MinedVirals({
             <h2>Duplicar esse viral</h2>
             <p className="modal-sub">
               @{active.authorHandle || active.authorName} · <Eye size={12} style={{ display: "inline", verticalAlign: "-2px" }} />{" "}
-              {formatViews(active.views)} views · {active.duration ? `${active.duration}s` : "—"}
+              {active.views > 0 ? `${formatViews(active.views)} visualizações` : "Visualizações não informadas"} · {active.duration ? `${Math.round(active.duration)}s` : "Duração não informada"}
             </p>
 
             <div style={{ display: "grid", gap: 16, marginTop: 18 }}>

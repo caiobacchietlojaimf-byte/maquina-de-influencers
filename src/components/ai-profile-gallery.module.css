@@ -32,3 +32,4 @@
 .metrics svg { color:var(--accent); }
 @media(max-width:600px) { .filters select { width:100%; } .grid { gap:14px; } .media { max-height:530px; } }
 .dialog { position:fixed; inset:0; margin:auto; color:var(--tx); max-height:90dvh; overflow:auto; } .dialog::backdrop { background:rgb(0 0 0 / .75); backdrop-filter:blur(5px); }
+.platform { display:block; font-size:10px; color:var(--tx3); margin-top:2px; }

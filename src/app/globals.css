@@ -2123,7 +2123,16 @@ textarea.input {
 }
 
 @media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 66px minmax(0, 1fr);
+  }
+  .app-sidebar[data-collapsed="false"] {
+    position: fixed;
+    z-index: 40;
+    box-shadow: var(--shadow-3);
+  }
   .app-main {
+    grid-column: 2;
     padding: 18px 14px 56px;
   }
   .landing-nav .links {

@@ -34,6 +34,7 @@ export function AppSidebar({
 
   // Estado inicial: preferência salva; sem preferência, recolhe em telas estreitas.
   useEffect(() => {
+    if (window.innerWidth < 760) { setCollapsed(true); return; }
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved !== null) {
@@ -44,6 +45,13 @@ export function AppSidebar({
       /* armazenamento indisponível: segue o padrão por largura */
     }
     if (window.innerWidth < 1100) setCollapsed(true);
+  }, []);
+
+  useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 759px)");
+    const collapseOnMobile = () => { if (narrow.matches) setCollapsed(true); };
+    narrow.addEventListener("change", collapseOnMobile);
+    return () => narrow.removeEventListener("change", collapseOnMobile);
   }, []);
 
   const toggle = () => {
@@ -83,6 +91,8 @@ export function AppSidebar({
               className="nav-item"
               data-active={active}
               aria-current={active ? "page" : undefined}
+              aria-label={item.label}
+              onClick={() => { if (window.innerWidth < 760) setCollapsed(true); }}
               title={collapsed ? item.label : undefined}
             >
               <Icon size={18} />

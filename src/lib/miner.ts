@@ -2,6 +2,7 @@ import "server-only";
 
 import { listVirals, upsertVirals, type Viral } from "./db";
 import { AI_DISCOVERY_QUERIES, isAiCharacterVideo, isMotionReference, parseSocialVideoUrl, type DiscoveryCursors } from "./ai-discovery";
+import { AI_PROFILES } from "@/data/ai-profiles";
 
 const TIKWM = "https://www.tikwm.com/api";
 const AI_REGION = "AI";
@@ -13,6 +14,7 @@ let providerUnavailableUntil = 0;
 let providerMessage = "";
 let nextRequestAt = 0;
 let requestQueue: Promise<unknown> = Promise.resolve();
+let seeding: Promise<number> | undefined;
 
 type TikwmItem = {
   video_id?: string; id?: string; aweme_id?: string; title?: string;
@@ -94,9 +96,56 @@ export function isDuplicable(viral: Pick<Viral, "duration" | "title" | "authorHa
   return isAiCharacterVideo(viral) && isMotionReference(viral.duration);
 }
 
+/** Verified, locally hosted media remains usable when discovery providers are unavailable.
+ * Zero minedAt denotes a catalog snapshot, never a successful live discovery request. */
+function catalogVirals(): Omit<Viral, "id">[] {
+  return AI_PROFILES.flatMap((profile) => profile.posts.flatMap((post): Omit<Viral, "id">[] => {
+    if (!post.video || !/^\/reel-videos\/[a-z0-9_-]+\.mp4$/i.test(post.video)) return [];
+    const item: Omit<Viral, "id"> = {
+      source: profile.platform,
+      ...(profile.platform === "tiktok" ? { videoId: post.code } : {}),
+      pageUrl: profile.platform === "tiktok"
+        ? `https://www.tiktok.com/@${profile.handle}/video/${post.code}`
+        : `https://www.instagram.com/reel/${post.code}/`,
+      playUrl: post.video, coverUrl: post.thumbnail ?? `/reel-thumbs/${post.code}.jpg`,
+      title: post.scene, authorName: profile.name, authorHandle: profile.handle,
+      duration: count(post.metrics?.duration), views: count(post.metrics?.views),
+      likes: count(post.metrics?.likes), comments: count(post.metrics?.comments), shares: 0,
+      region: AI_REGION, minedAt: 0,
+    };
+    return isAiCharacterVideo(item) ? [item] : [];
+  }));
+}
+
+function viralKey(viral: Pick<Viral, "source" | "videoId" | "pageUrl">): string {
+  return viral.source === "tiktok" && viral.videoId ? `tiktok:${viral.videoId}` : `${viral.source}:${viral.pageUrl}`;
+}
+
+/** Insert missing catalog entries only; do not overwrite fresher provider metrics. */
+export async function seedProfileVirals(): Promise<number> {
+  if (seeding) return seeding;
+  const task = (async () => {
+    const known = new Set((await listVirals(AI_REGION)).map(viralKey));
+    const missing = catalogVirals().filter((viral) => {
+      const key = viralKey(viral);
+      if (known.has(key)) return false;
+      known.add(key);
+      return true;
+    });
+    return missing.length ? upsertVirals(missing) : 0;
+  })();
+  seeding = task;
+  try { return await task; } finally { seeding = undefined; }
+}
+
 /** Keep the former generic feed out of the UI, including during SSR/cache fallback. */
 export async function listAiVirals(): Promise<Viral[]> {
-  return (await listVirals(AI_REGION)).filter(isAiCharacterVideo);
+  await seedProfileVirals();
+  const local = new Map(catalogVirals().map((viral) => [viralKey(viral), viral]));
+  return (await listVirals(AI_REGION)).filter(isAiCharacterVideo).map((viral) => {
+    const catalog = local.get(viralKey(viral));
+    return catalog ? { ...viral, playUrl: catalog.playUrl, coverUrl: catalog.coverUrl } : viral;
+  });
 }
 
 function cleanCursors(input?: DiscoveryCursors): DiscoveryCursors {
@@ -117,7 +166,8 @@ export async function mineTrending(_region = AI_REGION, options?: { force?: bool
   if (running) return running;
   const task = (async (): Promise<MiningResult> => {
     const cached = await listAiVirals();
-    if (!options?.force && !options?.cursors && cached.length && Date.now() - Math.max(...cached.map((v) => v.minedAt)) < FEED_TTL_MS) {
+    const lastDiscoveredAt = Math.max(0, ...cached.filter((viral) => viral.source === "tiktok").map((viral) => viral.minedAt));
+    if (!options?.force && !options?.cursors && lastDiscoveredAt > 0 && Date.now() - lastDiscoveredAt < FEED_TTL_MS) {
       return { added: 0, cursors, hasMore: true };
     }
     const deadline = Date.now() + RUN_TIMEOUT_MS;
@@ -152,6 +202,12 @@ export async function mineTrending(_region = AI_REGION, options?: { force?: bool
 }
 
 export async function refreshViralMedia(viral: Viral): Promise<Viral> {
+  const local = catalogVirals().find((item) => viralKey(item) === viralKey(viral));
+  if (local) {
+    const refreshed = { ...viral, playUrl: local.playUrl, coverUrl: local.coverUrl, duration: local.duration || viral.duration };
+    if (viral.playUrl !== refreshed.playUrl || viral.coverUrl !== refreshed.coverUrl || viral.duration !== refreshed.duration) await upsertVirals([refreshed]);
+    return refreshed;
+  }
   if (viral.source !== "tiktok") return viral;
   const parsed = parseSocialVideoUrl(viral.pageUrl);
   if (!parsed || parsed.source !== "tiktok") throw new Error("Link original do vídeo inválido.");
@@ -166,19 +222,20 @@ export async function refreshViralMedia(viral: Viral): Promise<Viral> {
 export async function mineByUrl(input: string): Promise<{ added: boolean; title: string }> {
   const parsed = parseSocialVideoUrl(input);
   if (!parsed) throw new Error("Cole o link de um vídeo do TikTok ou Reel do Instagram relacionado a personagens de IA.");
+  const videoId = parsed.source === "tiktok" ? new URL(parsed.url).pathname.match(/\/video\/(\d+)\/?$/)?.[1] : undefined;
+  const local = catalogVirals().find((item) => item.source === parsed.source && (videoId ? item.videoId === videoId : item.pageUrl === parsed.url));
+  if (local) {
+    const existing = (await listVirals(AI_REGION)).find((item) => viralKey(item) === viralKey(local));
+    if (existing) await refreshViralMedia(existing);
+    else await upsertVirals([local]);
+    return { added: !existing, title: local.title };
+  }
   if (parsed.source === "instagram") {
-    const { AI_PROFILES } = await import("@/data/ai-profiles");
-    const profile = AI_PROFILES.find((p) => p.posts.some((post) => post.code === parsed.code));
+    const profile = AI_PROFILES.find((p) => p.platform === "instagram" && p.posts.some((post) => post.code === parsed.code));
     const post = profile?.posts.find((p) => p.code === parsed.code);
     if (!profile || !post) throw new Error("Este Reel ainda não faz parte dos perfis de IA captados. A importação automática de outros Reels precisa de uma fonte de mídia autorizada do Instagram.");
     if (!post.video) throw new Error("Este Reel está na aba Perfis de IA. O Instagram ainda não disponibilizou um arquivo para reprodução direta.");
-    const added = await upsertVirals([{
-      source: "instagram", pageUrl: parsed.url, playUrl: post.video, coverUrl: `/reel-thumbs/${post.code}.jpg`,
-      title: post.scene, authorName: profile.name, authorHandle: profile.handle,
-      duration: post.metrics?.duration ?? 0, views: post.metrics?.views ?? 0, likes: post.metrics?.likes ?? 0,
-      comments: post.metrics?.comments ?? 0, shares: 0, region: AI_REGION, minedAt: Date.now(),
-    }]);
-    return { added: added > 0, title: post.scene };
+    throw new Error("Este Reel não possui uma mídia local validada para importação.");
   }
   const item = await tikwm(`/?url=${encodeURIComponent(parsed.url)}`) as TikwmItem | null;
   const viral = item ? toViral(item) : null;
