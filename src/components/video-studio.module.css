@@ -111,6 +111,10 @@
 .quote small { color: var(--tx2); line-height: 1.5; }
 .accept { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; cursor: pointer; }
 .accept input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
+.targetChoice { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; cursor: pointer; }
+.targetChoice:has(input:checked) { border-color: var(--accent); background: var(--s1); }
+.targetChoice input { accent-color: var(--accent); flex-shrink: 0; }
+.quote a { text-decoration: underline; }
 
 .selection > span {
   color: var(--accent);

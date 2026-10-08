@@ -61,7 +61,7 @@ export type Video = {
   edit?: {
     model: string; sourceUrl: string; imageUrl: string; target: string;
     source: { duration: number; width: number; height: number; hasAudio: boolean };
-    resolution: "720p" | "1080p"; estimatedUsd: number;
+    resolution: "480p" | "720p" | "1080p"; estimatedUsd: number;
     result?: { duration: number; width: number; height: number; hasAudio: boolean };
     audioPreserved?: boolean;
   };

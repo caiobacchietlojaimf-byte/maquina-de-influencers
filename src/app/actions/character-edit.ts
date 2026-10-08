@@ -10,18 +10,22 @@ import { isAiCharacterVideo } from "@/lib/ai-discovery";
 import { readUploadedReference } from "@/lib/uploaded-reference";
 import { publicMediaUrl, inspectPublicVideo, readPublicVideo } from "@/lib/video-media";
 import { mp4Metadata } from "@/lib/video-reference";
-import { CHARACTER_EDIT_MODEL, buildCharacterEditPrompt, validateEditSource, estimateEditUsd, type EditResolution, type EditSource, type EditQuote } from "@/lib/character-edit";
+import { CHARACTER_EDIT_MODEL, MAIN_CHARACTER_TARGET, buildCharacterEditPrompt, validateEditSource, estimateEditUsd, type EditResolution, type EditTargetMode, type EditSource, type EditQuote } from "@/lib/character-edit";
 import { readEditQuote, signEditQuote } from "@/lib/edit-quote";
 import { isConfigured, submitGeneration, PlatformError } from "@/lib/platform";
 import { VIDEO_COST } from "@/lib/costs";
 import { ensureVideoToolsAvailable } from "@/lib/finalize-edit";
 
-export async function prepareCharacterEditAction(input: { influencerId: string; source: EditSource; target: string; resolution: EditResolution }): Promise<{ quote: EditQuote } | { error: string }> {
+export async function prepareCharacterEditAction(input: { influencerId: string; source: EditSource; target?: string; targetMode?: EditTargetMode; resolution: EditResolution }): Promise<{ quote: EditQuote } | { error: string }> {
   const user = await requireUser();
   try {
     if (!isConfigured()) return { error: "A API de edição não está configurada. Nenhuma geração será simulada." };
-    if (!["720p", "1080p"].includes(input.resolution)) return { error: "Resolução inválida." };
-    if (typeof input.target !== "string" || input.target.trim().length < 8 || input.target.length > 500) return { error: "Descreva quem será substituído (8 a 500 caracteres), incluindo roupa e posição no vídeo." };
+    if (!["480p", "720p", "1080p"].includes(input.resolution)) return { error: "Resolução inválida." };
+    // Older clients supplied a manual description without a mode.
+    const targetMode = input.targetMode ?? "manual";
+    if (targetMode !== "main" && targetMode !== "manual") return { error: "Seleção de personagem inválida." };
+    if (targetMode === "manual" && (typeof input.target !== "string" || input.target.trim().length < 8 || input.target.length > 500)) return { error: "Descreva quem será substituído (8 a 500 caracteres), incluindo roupa e posição no vídeo." };
+    const target = targetMode === "main" ? MAIN_CHARACTER_TARGET : input.target!.trim();
     const inf = await getInfluencer(user.id, input.influencerId);
     if (!inf?.imageUrl || inf.status !== "completed") return { error: "Selecione um influencer pronto da sua conta." };
     let url: string | undefined, name: string | undefined;
@@ -47,7 +51,7 @@ export async function prepareCharacterEditAction(input: { influencerId: string; 
     // Freeze the ORIGINAL bytes: social/CDN links can expire while generation is queued.
     const snapshot = await put(`edit-sources/${user.id}/${id}.mp4`, bytes, { access: "public", contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: false });
     const sourceUrl = snapshot.url;
-    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, sourceUrl, name, target: input.target.trim(), metadata, resolution: input.resolution, estimatedUsd: estimateEditUsd(metadata.duration, input.resolution), expiresAt: Date.now() + 15 * 60000 };
+    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, sourceUrl, name, target, metadata, resolution: input.resolution, estimatedUsd: estimateEditUsd(metadata.duration, input.resolution), expiresAt: Date.now() + 15 * 60000 };
     return { quote: { token: signEditQuote(receipt), name, sourceUrl, metadata, resolution: receipt.resolution, estimatedUsd: receipt.estimatedUsd, expiresAt: receipt.expiresAt } };
   } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível preparar o vídeo." }; }
 }

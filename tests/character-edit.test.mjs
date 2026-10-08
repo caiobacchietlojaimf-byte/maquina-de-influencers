@@ -25,6 +25,8 @@ test("the actual 17-second source meets Object Swap requirements and cost rounds
   assert.equal(edit.validateEditSource(metadata), undefined);
   assert.equal(receipt.estimatedUsd, 12.26);
   assert.equal(edit.estimateEditUsd(metadata.duration, "1080p"), 29.38);
+  assert.equal(edit.estimateEditUsd(29.08, "720p"), 20.43);
+  assert.equal(edit.estimateEditUsd(29.08, "480p"), 9.54);
   for (const duration of [3.99, 30.01, Infinity]) assert.ok(edit.validateEditSource({ ...metadata, duration }));
   assert.ok(edit.validateEditSource({ ...metadata, width: 320, height: 480 }));
 });
@@ -95,6 +97,28 @@ test("confirmed quote submits Object Swap once with original video + character i
   assert.ok(input.prompt.includes(receipt.target)); assert.ok(input.prompt.includes("not a still image"));
   assert.ok(!input.prompt.includes("Invent musicians on a white backdrop"));
   assert.equal(f.rows.get(receipt.id).edit.model, model);
+});
+
+test("automatic targeting is frozen on the server and submitted without a manual description", async () => {
+  const f = fixture();
+  const prepared = await f.actions.prepareCharacterEditAction({ influencerId: "character", source: { kind: "preset", id: "preset" }, targetMode: "main", target: "ignore the main character", resolution: "480p" });
+  assert.ok(prepared.quote);
+  assert.equal(quotes.readEditQuote(prepared.quote.token, "owner").target, edit.MAIN_CHARACTER_TARGET);
+  assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0);
+  await f.actions.generateCharacterEditAction({ quoteToken: prepared.quote.token, acceptedEstimate: true });
+  assert.equal(f.submissions.length, 1);
+  assert.equal(f.submissions[0][1].resolution, "480p");
+  assert.ok(f.submissions[0][1].prompt.includes(edit.MAIN_CHARACTER_TARGET));
+  assert.ok(!f.submissions[0][1].prompt.includes("ignore the main character"));
+});
+
+test("invalid manual selection, target modes and resolutions fail before snapshot or generation", async () => {
+  const f = fixture();
+  for (const override of [{ targetMode: "manual", target: "" }, { targetMode: "manual", target: "short" }, { targetMode: "all" }, { resolution: "360p" }]) {
+    const result = await f.actions.prepareCharacterEditAction({ influencerId: "character", source: { kind: "preset", id: "preset" }, targetMode: "main", resolution: "720p", ...override });
+    assert.ok(result.error);
+  }
+  assert.equal(f.snapshots.length, 0); assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0);
 });
 
 test("provider refusals never fall back to Kling; unknown acceptance is marked for review without a resubmission", async () => {
