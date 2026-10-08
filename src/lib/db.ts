@@ -52,12 +52,20 @@ export type Video = {
   presetId?: string;
   presetName?: string;
   prompt: string;
-  status: InfluencerStatus;
+  status: InfluencerStatus | "review";
   requestId?: string;
   resultUrl?: string;
   thumbnailUrl?: string;
   error?: string;
   createdAt: number;
+  edit?: {
+    model: string; sourceUrl: string; imageUrl: string; target: string;
+    source: { duration: number; width: number; height: number; hasAudio: boolean };
+    resolution: "720p" | "1080p"; estimatedUsd: number;
+    result?: { duration: number; width: number; height: number; hasAudio: boolean };
+    audioPreserved?: boolean;
+  };
+  finalizationStartedAt?: number;
 };
 
 export type Viral = {
@@ -436,6 +444,45 @@ export async function createVideo(input: Omit<Video, "id" | "createdAt">): Promi
     db.videos.push(video);
     return video;
   });
+}
+
+/** A signed quote's UUID is a single-use generation key, also across workers. */
+export async function createVideoOnce(video: Video): Promise<boolean> {
+  const sb = remote();
+  if (sb) {
+    const { error } = await sb.from("mi_videos").insert({ id: video.id, user_id: video.userId, created_at: video.createdAt, data: video });
+    if (error?.code === "23505") return false;
+    if (error) fail("reservar edição", error);
+    return true;
+  }
+  return mutate(db => { if (db.videos.some(v => v.id === video.id)) return false; db.videos.push(video); return true; });
+}
+
+export async function reserveVideoCredits(userId: string, cost: number): Promise<boolean> {
+  const sb = remote();
+  if (!sb) return mutate(db => { const u = db.users.find(u => u.id === userId); if (!u || u.credits < cost) return false; u.credits -= cost; return true; });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const user = await findUserById(userId);
+    if (!user || user.credits < cost) return false;
+    const { data, error } = await sb.from("mi_users").update({ data: { ...user, credits: user.credits - cost } }).eq("id", userId).eq("data->>credits", String(user.credits)).select("id");
+    if (error) fail("reservar créditos", error);
+    if (data?.length) return true;
+  }
+  return false;
+}
+
+export async function claimVideoFinalization(video: Video): Promise<boolean> {
+  if (video.finalizationStartedAt && Date.now() - video.finalizationStartedAt < 300000) return false;
+  const patch = { ...video, finalizationStartedAt: Date.now() };
+  const sb = remote();
+  if (sb) {
+    let query = sb.from("mi_videos").update({ data: patch }).eq("id", video.id).eq("data->>status", video.status);
+    query = video.finalizationStartedAt ? query.eq("data->>finalizationStartedAt", String(video.finalizationStartedAt)) : query.is("data->>finalizationStartedAt", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("reservar finalização", error);
+    return Boolean(data?.length);
+  }
+  return mutate(db => { const current = db.videos.find(v => v.id === video.id); if (!current || current.status !== video.status || current.finalizationStartedAt !== video.finalizationStartedAt) return false; Object.assign(current, patch); return true; });
 }
 
 export async function updateVideo(id: string, patch: Partial<Video>): Promise<Video | undefined> {

@@ -7,6 +7,7 @@ import type { StudioReference } from "@/lib/video-reference";
 
 export const metadata = { title: "Criar Vídeos" };
 export const dynamic = "force-dynamic";
+export const maxDuration = 240;
 
 export default async function CreateVideosPage({
   searchParams,

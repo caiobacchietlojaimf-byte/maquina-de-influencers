@@ -66,7 +66,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
         {list.map((video) => (
           <div key={video.id} className="gen-card">
             <div className="media" style={{ aspectRatio: "9 / 12" }}>
-              {video.status === "completed" && video.resultUrl ? (
+              {(video.status === "completed" || video.status === "review") && video.resultUrl ? (
                 <video
                   src={video.resultUrl}
                   poster={video.thumbnailUrl}
@@ -75,8 +75,9 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                   loop
                   playsInline
                   preload="metadata"
+                  style={{ objectFit: "contain" }}
                 />
-              ) : video.status === "failed" ? (
+              ) : video.status === "failed" || video.status === "review" ? (
                 <div className="pending">
                   <span style={{ color: "var(--danger)", fontSize: 13, padding: "0 14px", textAlign: "center" }}>
                     {video.error ?? "A geração falhou"}
@@ -85,12 +86,14 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               ) : (
                 <div className="pending skeleton">
                   <span className="spinner" />
-                  <span className="hint">Gerando o vídeo…</span>
+                  <span className="hint">{video.finalizationStartedAt ? "Conferindo vídeo e preservando áudio…" : "Gerando o vídeo…"}</span>
                 </div>
               )}
               <span className="status-tag" data-status={video.status}>
                 {video.status === "completed" ? (
-                  video.kind === "viral" ? "Viral" : "Movimento"
+                  video.edit ? "Personagem trocado" : video.kind === "viral" ? "Viral" : "Movimento"
+                ) : video.status === "review" ? (
+                  "Precisa de revisão"
                 ) : video.status === "failed" ? (
                   "Falhou"
                 ) : (
@@ -98,11 +101,11 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 )}
               </span>
               <div className="actions">
-                {video.status === "completed" && video.resultUrl ? (
+                {(video.status === "completed" || video.status === "review") && video.resultUrl ? (
                   <>
-                    <Link href={`/app/publicar?video=${video.id}`} title="Publicar nas redes">
+                    {video.status === "completed" && <Link href={`/app/publicar?video=${video.id}`} title="Publicar nas redes">
                       <Send size={14} />
-                    </Link>
+                    </Link>}
                     <a href={video.resultUrl} target="_blank" rel="noreferrer" title="Baixar vídeo">
                       <Download size={14} />
                     </a>
@@ -129,6 +132,17 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 {new Date(video.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
               </span>
             </div>
+            {video.edit && <div style={{ padding: "0 14px 14px", display: "grid", gap: 8, fontSize: 12 }}>
+              <span>Genjutsu Object Swap · {video.edit.resolution}</span>
+              <span>Original: {video.edit.source.duration.toFixed(2)}s{video.edit.result ? ` · Resultado: ${video.edit.result.duration.toFixed(2)}s` : ""}</span>
+              {video.edit.audioPreserved && <span>Áudio original preservado · duração e proporção conferidas</span>}
+              {video.error && <p role="status" style={{ color: "var(--danger)" }}>{video.error}</p>}
+              <details>
+                <summary style={{ cursor: "pointer" }}>Comparar com o original</summary>
+                <video src={video.edit.sourceUrl} controls playsInline preload="none" style={{ width: "100%", marginTop: 8 }} aria-label={`Original de ${video.presetName ?? "vídeo"}`} />
+                <p>{video.edit.target}</p>
+              </details>
+            </div>}
           </div>
         ))}
       </div>

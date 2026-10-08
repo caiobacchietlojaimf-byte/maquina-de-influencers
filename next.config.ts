@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["@ffmpeg-installer/ffmpeg"],
+  outputFileTracingIncludes: { "/*": ["./node_modules/@ffmpeg-installer/**/*"] },
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "**.higgsfield.ai" },

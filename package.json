@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@supabase/supabase-js": "^2.117.2",
     "@vercel/blob": "^2.8.1",
     "lucide-react": "^1.52.0",

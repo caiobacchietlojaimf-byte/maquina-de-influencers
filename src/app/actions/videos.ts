@@ -2,12 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { getMotionPreset } from "@/data/motion-presets";
 import { getViralEffect } from "@/data/viral-effects";
 import { VIDEO_PRESETS } from "@/data/video-presets";
 import { requireUser } from "@/lib/auth";
 import {
   adjustCredits,
+  claimVideoFinalization,
   createVideo,
   deleteVideo,
   getInfluencer,
@@ -19,10 +19,8 @@ import { buildViralPrompt } from "@/lib/prompt";
 import { getStatus, isConfigured, submitGeneration, TERMINAL_STATUSES } from "@/lib/platform";
 
 import { VIDEO_COST } from "@/lib/costs";
-import { readUploadedReference } from "@/lib/uploaded-reference";
+import { finalizeCharacterEdit } from "@/lib/finalize-edit";
 
-/** Transferência de movimento (Genjutsu ≈ Kling Motion Control na Platform API). */
-const MOTION_MODEL = "kling-video/v3/motion-control/std";
 /** Vídeo a partir da imagem do influencer + prompt (tendências virais). */
 const I2V_MODEL = "kling-video/v3.0/std/image-to-video";
 const DEMO_DELAY_MS = 10000;
@@ -35,63 +33,10 @@ async function charge(userId: string, credits: number): Promise<string | null> {
   return null;
 }
 
-/** Vídeo de movimento: aplica um preset Genjutsu ao influencer. */
-export async function createMotionVideoAction(input: {
-  influencerId: string;
-  presetId?: string;
-  uploadToken?: string;
-  prompt?: string;
-}): Promise<Result> {
-  const user = await requireUser();
-  const influencer = await getInfluencer(user.id, input.influencerId);
-  if (!influencer?.imageUrl) return { error: "Escolha um influencer já gerado" };
-  let uploaded;
-  try { if (input.uploadToken) uploaded = readUploadedReference(input.uploadToken, user.id); }
-  catch (caught) { return { error: caught instanceof Error ? caught.message : "Referência inválida." }; }
-  const preset = uploaded ? { id: uploaded.id, name: uploaded.name, drivingVideo: uploaded.videoUrl, thumbnail: undefined } : getMotionPreset(input.presetId ?? "");
-  if (!preset) return { error: "Preset de movimento não encontrado" };
-
-  const chargeError = await charge(user.id, user.credits);
-  if (chargeError) return { error: chargeError };
-
-  const prompt =
-    input.prompt?.trim() ||
-    `The character from the reference image performs the exact motion of the driving video "${preset.name}". Preserve identity, outfit and styling; match the camera movement and timing.`;
-
-  const video = await createVideo({
-    userId: user.id,
-    influencerId: influencer.id,
-    kind: "motion",
-    presetId: preset.id,
-    presetName: preset.name,
-    prompt,
-    status: "processing",
-    thumbnailUrl: preset.thumbnail,
-  });
-
-  if (!isConfigured()) {
-    await updateVideo(video.id, { requestId: "demo" });
-    revalidatePath("/app", "layout");
-    return { id: video.id };
-  }
-
-  try {
-    const queued = await submitGeneration(MOTION_MODEL, {
-      prompt,
-      image_url: influencer.imageUrl,
-      video_url: preset.drivingVideo,
-      keep_original_sound: "yes",
-      character_orientation: "video",
-    });
-    await updateVideo(video.id, { requestId: queued.requestId });
-    revalidatePath("/app", "layout");
-    return { id: video.id };
-  } catch (caught) {
-    const message = caught instanceof Error ? caught.message : String(caught);
-    await updateVideo(video.id, { status: "failed", error: message });
-    await adjustCredits(user.id, VIDEO_COST);
-    return { error: message };
-  }
+/** Older clients must go through the costed, signed character-edit preparation. */
+export async function createMotionVideoAction(_input: { influencerId: string; presetId?: string; uploadToken?: string; prompt?: string }): Promise<Result> {
+  await requireUser();
+  return { error: "Atualize Criar Vídeos e prepare a troca de personagem antes de gerar." };
 }
 
 /** Duplica uma tendência viral com o influencer como protagonista. */
@@ -167,7 +112,9 @@ export async function pollVideosAction(): Promise<Video[]> {
         const status = await getStatus(video.requestId);
         if (!TERMINAL_STATUSES.has(status.status)) return;
         if (status.status === "completed" && status.video?.url) {
-          await updateVideo(video.id, { status: "completed", resultUrl: status.video.url });
+          if (video.edit) {
+            if (await claimVideoFinalization(video)) await updateVideo(video.id, await finalizeCharacterEdit(video, status.video.url));
+          } else await updateVideo(video.id, { status: "completed", resultUrl: status.video.url });
         } else {
           await updateVideo(video.id, {
             status: "failed",

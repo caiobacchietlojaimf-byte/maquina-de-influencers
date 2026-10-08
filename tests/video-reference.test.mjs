@@ -13,6 +13,7 @@ function load(file, mocks = {}, globals = {}) {
 }
 const media = load("src/lib/video-reference.ts");
 const signed = load("src/lib/uploaded-reference.ts");
+const edit = load("src/lib/character-edit.ts");
 const pathname = "video-references/owner/11111111-1111-1111-1111-111111111111.mp4";
 
 test("MP4 duration comes from the file and rejects renamed non-video files", () => {
@@ -38,30 +39,28 @@ test("upload verification checks ownership, size and media before issuing a gene
   let reads = 0;
   const actions = load("src/app/actions/video-reference.ts", {
     "@vercel/blob": { head: async () => { reads++; return { size: media.MAX_REFERENCE_BYTES + 1, contentType: "video/mp4" }; } },
-    "@/lib/auth": { requireUser: async () => ({ id: "owner" }) }, "@/lib/ai-discovery": { isMotionReference: n => n >= 3 && n <= 30 }, "@/lib/video-reference": media, "@/lib/uploaded-reference": signed,
+    "@/lib/auth": { requireUser: async () => ({ id: "owner" }) }, "@/lib/character-edit": edit, "@/lib/video-reference": media, "@/lib/uploaded-reference": signed,
   });
   assert.ok("error" in await actions.verifyVideoReferenceAction(pathname.replace("owner", "other"), "Test"));
   assert.equal(reads, 0);
   assert.ok("error" in await actions.verifyVideoReferenceAction(pathname, "Test"));
   assert.equal(reads, 1);
 });
-test("uploaded motion generation submits the verified video and selected influencer", async () => {
+test("older upload clients cannot trigger the former paid Kling path", async () => {
   const submits = []; const charges = [];
   const reference = { kind: "upload", id: pathname, name: "My clip", duration: 10, videoUrl: "https://store.public.blob.vercel-storage.com/clip.mp4" };
   const actions = load("src/app/actions/videos.ts", {
     "next/cache": { revalidatePath() {} }, "@/data/motion-presets": { getMotionPreset: () => null }, "@/data/viral-effects": {}, "@/data/video-presets": {}, "@/lib/prompt": {}, "@/lib/costs": { VIDEO_COST: 1000 },
-    "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 5000 }) }, "@/lib/uploaded-reference": signed,
+    "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 5000 }) }, "@/lib/uploaded-reference": signed, "@/lib/finalize-edit": {},
     "@/lib/db": { getInfluencer: async () => ({ id: "chosen", imageUrl: "https://example.com/influencer.jpg" }), adjustCredits: async (...args) => charges.push(args), createVideo: async () => ({ id: "job" }), updateVideo: async () => {} },
     "@/lib/platform": { isConfigured: () => true, submitGeneration: async (...args) => { submits.push(args); return { requestId: "request" }; } },
   });
   assert.ok("error" in await actions.createMotionVideoAction({ influencerId: "chosen", uploadToken: "forged" }));
   assert.equal(charges.length, 0);
   const result = await actions.createMotionVideoAction({ influencerId: "chosen", uploadToken: signed.signUploadedReference(reference, "owner") });
-  assert.equal(result.id, "job");
-  assert.equal(submits[0][0], "kling-video/v3/motion-control/std");
-  assert.equal(submits[0][1].video_url, reference.videoUrl);
-  assert.equal(submits[0][1].image_url, "https://example.com/influencer.jpg");
-  assert.equal(charges.length, 1);
+  assert.ok("error" in result);
+  assert.equal(submits.length, 0);
+  assert.equal(charges.length, 0);
 });
 
 test("a playable uploaded MP4 receives an owner-bound token while corrupt media is rejected", async () => {
@@ -69,7 +68,7 @@ test("a playable uploaded MP4 receives an owner-bound token while corrupt media 
   const actions = load("src/app/actions/video-reference.ts", {
     "@vercel/blob": { head: async () => ({ size: bytes.length, contentType: "video/mp4", url: "https://store.public.blob.vercel-storage.com/clip.mp4" }) },
     "@/lib/auth": { requireUser: async () => ({ id: "owner" }) },
-    "@/lib/ai-discovery": { isMotionReference: n => n >= 3 && n <= 30 },
+    "@/lib/character-edit": edit,
     "@/lib/video-reference": media, "@/lib/uploaded-reference": signed,
   }, { fetch: async () => ({ ok: true, arrayBuffer: async () => Uint8Array.from(bytes).buffer }) });
   const result = await actions.verifyVideoReferenceAction(pathname, " My clip.mp4 ");

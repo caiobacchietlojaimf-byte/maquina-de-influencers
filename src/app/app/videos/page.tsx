@@ -4,6 +4,7 @@ import { VideosGallery } from "@/components/videos-gallery";
 
 export const metadata = { title: "Vídeos" };
 export const dynamic = "force-dynamic";
+export const maxDuration = 240;
 
 export default async function VideosPage() {
   const user = await requirePageUser();
@@ -16,7 +17,7 @@ export default async function VideosPage() {
             Meus <span style={{ color: "var(--accent)" }}>Vídeos</span>
           </h1>
           <p className="sub">
-            Tudo que a máquina gerou: movimentos Genjutsu e duplicações de tendências. As gerações
+            Suas trocas de personagem e vídeos gerados. As gerações
             em andamento atualizam sozinhas.
           </p>
         </div>
