@@ -9,8 +9,8 @@ import { LogoMark } from "./logo";
 
 const ITEMS = [
   { href: "/app", label: "Início", icon: Home, exact: true },
-  { href: "/app/virais", label: "Vídeos Virais", icon: Flame, badge: "Hot" },
   { href: "/app/influencers", label: "Influencers", icon: Users, badge: "Novo" },
+  { href: "/app/virais", label: "Vídeos Virais", icon: Flame, badge: "Hot" },
   { href: "/app/criar-videos", label: "Criar Vídeos", icon: Wand2, badge: "Novo" },
   { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
   { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },

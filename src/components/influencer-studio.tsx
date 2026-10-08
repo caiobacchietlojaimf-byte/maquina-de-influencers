@@ -339,7 +339,7 @@ export function InfluencerStudio({
           </button>
           <button type="button" className="chip" data-active={rightTab === "history"} onClick={() => setRightTab("history")}>
             <Clock size={14} />
-            Histórico
+            Meus Influencers
           </button>
           <span style={{ marginLeft: "auto", color: "var(--tx3)", fontSize: 12.5 }}>
             ✦ {credits.toLocaleString("pt-BR")} créditos
