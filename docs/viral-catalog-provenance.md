@@ -107,3 +107,37 @@ Os 16 vídeos e suas capas foram captados do player oficial do TikTok na aba do 
 Após a captação, o catálogo contém **63 referências**: **40 com mídia local** (incluindo os 16 TikToks) e **23 referências externas sem mídia local verificada**.
 
 Os 24 MP4 anteriores também tiveram duração extraída do cabeçalho mvhd dos arquivos locais em 08/10/2026. As durações antes ausentes foram preenchidas, sem estimar pelo texto ou pela capa; 38 dos 40 arquivos ficam entre 3 e 30 segundos.
+
+## Recuperação integral da mídia — 8 de outubro de 2026
+
+As limitações de reprodução descritas nos snapshots anteriores foram resolvidas: os **63 registros agora possuem MP4 local e capa própria** (47 Instagram e 16 TikTok). Nenhuma referência foi removida para obter esse resultado.
+
+Os 23 Reels abaixo foram abertos individualmente no player oficial do Instagram. As faixas de vídeo e áudio fornecidas por esse player foram reunidas em MP4 H.264/AAC, com pixels yuv420p e cabeçalho faststart para reprodução no navegador. Cada capa foi extraída do próprio vídeo. URLs temporárias da CDN não integram o catálogo; os arquivos são servidos pelo sistema.
+
+| Reel original | Perfil | Duração observada no player (s) |
+| --- | --- | ---: |
+| [DeBwwYiIO-F](https://www.instagram.com/p/DeBwwYiIO-F/) | @moroniduarte | 21.755645 |
+| [DeEhbmKImr8](https://www.instagram.com/p/DeEhbmKImr8/) | @moroniduarte | 13.512561 |
+| [DeEgs-dIaFQ](https://www.instagram.com/p/DeEgs-dIaFQ/) | @moroniduarte | 13.708333 |
+| [DeND-2PoU4h](https://www.instagram.com/p/DeND-2PoU4h/) | @moroniduarte | 9.458333 |
+| [DeNDTR9o5dM](https://www.instagram.com/p/DeNDTR9o5dM/) | @moroniduarte | 15.000000 |
+| [DeNCmftIZa6](https://www.instagram.com/p/DeNCmftIZa6/) | @moroniduarte | 13.791667 |
+| [DeNCGJDo1nz](https://www.instagram.com/p/DeNCGJDo1nz/) | @moroniduarte | 17.250000 |
+| [DeNB-sNIgH5](https://www.instagram.com/p/DeNB-sNIgH5/) | @moroniduarte | 15.000000 |
+| [DeNBw4UILFL](https://www.instagram.com/p/DeNBw4UILFL/) | @moroniduarte | 51.000000 |
+| [DeNAOuUI4-n](https://www.instagram.com/p/DeNAOuUI4-n/) | @moroniduarte | 16.250000 |
+| [DeNBCdSI1fb](https://www.instagram.com/p/DeNBCdSI1fb/) | @moroniduarte | 51.000000 |
+| [DeNA4h2o_3a](https://www.instagram.com/p/DeNA4h2o_3a/) | @moroniduarte | 17.083333 |
+| [DeNA2VkoKye](https://www.instagram.com/p/DeNA2VkoKye/) | @moroniduarte | 18.541667 |
+| [DeNAU0rIgcH](https://www.instagram.com/p/DeNAU0rIgcH/) | @moroniduarte | 29.666667 |
+| [DeNADsLocf7](https://www.instagram.com/p/DeNADsLocf7/) | @moroniduarte | 19.708333 |
+| [DeM_8SBomYF](https://www.instagram.com/p/DeM_8SBomYF/) | @moroniduarte | 15.322312 |
+| [DeM_3h3ow7X](https://www.instagram.com/p/DeM_3h3ow7X/) | @moroniduarte | 23.916667 |
+| [DeM_t9hoBda](https://www.instagram.com/p/DeM_t9hoBda/) | @moroniduarte | 19.916667 |
+| [DeM_q8qIRrG](https://www.instagram.com/p/DeM_q8qIRrG/) | @moroniduarte | 12.666667 |
+| [DeM_l1EIJlq](https://www.instagram.com/p/DeM_l1EIJlq/) | @moroniduarte | 25.250000 |
+| [DeM_hWDIVbE](https://www.instagram.com/p/DeM_hWDIVbE/) | @moroniduarte | 25.291667 |
+| [DeKN_fYpH0w](https://www.instagram.com/p/DeKN_fYpH0w/) | @moroniceee | 10.041667 |
+| [Dd6TVXUgWqh](https://www.instagram.com/p/Dd6TVXUgWqh/) | @dahab.daddy | 10.041667 |
+
+As métricas sociais anteriores foram preservadas. A recuperação da mídia não representa uma nova coleta de curtidas ou visualizações. O build valida a presença dos 63 vídeos e capas, a estrutura dos MP4, faixas de vídeo/áudio e duração válida para impedir que referências sem arquivo retornem ao catálogo publicado.

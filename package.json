@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "next build",
+    "build": "npm run validate:media && next build",
+    "validate:media": "node scripts/validate-viral-media.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
