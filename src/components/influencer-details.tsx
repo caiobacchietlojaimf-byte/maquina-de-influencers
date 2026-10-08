@@ -43,6 +43,12 @@ export function InfluencerDetails({ influencer, onClose, onRename }: {
 
   useEffect(() => { if (editing) input.current?.select(); }, [editing]);
 
+  function closeDetails() {
+    // Close before unmounting so the browser restores focus to the opening card.
+    dialog.current?.close();
+    onClose();
+  }
+
   async function saveName(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
@@ -62,10 +68,10 @@ export function InfluencerDetails({ influencer, onClose, onRename }: {
   }
 
   return (
-    <dialog ref={dialog} className={styles.dialog} aria-labelledby="influencer-detail-title" onCancel={(event) => { event.preventDefault(); if (!saving) onClose(); }}>
+    <dialog ref={dialog} className={styles.dialog} aria-labelledby="influencer-detail-title" onCancel={(event) => { event.preventDefault(); if (!saving) closeDetails(); }}>
       <header className={styles.header}>
         <div><span className={styles.eyebrow}>Meus Influencers</span><h2 id="influencer-detail-title">{influencer.name}</h2></div>
-        <button type="button" className="btn btn-ghost" aria-label="Fechar detalhes" onClick={onClose} disabled={saving} autoFocus><X size={22} /></button>
+        <button type="button" className="btn btn-ghost" aria-label="Fechar detalhes" onClick={closeDetails} disabled={saving}><X size={22} /></button>
       </header>
       <div className={styles.content}>
         <section className={styles.visual} aria-label="Imagens do influencer">
