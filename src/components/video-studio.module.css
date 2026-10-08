@@ -86,6 +86,27 @@
   font-size: 12.5px;
 }
 
+.upload {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 18px 10px;
+  border: 1px dashed var(--line-2);
+  border-radius: 12px;
+  background: var(--s1);
+  color: var(--tx);
+  text-align: center;
+  cursor: pointer;
+}
+.upload svg { color: var(--accent); }
+.upload strong { font-size: 13px; }
+.upload span { color: var(--tx3); font-size: 11px; }
+.upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.upload:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.upload:has(input:disabled) { opacity: .6; cursor: wait; }
+.progress { width: 100%; accent-color: var(--accent); }
+
 .selection > span {
   color: var(--accent);
   font-size: 11px;

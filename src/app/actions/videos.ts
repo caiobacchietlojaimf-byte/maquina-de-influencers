@@ -19,6 +19,7 @@ import { buildViralPrompt } from "@/lib/prompt";
 import { getStatus, isConfigured, submitGeneration, TERMINAL_STATUSES } from "@/lib/platform";
 
 import { VIDEO_COST } from "@/lib/costs";
+import { readUploadedReference } from "@/lib/uploaded-reference";
 
 /** Transferência de movimento (Genjutsu ≈ Kling Motion Control na Platform API). */
 const MOTION_MODEL = "kling-video/v3/motion-control/std";
@@ -37,13 +38,17 @@ async function charge(userId: string, credits: number): Promise<string | null> {
 /** Vídeo de movimento: aplica um preset Genjutsu ao influencer. */
 export async function createMotionVideoAction(input: {
   influencerId: string;
-  presetId: string;
+  presetId?: string;
+  uploadToken?: string;
   prompt?: string;
 }): Promise<Result> {
   const user = await requireUser();
   const influencer = await getInfluencer(user.id, input.influencerId);
   if (!influencer?.imageUrl) return { error: "Escolha um influencer já gerado" };
-  const preset = getMotionPreset(input.presetId);
+  let uploaded;
+  try { if (input.uploadToken) uploaded = readUploadedReference(input.uploadToken, user.id); }
+  catch (caught) { return { error: caught instanceof Error ? caught.message : "Referência inválida." }; }
+  const preset = uploaded ? { id: uploaded.id, name: uploaded.name, drivingVideo: uploaded.videoUrl, thumbnail: undefined } : getMotionPreset(input.presetId ?? "");
   if (!preset) return { error: "Preset de movimento não encontrado" };
 
   const chargeError = await charge(user.id, user.credits);

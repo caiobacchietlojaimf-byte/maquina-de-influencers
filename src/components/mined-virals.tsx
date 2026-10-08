@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
@@ -15,18 +14,15 @@ import {
   Pickaxe,
   RefreshCw,
   Sparkles,
-  X,
 } from "lucide-react";
 
 import {
-  duplicateMinedViralAction,
   getMinedViralsAction,
   importViralAction,
   refreshViralsAction,
   refreshViralMediaAction,
   type MinedState,
 } from "@/app/actions/virals";
-import { VIDEO_COST } from "@/lib/costs";
 import { AI_DISCOVERY_PROFILES, isAiCharacterVideo, isMotionReference, matchesAiProfile, type DiscoveryCursors } from "@/lib/ai-discovery";
 import { formatViews } from "@/data/viral-effects";
 import type { Viral } from "@/lib/db";
@@ -72,12 +68,6 @@ export function MinedVirals({
   }, [startMining]);
   const [importUrl, setImportUrl] = useState("");
 
-  const [active, setActive] = useState<Viral | null>(null);
-  const [pickedInfluencer, setPickedInfluencer] = useState<string | null>(influencers[0]?.id ?? null);
-  const [extra, setExtra] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
   const applyResult = (result: MinedState) => {
     setVirals(result.virals);
     setNotice(result.error ?? result.notice ?? null);
@@ -101,23 +91,6 @@ export function MinedVirals({
         if (!result.error) { setImportUrl(""); setProfileFilter(""); setSearch(""); }
       } catch { setNotice("Não foi possível importar esse vídeo agora."); }
     });
-  };
-
-  const duplicate = async () => {
-    if (!active || !pickedInfluencer) return;
-    setSubmitting(true);
-    setError(null);
-    const result = await duplicateMinedViralAction({
-      viralId: active.id,
-      influencerId: pickedInfluencer,
-      ...(extra.trim() ? { extraPrompt: extra.trim() } : {}),
-    }).catch((caught: unknown) => ({ error: caught instanceof Error ? caught.message : String(caught) }));
-    setSubmitting(false);
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    router.push("/app/videos");
   };
 
   const list = useMemo(() => virals
@@ -144,7 +117,7 @@ export function MinedVirals({
         </button>
       </div>
 
-      {tab === "profiles" ? <ProfileVideos influencers={influencers} /> : null}
+      {tab === "profiles" ? <ProfileVideos /> : null}
 
       {tab === "effects" ? (
         <ViralGrid influencers={influencers} />
@@ -206,7 +179,7 @@ export function MinedVirals({
           {list.length ? (
             <div className="viral-grid">
               {list.map((viral) => (
-                <MinedCard key={viral.id} viral={viral} onDuplicate={() => { setActive(viral); setError(null); setExtra(""); }} />
+                <MinedCard key={viral.id} viral={viral} onDuplicate={() => router.push(`/app/criar-videos?${new URLSearchParams({ viral: viral.id })}`)} />
               ))}
             </div>
           ) : (
@@ -223,86 +196,6 @@ export function MinedVirals({
         </>
       ) : null}
 
-      {active ? (
-        <div className="modal-backdrop" onClick={() => setActive(null)}>
-          <div className="modal" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setActive(null)}>
-              <X size={16} />
-            </button>
-            <h2>Duplicar esse viral</h2>
-            <p className="modal-sub">
-              @{active.authorHandle || active.authorName} · <Eye size={12} style={{ display: "inline", verticalAlign: "-2px" }} />{" "}
-              {active.views > 0 ? `${formatViews(active.views)} visualizações` : "Visualizações não informadas"} · {active.duration ? `${Math.round(active.duration)}s` : "Duração não informada"}
-            </p>
-
-            <div style={{ display: "grid", gap: 16, marginTop: 18 }}>
-              <MinedVideo key={`${active.id}:${active.playUrl}`} viral={active} modal />
-              {active.duration > 30 ? (
-                <div className="notice" style={{ margin: 0 }}>
-                  Esse vídeo tem {active.duration}s — o motion transfer funciona melhor com
-                  referências de 4 a 30 segundos.
-                </div>
-              ) : null}
-
-              <div className="field">
-                <label>Quem vai estrelar o vídeo?</label>
-                {influencers.length ? (
-                  <div className="influencer-pick">
-                    {influencers.map((inf) => (
-                      <button
-                        type="button"
-                        key={inf.id}
-                        className="pick"
-                        data-active={pickedInfluencer === inf.id}
-                        onClick={() => setPickedInfluencer(inf.id)}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={inf.imageUrl} alt={inf.name} />
-                        <span>{inf.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p style={{ color: "var(--tx3)", fontSize: 13 }}>
-                    Você ainda não tem influencer pronto.{" "}
-                    <Link href="/app/influencers" style={{ color: "var(--accent)" }}>
-                      Criar um agora →
-                    </Link>
-                  </p>
-                )}
-              </div>
-
-              <div className="field">
-                <label htmlFor="mined-extra">Toque pessoal (opcional)</label>
-                <textarea
-                  id="mined-extra"
-                  className="input"
-                  placeholder="Ex.: cenário novo, roupa diferente, iluminação neon…"
-                  value={extra}
-                  onChange={(event) => setExtra(event.target.value)}
-                />
-              </div>
-
-              {error ? <div className="auth-error">{error}</div> : null}
-
-              <button
-                type="button"
-                className="generate-btn"
-                disabled={submitting || !pickedInfluencer}
-                onClick={duplicate}
-              >
-                {submitting ? (
-                  <span className="spinner" />
-                ) : (
-                  <>
-                    Duplicar com meu influencer <span className="cost">✦ {VIDEO_COST}</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
