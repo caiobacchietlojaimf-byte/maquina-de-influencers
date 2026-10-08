@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BicepsFlexed,
   Blend,
@@ -42,17 +42,17 @@ import {
   pollInfluencersAction,
   retryInfluencerAction,
 } from "@/app/actions/influencers";
-import { createMotionVideoAction } from "@/app/actions/videos";
-import { SHEET_COST, VIDEO_COST } from "@/lib/costs";
+import { SHEET_COST } from "@/lib/costs";
 import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
 import { HeroReel } from "./hero-reel";
 import PRESETS from "@/data/influencer-presets.json";
-import { MOTION_PRESETS, type MotionKind } from "@/data/motion-presets";
+import { MOTION_PRESETS } from "@/data/motion-presets";
 import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection } from "@/data/traits";
 import { VIDEO_PRESETS } from "@/data/video-presets";
 import type { Influencer } from "@/lib/db";
 import { RenderProbe } from "./render-probe";
+import { MotionPresetCard } from "./motion-preset-card";
 
 type Preset = {
   id: string;
@@ -63,7 +63,6 @@ type Preset = {
   selection: Record<string, string[]>;
 };
 
-type BuilderTab = "create" | "motion";
 type RightTab = "explore" | "history";
 type ExploreScope = "influencers" | "presets" | "trends";
 
@@ -95,17 +94,14 @@ const GROUP_ICONS: Record<string, LucideIcon> = {
 
 export function InfluencerStudio({
   initialInfluencers,
-  initialTab,
   credits,
 }: {
   initialInfluencers: Influencer[];
-  initialTab: BuilderTab;
   credits: number;
 }) {
   const router = useRouter();
 
   /* ----- builder ----- */
-  const [builderTab, setBuilderTab] = useState<BuilderTab>(initialTab);
   const [tier, setTier] = useState<CharacterTier>("total");
   const [selection, setSelection] = useState<Selection>({});
   const [name, setName] = useState("");
@@ -113,12 +109,6 @@ export function InfluencerStudio({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ gender: true });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  /* ----- movimento ----- */
-  const [motionKind, setMotionKind] = useState<MotionKind>("motion_transfer");
-  const [motionPresetId, setMotionPresetId] = useState<string | null>(null);
-  const [motionInfluencerId, setMotionInfluencerId] = useState<string | null>(null);
-  const [motionPrompt, setMotionPrompt] = useState("");
 
   /* ----- lado direito ----- */
   const [rightTab, setRightTab] = useState<RightTab>("explore");
@@ -138,8 +128,6 @@ export function InfluencerStudio({
     }, 4000);
     return () => clearInterval(timer);
   }, [hasPending]);
-
-  const ready = useMemo(() => influencers.filter((i) => i.status === "completed" && i.imageUrl), [influencers]);
 
   /* ----- handlers ----- */
 
@@ -204,28 +192,7 @@ export function InfluencerStudio({
     router.refresh();
   }, [name, tier, selection, reference, influencers.length, router]);
 
-  const generateMotion = useCallback(async () => {
-    if (!motionInfluencerId || !motionPresetId) {
-      setError("Escolha um influencer pronto e um preset de movimento");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    const result = await createMotionVideoAction({
-      influencerId: motionInfluencerId,
-      presetId: motionPresetId,
-      ...(motionPrompt.trim() ? { prompt: motionPrompt.trim() } : {}),
-    }).catch((caught: unknown) => ({ error: caught instanceof Error ? caught.message : String(caught) }));
-    setSubmitting(false);
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    router.push("/app/videos");
-  }, [motionInfluencerId, motionPresetId, motionPrompt, router]);
-
   const recreate = useCallback((preset: Preset) => {
-    setBuilderTab("create");
     setTier(preset.tier as CharacterTier);
     setSelection(pruneSelection(preset.selection ?? {}, preset.tier as CharacterTier));
     setName(preset.name);
@@ -234,11 +201,6 @@ export function InfluencerStudio({
   }, []);
 
   const groups = useMemo(() => groupsFor(tier), [tier]);
-  const motionList = useMemo(
-    () => MOTION_PRESETS.filter((p) => p.kind === motionKind),
-    [motionKind],
-  );
-
   /* =========================================================== */
 
   return (
@@ -250,225 +212,117 @@ export function InfluencerStudio({
           <div className="kicker">Crie seu próprio personagem com</div>
           <h2>Influenciador de IA</h2>
         </div>
-        <div className="builder-tabs">
-          <button type="button" data-active={builderTab === "create"} onClick={() => setBuilderTab("create")}>
-            Criar Influencer
-          </button>
-          <button
-            type="button"
-            data-active={builderTab === "motion"}
-            onClick={() => {
-              setBuilderTab("motion");
-              setRightTab("explore");
-            }}
-          >
-            Movimento
-          </button>
-        </div>
+        <div className="builder-scroll">
+          <label className="upload-box">
+            <span className="optional">Opcional</span>
+            {reference ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={reference} alt="Sua foto de referência" />
+            ) : (
+              <>
+                <ImagePlus size={20} />
+                <b style={{ color: "var(--tx)" }}>Envie sua foto</b>
+              </>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) pickReference(file);
+              }}
+            />
+          </label>
+          {reference ? (
+            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReference(null)}>
+              Remover foto
+            </button>
+          ) : null}
 
-        {builderTab === "create" ? (
-          <>
-            <div className="builder-scroll">
-              <label className="upload-box">
-                <span className="optional">Opcional</span>
-                {reference ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={reference} alt="Sua foto de referência" />
-                ) : (
-                  <>
-                    <ImagePlus size={20} />
-                    <b style={{ color: "var(--tx)" }}>Envie sua foto</b>
-                  </>
-                )}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) pickReference(file);
-                  }}
-                />
-              </label>
-              {reference ? (
-                <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReference(null)}>
-                  Remover foto
-                </button>
-              ) : null}
+          <div className="field">
+            <label htmlFor="inf-name">Nome do influencer</label>
+            <input
+              id="inf-name"
+              className="input"
+              placeholder="Ex.: Lola Turbo"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </div>
 
-              <div className="field">
-                <label htmlFor="inf-name">Nome do influencer</label>
-                <input
-                  id="inf-name"
-                  className="input"
-                  placeholder="Ex.: Lola Turbo"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </div>
-
-              <section className="trait-section" data-open="true">
-                <div className="trait-head" style={{ cursor: "default" }}>
-                  <Drama size={15} style={{ color: "var(--tx3)" }} />
-                  <span>Tipo de personagem</span>
-                  <span className="count">⋅ {CHARACTER_TYPES.length}</span>
-                </div>
-                <div className="type-grid">
-                  {CHARACTER_TYPES.map((type) => (
-                    <button
-                      type="button"
-                      key={type.id}
-                      className="type-card"
-                      data-active={tier === type.id}
-                      onClick={() => changeTier(type.id)}
-                    >
-                      <Image src={type.icon} alt={type.label} width={56} height={56} unoptimized />
-                      <span>{type.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              {groups.map((group) => {
-                const opts = optionsFor(group, tier);
-                const picked = selection[group.id] ?? [];
-                const open = openGroups[group.id] ?? false;
-                const pickedLabels = picked
-                  .map((id) => opts.find((opt) => opt.id === id)?.label)
-                  .filter(Boolean)
-                  .join(", ");
-                const GroupIcon = GROUP_ICONS[group.id];
-                return (
-                  <section key={group.id} className="trait-section" data-open={open}>
-                    <button
-                      type="button"
-                      className="trait-head"
-                      onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))}
-                    >
-                      {GroupIcon ? <GroupIcon size={15} style={{ color: "var(--tx3)", flexShrink: 0 }} /> : null}
-                      <span>{group.label}</span>
-                      <span className="count">⋅ {opts.length}</span>
-                      {pickedLabels ? <span className="picked">{pickedLabels}</span> : null}
-                      <ChevronDown className="chev" size={16} />
-                    </button>
-                    {open ? (
-                      <div className="trait-body">
-                        {opts.map((opt) => (
-                          <button
-                            type="button"
-                            key={opt.id}
-                            className="trait-opt"
-                            data-active={picked.includes(opt.id)}
-                            onClick={() => toggleOption(group.id, opt.id, group.max)}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })}
+          <section className="trait-section" data-open="true">
+            <div className="trait-head" style={{ cursor: "default" }}>
+              <Drama size={15} style={{ color: "var(--tx3)" }} />
+              <span>Tipo de personagem</span>
+              <span className="count">⋅ {CHARACTER_TYPES.length}</span>
             </div>
-
-            <div className="builder-footer">
-              <button type="button" className="dice-btn" title="Sortear visual" onClick={rollDice}>
-                <Dices size={20} />
-              </button>
-              <button type="button" className="generate-btn" disabled={submitting} onClick={generateSheet}>
-                {submitting ? <span className="spinner" /> : <>Gerar <span className="cost">✦ {SHEET_COST}</span></>}
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className="builder-scroll">
-              <div className="genjutsu-banner">
-                <h3>Higgsfield Genjutsu</h3>
-                <p>Manipulação de realidade</p>
-              </div>
-
-              <div className="mode-tabs">
+            <div className="type-grid">
+              {CHARACTER_TYPES.map((type) => (
                 <button
                   type="button"
-                  data-active={motionKind === "motion_transfer"}
-                  onClick={() => {
-                    setMotionKind("motion_transfer");
-                    setMotionPresetId(null);
-                  }}
+                  key={type.id}
+                  className="type-card"
+                  data-active={tier === type.id}
+                  onClick={() => changeTier(type.id)}
                 >
-                  Transferir movimento
+                  <Image src={type.icon} alt={type.label} width={56} height={56} unoptimized />
+                  <span>{type.label}</span>
                 </button>
+              ))}
+            </div>
+          </section>
+
+          {groups.map((group) => {
+            const opts = optionsFor(group, tier);
+            const picked = selection[group.id] ?? [];
+            const open = openGroups[group.id] ?? false;
+            const pickedLabels = picked
+              .map((id) => opts.find((opt) => opt.id === id)?.label)
+              .filter(Boolean)
+              .join(", ");
+            const GroupIcon = GROUP_ICONS[group.id];
+            return (
+              <section key={group.id} className="trait-section" data-open={open}>
                 <button
                   type="button"
-                  data-active={motionKind === "object_swap"}
-                  onClick={() => {
-                    setMotionKind("object_swap");
-                    setMotionPresetId(null);
-                  }}
+                  className="trait-head"
+                  onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))}
                 >
-                  Trocar objetos
+                  {GroupIcon ? <GroupIcon size={15} style={{ color: "var(--tx3)", flexShrink: 0 }} /> : null}
+                  <span>{group.label}</span>
+                  <span className="count">⋅ {opts.length}</span>
+                  {pickedLabels ? <span className="picked">{pickedLabels}</span> : null}
+                  <ChevronDown className="chev" size={16} />
                 </button>
-              </div>
-
-              <div className="field">
-                <label>Seu influencer</label>
-                {ready.length ? (
-                  <div className="influencer-pick">
-                    {ready.map((inf) => (
+                {open ? (
+                  <div className="trait-body">
+                    {opts.map((opt) => (
                       <button
                         type="button"
-                        key={inf.id}
-                        className="pick"
-                        data-active={motionInfluencerId === inf.id}
-                        onClick={() => setMotionInfluencerId(inf.id)}
+                        key={opt.id}
+                        className="trait-opt"
+                        data-active={picked.includes(opt.id)}
+                        onClick={() => toggleOption(group.id, opt.id, group.max)}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={inf.imageUrl} alt={inf.name} />
-                        <span>{inf.name}</span>
+                        {opt.label}
                       </button>
                     ))}
                   </div>
-                ) : (
-                  <p style={{ color: "var(--tx3)", fontSize: 12.5 }}>
-                    Gere um influencer primeiro na aba Criar Influencer.
-                  </p>
-                )}
-              </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
 
-              <div className="field">
-                <label>Movimento selecionado</label>
-                <p style={{ color: motionPresetId ? "var(--accent)" : "var(--tx3)", fontSize: 12.5 }}>
-                  {motionPresetId
-                    ? MOTION_PRESETS.find((p) => p.id === motionPresetId)?.name
-                    : "Escolha um preset na galeria ao lado →"}
-                </p>
-              </div>
-
-              <div className="field">
-                <label htmlFor="motion-prompt">Prompt (opcional)</label>
-                <textarea
-                  id="motion-prompt"
-                  className="input"
-                  placeholder="Descreva a nova cena — ex.: 'mesmos movimentos, novo cenário: Tóquio à noite'"
-                  value={motionPrompt}
-                  onChange={(event) => setMotionPrompt(event.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="builder-footer" style={{ gridTemplateColumns: "1fr" }}>
-              <button
-                type="button"
-                className="generate-btn"
-                disabled={submitting || !motionInfluencerId || !motionPresetId}
-                onClick={generateMotion}
-              >
-                {submitting ? <span className="spinner" /> : <>Gerar <span className="cost">✦ {VIDEO_COST}</span></>}
-              </button>
-            </div>
-          </>
-        )}
+        <div className="builder-footer">
+          <button type="button" className="dice-btn" title="Sortear visual" onClick={rollDice}>
+            <Dices size={20} />
+          </button>
+          <button type="button" className="generate-btn" disabled={submitting} onClick={generateSheet}>
+            {submitting ? <span className="spinner" /> : <>Gerar <span className="cost">✦ {SHEET_COST}</span></>}
+          </button>
+        </div>
         {error ? (
           <div className="auth-error" style={{ margin: "0 14px 14px" }}>
             {error}
@@ -492,7 +346,7 @@ export function InfluencerStudio({
           </span>
         </div>
 
-        {rightTab === "explore" && builderTab === "create" ? (
+        {rightTab === "explore" ? (
           <>
             <div className="studio-hero">
               <HeroReel videos={HERO_VIDEOS} className="videos" />
@@ -571,43 +425,18 @@ export function InfluencerStudio({
             {scope === "trends" ? (
               <div className="motion-grid" style={{ marginTop: 18, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
                 {MOTION_PRESETS.filter((p) => p.category === "trending").map((preset) => (
-                  <MotionCard
+                  <MotionPresetCard
                     key={preset.id}
                     name={preset.name}
                     thumbnail={preset.thumbnail}
                     preview={preset.preview}
-                    active={motionPresetId === preset.id}
-                    onPick={() => {
-                      setBuilderTab("motion");
-                      setMotionKind(preset.kind);
-                      setMotionPresetId(preset.id);
-                    }}
+                    active={false}
+                    onPick={() => router.push(`/app/criar-videos?preset=${encodeURIComponent(preset.id)}`)}
                   />
                 ))}
               </div>
             ) : null}
           </>
-        ) : null}
-
-        {rightTab === "explore" && builderTab === "motion" ? (
-          <div>
-            <p style={{ color: "var(--tx2)", fontSize: 13.5, marginBottom: 14 }}>
-              Escolha o movimento que seu influencer vai performar. O vídeo final mantém câmera,
-              ritmo e energia do vídeo de referência.
-            </p>
-            <div className="motion-grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))" }}>
-              {motionList.map((preset) => (
-                <MotionCard
-                  key={preset.id}
-                  name={preset.name}
-                  thumbnail={preset.thumbnail}
-                  preview={preset.preview}
-                  active={motionPresetId === preset.id}
-                  onPick={() => setMotionPresetId(preset.id)}
-                />
-              ))}
-            </div>
-          </div>
         ) : null}
 
         {rightTab === "history" ? (
@@ -626,11 +455,7 @@ export function InfluencerStudio({
                     const fresh = await pollInfluencersAction().catch(() => null);
                     if (fresh) setInfluencers(fresh);
                   }}
-                  onUseMotion={() => {
-                    setBuilderTab("motion");
-                    setMotionInfluencerId(inf.id);
-                    setRightTab("explore");
-                  }}
+                  onUseMotion={() => router.push(`/app/criar-videos?influencer=${encodeURIComponent(inf.id)}`)}
                 />
               ))}
             </div>
@@ -676,47 +501,6 @@ export function InfluencerStudio({
 }
 
 /* ---------------- subcomponentes ---------------- */
-
-function MotionCard({
-  name,
-  thumbnail,
-  preview,
-  active,
-  onPick,
-}: {
-  name: string;
-  thumbnail: string;
-  preview: string;
-  active: boolean;
-  onPick: () => void;
-}) {
-  const [hover, setHover] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    if (hover) videoRef.current?.play().catch(() => undefined);
-    else videoRef.current?.pause();
-  }, [hover]);
-
-  return (
-    <button
-      type="button"
-      className="motion-card"
-      data-active={active}
-      onClick={onPick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-    >
-      {hover ? (
-        <video ref={videoRef} src={preview} poster={thumbnail} muted loop playsInline />
-      ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={thumbnail} alt={name} loading="lazy" />
-      )}
-      <span className="label">{name}</span>
-    </button>
-  );
-}
 
 function InfluencerCard({
   influencer,

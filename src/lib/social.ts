@@ -20,11 +20,16 @@ import type { SocialAccount } from "./db";
    simula a publicação. */
 
 export function tiktokOAuthConfigured(): boolean {
-  return Boolean(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET);
+  return Boolean(
+    process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET,
+  );
 }
 
 export function publicBaseUrl(): string {
-  return (process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(/\/$/, "");
+  return (process.env.PUBLIC_BASE_URL || "http://localhost:3000").replace(
+    /\/$/,
+    "",
+  );
 }
 
 export function tiktokAuthorizeUrl(state: string): string {
@@ -55,6 +60,7 @@ export async function tiktokExchangeCode(code: string): Promise<{
       redirect_uri: `${publicBaseUrl()}/api/oauth/tiktok/callback`,
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
   const data = (await response.json()) as {
     access_token?: string;
@@ -65,7 +71,11 @@ export async function tiktokExchangeCode(code: string): Promise<{
     error_description?: string;
   };
   if (!response.ok || !data.access_token) {
-    throw new Error(data.error_description || data.error || "Troca de código do TikTok falhou");
+    throw new Error(
+      data.error_description ||
+        data.error ||
+        "Troca de código do TikTok falhou",
+    );
   }
   return {
     accessToken: data.access_token,
@@ -88,40 +98,99 @@ export async function tiktokPublish(
   account: SocialAccount,
   input: { videoUrl: string; caption: string },
 ): Promise<string> {
-  const response = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${account.accessToken}`,
-      "Content-Type": "application/json; charset=UTF-8",
+  const response = await fetch(
+    "https://open.tiktokapis.com/v2/post/publish/video/init/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({
+        post_info: {
+          title: input.caption.slice(0, 2200),
+          privacy_level: "SELF_ONLY",
+          disable_duet: false,
+          disable_comment: false,
+          disable_stitch: false,
+        },
+        source_info: {
+          source: "PULL_FROM_URL",
+          video_url: input.videoUrl,
+        },
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
     },
-    body: JSON.stringify({
-      post_info: {
-        title: input.caption.slice(0, 2200),
-        privacy_level: "SELF_ONLY",
-        disable_duet: false,
-        disable_comment: false,
-        disable_stitch: false,
-      },
-      source_info: {
-        source: "PULL_FROM_URL",
-        video_url: input.videoUrl,
-      },
-    }),
-    cache: "no-store",
-  });
+  );
   const data = await readJson(response);
-  const publishId = (data.data as { publish_id?: string } | undefined)?.publish_id;
+  const publishId = (data.data as { publish_id?: string } | undefined)
+    ?.publish_id;
   if (!response.ok || !publishId) {
     const error = (data.error as { message?: string } | undefined)?.message;
-    throw new Error(error || `Publicação no TikTok falhou (HTTP ${response.status})`);
+    throw new Error(
+      error || `Publicação no TikTok falhou (HTTP ${response.status})`,
+    );
   }
   return publishId;
+}
+
+export async function tiktokPostStatus(
+  account: SocialAccount,
+  publishId: string,
+): Promise<{
+  status: "pending" | "posted" | "failed";
+  postedUrl?: string;
+  error?: string;
+}> {
+  const response = await fetch(
+    "https://open.tiktokapis.com/v2/post/publish/status/fetch/",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${account.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ publish_id: publishId }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    },
+  );
+  const result = await readJson(response);
+  const error = result.error as { code?: string; message?: string } | undefined;
+  if (!response.ok || (error?.code && error.code !== "ok"))
+    throw new Error(error?.message || "Não foi possível consultar o TikTok.");
+  const data = result.data as
+    | {
+        status?: string;
+        fail_reason?: string;
+        publicaly_available_post_id?: Array<string | number>;
+      }
+    | undefined;
+  if (data?.status === "FAILED")
+    return {
+      status: "failed",
+      error: data.fail_reason || "O TikTok rejeitou a publicação.",
+    };
+  if (data?.status !== "PUBLISH_COMPLETE") return { status: "pending" };
+  const id = data.publicaly_available_post_id?.[0];
+  return {
+    status: "posted",
+    ...(id
+      ? {
+          postedUrl: `https://www.tiktok.com/@${encodeURIComponent(account.username)}/video/${id}`,
+        }
+      : {}),
+  };
 }
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 /** Valida um token do Instagram Graph e devolve o username da conta. */
-export async function instagramVerify(igUserId: string, accessToken: string): Promise<string> {
+export async function instagramVerify(
+  igUserId: string,
+  accessToken: string,
+): Promise<string> {
   const response = await fetch(
     `${GRAPH}/${encodeURIComponent(igUserId)}?fields=username&access_token=${encodeURIComponent(accessToken)}`,
     { cache: "no-store" },
@@ -134,12 +203,13 @@ export async function instagramVerify(igUserId: string, accessToken: string): Pr
   return data.username;
 }
 
-/** Publica um Reel no Instagram: cria o container, espera processar, publica. */
-export async function instagramPublish(
+/** Upload starts before a later tick checks processing and publishes the Reel. */
+export async function instagramCreateContainer(
   account: SocialAccount,
   input: { videoUrl: string; caption: string },
 ): Promise<string> {
-  if (!account.igUserId || !account.accessToken) throw new Error("Conta do Instagram incompleta");
+  if (!account.igUserId || !account.accessToken)
+    throw new Error("Conta do Instagram incompleta");
 
   const create = await fetch(`${GRAPH}/${account.igUserId}/media`, {
     method: "POST",
@@ -151,6 +221,7 @@ export async function instagramPublish(
       access_token: account.accessToken,
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
   });
   const created = await readJson(create);
   const containerId = created.id;
@@ -158,29 +229,60 @@ export async function instagramPublish(
     const error = (created.error as { message?: string } | undefined)?.message;
     throw new Error(error || "Criação do container do Reel falhou");
   }
+  return containerId;
+}
 
-  // O Instagram processa o vídeo de forma assíncrona antes de permitir publicar.
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const status = await fetch(
-      `${GRAPH}/${containerId}?fields=status_code&access_token=${encodeURIComponent(account.accessToken)}`,
-      { cache: "no-store" },
+export async function instagramFinishContainer(
+  account: SocialAccount,
+  containerId: string,
+): Promise<{
+  status: "pending" | "posted" | "failed";
+  postedUrl?: string;
+  error?: string;
+}> {
+  const response = await fetch(
+    `${GRAPH}/${encodeURIComponent(containerId)}?fields=status_code&access_token=${encodeURIComponent(account.accessToken ?? "")}`,
+    { cache: "no-store", signal: AbortSignal.timeout(10_000) },
+  );
+  const payload = await readJson(response);
+  if (!response.ok)
+    throw new Error(
+      (payload.error as { message?: string } | undefined)?.message ||
+        "Não foi possível consultar o processamento do Reel.",
     );
-    const payload = await readJson(status);
-    if (payload.status_code === "FINISHED") break;
-    if (payload.status_code === "ERROR") throw new Error("O Instagram rejeitou o vídeo");
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-  }
-
+  if (payload.status_code === "ERROR" || payload.status_code === "EXPIRED")
+    return {
+      status: "failed",
+      error: "O Instagram rejeitou o vídeo ou o envio expirou.",
+    };
+  // PUBLISHED also covers a retry after an earlier successful media_publish.
+  if (payload.status_code === "PUBLISHED") return { status: "posted" };
+  if (payload.status_code !== "FINISHED") return { status: "pending" };
   const publish = await fetch(`${GRAPH}/${account.igUserId}/media_publish`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ creation_id: containerId, access_token: account.accessToken }),
+    body: JSON.stringify({
+      creation_id: containerId,
+      access_token: account.accessToken,
+    }),
     cache: "no-store",
+    signal: AbortSignal.timeout(10_000),
   });
   const published = await readJson(publish);
   if (!publish.ok || typeof published.id !== "string") {
-    const error = (published.error as { message?: string } | undefined)?.message;
+    const error = (published.error as { message?: string } | undefined)
+      ?.message;
     throw new Error(error || "Publicação do Reel falhou");
   }
-  return published.id;
+  const permalinkResponse = await fetch(
+    `${GRAPH}/${published.id}?fields=permalink&access_token=${encodeURIComponent(account.accessToken ?? "")}`,
+    { cache: "no-store", signal: AbortSignal.timeout(5000) },
+  ).catch(() => null);
+  const permalink = permalinkResponse?.ok
+    ? (await readJson(permalinkResponse)).permalink
+    : undefined;
+  return {
+    status: "posted",
+    ...(typeof permalink === "string" ? { postedUrl: permalink } : {}),
+  };
 }

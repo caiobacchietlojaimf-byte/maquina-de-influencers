@@ -1,5 +1,6 @@
 import { requirePageUser } from "@/lib/auth";
-import { listInfluencers, listVirals } from "@/lib/db";
+import { listInfluencers } from "@/lib/db";
+import { listAiVirals } from "@/lib/miner";
 import { MinedVirals } from "@/components/mined-virals";
 
 export const metadata = { title: "Vídeos Virais" };
@@ -12,7 +13,7 @@ export default async function ViraisPage() {
   // em background assim que a página monta (getMinedViralsAction).
   const [influencers, virals] = await Promise.all([
     listInfluencers(user.id),
-    listVirals("BR"),
+    listAiVirals(),
   ]);
   const ready = influencers.filter((i) => i.status === "completed" && i.imageUrl);
 
@@ -24,7 +25,7 @@ export default async function ViraisPage() {
             Vídeos <span style={{ color: "var(--accent)" }}>Virais</span>
           </h1>
           <p className="sub">
-            Tendências duplicáveis mineradas do TikTok, efeitos virais prontos e os perfis de IA que estão dominando o jogo — com os vídeos deles prontos para duplicar. Escolha o vídeo, escolha seu influencer e duplique.
+            Explore os personagens de IA do Instagram e TikTok. Assista aos vídeos disponíveis, encontre referências e crie uma nova cena com seu influencer.
           </p>
         </div>
       </div>

@@ -1,98 +1,111 @@
 import "server-only";
 
 import {
+  claimScheduledPost,
   getPostOwnerAccount,
   getVideoById,
   listDuePosts,
+  listPendingPosts,
   updatePost,
   type Post,
 } from "./db";
-import { instagramPublish, tiktokPublish } from "./social";
+import {
+  instagramCreateContainer,
+  instagramFinishContainer,
+  tiktokPublish,
+  tiktokPostStatus,
+} from "./social";
 
-/* Agendador de publicações: processa a fila de posts vencidos. Roda em dois
-   gatilhos — o loop do instrumentation (a cada 60s) e o polling da página
-   Publicar — então um post agendado sai mesmo sem ninguém com a página aberta. */
-
-/** Simulação (conta demo): o post "publica" depois desse atraso. */
-const DEMO_POSTING_DELAY_MS = 8000;
-
+// The server loop, page polling and authenticated cron share one queue.
+// A database claim prevents two workers from starting the same upload.
 let running = false;
 
 export async function publisherTick(): Promise<void> {
   if (running) return;
   running = true;
+  const deadline = Date.now() + 25_000;
   try {
+    const pending = await listPendingPosts();
+    for (const post of pending.slice(0, 20)) {
+      if (Date.now() > deadline) return;
+      await refreshPost(post).catch(async () => {
+        await updatePost(post.id, {
+          error:
+            "A consulta à rede está indisponível. Tentaremos confirmar novamente.",
+        });
+      });
+    }
     const due = await listDuePosts(Date.now());
-    for (const post of due) {
-      await processPost(post).catch(() => undefined);
+    for (const post of due.slice(0, 10)) {
+      if (Date.now() > deadline) return;
+      await startPost(post).catch(() => undefined);
     }
   } finally {
     running = false;
   }
 }
 
-async function processPost(post: Post): Promise<void> {
-  const account = await getPostOwnerAccount(post);
-  if (!account) {
-    await updatePost(post.id, {
-      status: "failed",
-      error: "Nenhuma conta conectada para essa rede. Conecte em Publicar.",
-    });
-    return;
-  }
-  const video = await getVideoById(post.videoId);
-  if (!video?.resultUrl) {
-    await updatePost(post.id, { status: "failed", error: "O vídeo da publicação não está pronto" });
-    return;
-  }
-
-  await updatePost(post.id, { status: "posting" });
-
-  if (account.status === "demo") {
-    // Modo demonstração: simula o tempo de upload e marca como publicado.
-    await new Promise((resolve) => setTimeout(resolve, DEMO_POSTING_DELAY_MS));
-    const fakeId = Math.random().toString(36).slice(2, 10);
-    await updatePost(post.id, {
-      status: "posted",
-      postedAt: Date.now(),
-      postedUrl:
-        post.platform === "tiktok"
-          ? `https://www.tiktok.com/@${account.username}/video/demo-${fakeId}`
-          : `https://www.instagram.com/reel/demo-${fakeId}/`,
-    });
-    return;
-  }
-
+async function startPost(post: Post): Promise<void> {
+  if (!(await claimScheduledPost(post))) return;
   try {
-    if (post.platform === "tiktok") {
-      const publishId = await tiktokPublish(account, {
-        videoUrl: video.resultUrl,
-        caption: post.caption,
-      });
+    const account = await getPostOwnerAccount(post);
+    if (!account) throw new Error("Conecte a conta dessa rede em Publicar.");
+    const video = await getVideoById(post.videoId);
+    if (video?.status !== "completed" || !video.resultUrl)
+      throw new Error("O vídeo da publicação não está pronto.");
+    const demo =
+      post.mode === "demo" || (!post.mode && account.status === "demo");
+    if (demo) {
       await updatePost(post.id, {
+        mode: "demo",
         status: "posted",
         postedAt: Date.now(),
-        postedUrl: `https://www.tiktok.com/@${account.username}`,
+        postedUrl: undefined,
         error: undefined,
       });
-      void publishId;
-    } else {
-      const mediaId = await instagramPublish(account, {
-        videoUrl: video.resultUrl,
-        caption: post.caption,
-      });
-      await updatePost(post.id, {
-        status: "posted",
-        postedAt: Date.now(),
-        postedUrl: `https://www.instagram.com/${account.username}/`,
-        error: undefined,
-      });
-      void mediaId;
+      return;
     }
+    if (account.status !== "connected")
+      throw new Error(
+        "A conta real foi desconectada. Reconecte antes de publicar.",
+      );
+    if (account.expiresAt && account.expiresAt <= Date.now())
+      throw new Error("A autorização expirou. Reconecte a conta.");
+    const input = { videoUrl: video.resultUrl, caption: post.caption };
+    const providerId =
+      post.platform === "tiktok"
+        ? await tiktokPublish(account, input)
+        : await instagramCreateContainer(account, input);
+    // An accepted upload is not a publication; a later tick confirms it.
+    await updatePost(post.id, {
+      status: "posting",
+      mode: "live",
+      providerId,
+      error: undefined,
+    });
   } catch (caught) {
     await updatePost(post.id, {
       status: "failed",
-      error: caught instanceof Error ? caught.message : String(caught),
+      error:
+        caught instanceof Error ? caught.message : "Falha ao enviar o vídeo.",
     });
   }
+}
+
+async function refreshPost(post: Post): Promise<void> {
+  if (!post.providerId || post.mode === "demo") return;
+  const account = await getPostOwnerAccount(post);
+  if (!account || account.status !== "connected") return;
+  // Transient status errors remain pending; retrying does not duplicate uploads.
+  const result =
+    post.platform === "tiktok"
+      ? await tiktokPostStatus(account, post.providerId)
+      : await instagramFinishContainer(account, post.providerId);
+  if (result.status === "pending") return;
+  await updatePost(post.id, {
+    status: result.status === "posted" ? "posted" : "failed",
+    postedAt: result.status === "posted" ? Date.now() : undefined,
+    postedUrl: result.postedUrl,
+    error: result.error,
+  });
 }

@@ -1,166 +1,189 @@
 import "server-only";
 
-import { lastMinedAt, upsertVirals, type Viral } from "./db";
-
-/* Mineração de vídeos virais.
-   TikTok: feed de tendências por região + resolução de URL via tikwm.com
-   (API pública usada pelo ecossistema de downloaders, sem chave).
-   Instagram: sem API pública de tendências — entra por import de URL direta
-   de vídeo (.mp4) ou permanece com a galeria curada de efeitos. */
+import { listVirals, upsertVirals, type Viral } from "./db";
+import { AI_DISCOVERY_QUERIES, isAiCharacterVideo, isMotionReference, parseSocialVideoUrl, type DiscoveryCursors } from "./ai-discovery";
 
 const TIKWM = "https://www.tikwm.com/api";
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-
-/** Cache do feed por região: só minera de novo depois desse intervalo. */
+const AI_REGION = "AI";
 const FEED_TTL_MS = 30 * 60_000;
-
-export const MINING_REGIONS = [
-  { id: "BR", label: "Brasil" },
-  { id: "US", label: "EUA" },
-  { id: "ES", label: "Espanha" },
-  { id: "JP", label: "Japão" },
-] as const;
+const REQUEST_TIMEOUT_MS = 10_000;
+const RUN_TIMEOUT_MS = 40_000;
+const pending = new Map<string, Promise<MiningResult>>();
+let providerUnavailableUntil = 0;
+let providerMessage = "";
+let nextRequestAt = 0;
+let requestQueue: Promise<unknown> = Promise.resolve();
 
 type TikwmItem = {
-  video_id?: string;
-  id?: string;
-  title?: string;
-  cover?: string;
-  origin_cover?: string;
-  duration?: number;
-  play?: string;
-  play_count?: number;
-  digg_count?: number;
-  comment_count?: number;
-  share_count?: number;
-  region?: string;
+  video_id?: string; id?: string; aweme_id?: string; title?: string;
+  cover?: string; origin_cover?: string; duration?: number;
+  play?: string; hdplay?: string; images?: unknown[];
+  play_count?: number; digg_count?: number; comment_count?: number; share_count?: number;
   music_info?: { title?: string };
   author?: { unique_id?: string; nickname?: string };
 };
+type TikwmPage = { videos?: TikwmItem[]; cursor?: string | number; hasMore?: boolean | number };
+export type MiningResult = { added: number; cursors: DiscoveryCursors; hasMore: boolean; warning?: string };
 
-async function tikwm(pathAndQuery: string): Promise<unknown> {
-  const response = await fetch(`${TIKWM}${pathAndQuery}`, {
-    headers: { "User-Agent": UA },
-    cache: "no-store",
-  });
-  if (!response.ok) throw new Error(`Mineração falhou (HTTP ${response.status})`);
-  const payload = (await response.json()) as { code?: number; msg?: string; data?: unknown };
-  if (payload.code !== 0) throw new Error(payload.msg || "Mineração falhou");
-  return payload.data;
+class MiningProviderError extends Error {
+  constructor(message: string, readonly unavailable = false) { super(message); }
 }
 
-function toViral(item: TikwmItem, region: string): Omit<Viral, "id"> | null {
-  const videoId = item.video_id ?? item.id;
-  const play = item.play;
-  if (!videoId || !play) return null;
+/** The provider is rate limited. Serialize calls instead of launching a search burst. */
+async function tikwm(pathAndQuery: string): Promise<unknown> {
+  const task = requestQueue.catch(() => undefined).then(async () => {
+    if (Date.now() < providerUnavailableUntil) throw new MiningProviderError(providerMessage, true);
+    const delay = nextRequestAt - Date.now();
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    nextRequestAt = Date.now() + 1_100;
+    let response: Response;
+    try {
+      response = await fetch(`${TIKWM}${pathAndQuery}`, {
+        headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch {
+      throw new MiningProviderError("A busca do TikTok demorou para responder. Seus vídeos salvos continuam disponíveis.");
+    }
+    if ([403, 429].includes(response.status)) {
+      providerMessage = response.status === 429
+        ? "O provedor do TikTok atingiu o limite de consultas. Tente atualizar em alguns minutos."
+        : "O provedor do TikTok está bloqueando a consulta automática. Os vídeos já captados continuam disponíveis.";
+      providerUnavailableUntil = Date.now() + 60_000;
+      throw new MiningProviderError(providerMessage, true);
+    }
+    if (!response.ok) throw new MiningProviderError(`Busca do TikTok indisponível (HTTP ${response.status}).`);
+    let payload: { code?: number; msg?: string; data?: unknown };
+    try { payload = await response.json(); } catch { throw new MiningProviderError("O provedor do TikTok devolveu uma resposta inválida."); }
+    if (payload.code !== 0) throw new MiningProviderError("O provedor não conseguiu consultar este vídeo ou pesquisa agora.");
+    return payload.data;
+  });
+  requestQueue = task;
+  return task;
+}
+
+function mediaUrl(value: string | undefined): string {
+  if (!value) return "";
+  try {
+    const url = new URL(value, "https://www.tikwm.com");
+    return ["https:", "http:"].includes(url.protocol) ? url.href : "";
+  } catch { return ""; }
+}
+
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, value) : 0;
+}
+
+function toViral(item: TikwmItem): Omit<Viral, "id"> | null {
+  const videoId = item.video_id ?? item.aweme_id ?? item.id;
+  const playUrl = mediaUrl(item.play || item.hdplay);
   const handle = item.author?.unique_id ?? "";
+  if (!videoId || !/^\d+$/.test(videoId) || !playUrl || item.images?.length || count(item.duration) === 0) return null;
   return {
-    source: "tiktok",
-    videoId,
-    pageUrl: handle
-      ? `https://www.tiktok.com/@${handle}/video/${videoId}`
-      : `https://www.tiktok.com/video/${videoId}`,
-    playUrl: play.startsWith("http") ? play : `https://www.tikwm.com${play}`,
-    coverUrl: item.origin_cover || item.cover || "",
-    title: (item.title || "").trim() || "Sem legenda",
-    authorName: item.author?.nickname ?? handle ?? "Desconhecido",
-    authorHandle: handle,
-    duration: item.duration ?? 0,
-    views: item.play_count ?? 0,
-    likes: item.digg_count ?? 0,
-    comments: item.comment_count ?? 0,
-    shares: item.share_count ?? 0,
+    source: "tiktok", videoId,
+    pageUrl: `https://www.tiktok.com/@${encodeURIComponent(handle || "_")}/video/${videoId}`,
+    playUrl, coverUrl: mediaUrl(item.origin_cover || item.cover),
+    title: (item.title || "").trim() || "Sem legenda", authorName: item.author?.nickname || handle || "Criador",
+    authorHandle: handle, duration: count(item.duration), views: count(item.play_count), likes: count(item.digg_count),
+    comments: count(item.comment_count), shares: count(item.share_count),
     ...(item.music_info?.title ? { musicTitle: item.music_info.title } : {}),
-    region: item.region && item.region.length === 2 ? region : region,
-    minedAt: Date.now(),
+    region: AI_REGION, minedAt: Date.now(),
   };
 }
 
-/* ---------- filtro de duplicáveis ----------
-   O feed bruto vem com notícia, novela, publicidade e corte longo — nada disso
-   serve para trocar o protagonista. Só entra no catálogo o que tem cara de
-   trend duplicável: curto (3–35s, faixa do motion transfer) e sem termos de
-   mídia/anúncio no título ou no autor. */
-
-const MEDIA_AUTHOR = /(news|jornal|portal|noticia|not[ií]cias|g1|globo|sbt|record|band|cnn|metropoles|uol|r7|folha|estadao|tv[^a-z]|official.*news)/i;
-const BLOCKED_TITLE = /(elei[cç][õo]|pol[ií]tica|presidente|governo|governador|prefeit|senador|deputad|pol[ií]cia|acidente|motorista|caminh[ãa]o|rodovia|urgente|not[ií]cia|jornal|morre|morte|faleceu|trag[eé]dia|incêndio|assalto|cap[ií]tulo|novela|epis[oó]dio|\bep\s?\d|#ad\b|publicidade|promo[cç][ãa]o|desconto|sorteio|regulamento|cupom)/i;
-const TREND_HINT = /(#(trend|dance|danc[ao]|challenge|meme|humor|comedia|com[eé]dia|fy|fyp|foryou|viral|pov|transition|outfit|grwm|lipsync|dueto))/i;
-
 export function isDuplicable(viral: Pick<Viral, "duration" | "title" | "authorHandle" | "authorName">): boolean {
-  if (viral.duration < 3 || viral.duration > 35) return false;
-  const author = `${viral.authorHandle} ${viral.authorName}`;
-  if (MEDIA_AUTHOR.test(author)) return false;
-  if (BLOCKED_TITLE.test(viral.title)) return false;
-  return true;
+  return isAiCharacterVideo(viral) && isMotionReference(viral.duration);
 }
 
-/** Pontuação de "duplicabilidade": curto + engajado + com hashtag de trend. */
-function trendScore(viral: Omit<Viral, "id">): number {
-  let score = viral.views;
-  if (TREND_HINT.test(viral.title)) score *= 1.6;
-  if (viral.duration >= 5 && viral.duration <= 20) score *= 1.3;
-  if (viral.views > 0 && viral.likes / viral.views > 0.05) score *= 1.2;
-  return score;
+/** Keep the former generic feed out of the UI, including during SSR/cache fallback. */
+export async function listAiVirals(): Promise<Viral[]> {
+  return (await listVirals(AI_REGION)).filter(isAiCharacterVideo);
 }
 
-/** Minera o feed de tendências de uma região. Respeita o TTL salvo no banco,
-    a menos que `force`. Devolve quantos vídeos novos entraram. */
-export async function mineTrending(region: string, options?: { force?: boolean }): Promise<number> {
-  if (!options?.force && Date.now() - (await lastMinedAt(region)) < FEED_TTL_MS) return 0;
-  const data = (await tikwm(`/feed/list?region=${encodeURIComponent(region)}&count=30`)) as
-    | TikwmItem[]
-    | null;
-  if (!Array.isArray(data)) throw new Error("Feed de tendências vazio");
-  const virals = data
-    .map((item) => toViral(item, region))
-    .filter((v): v is Omit<Viral, "id"> => v !== null)
-    .filter(isDuplicable)
-    .sort((a, b) => trendScore(b) - trendScore(a));
-  return upsertVirals(virals);
+function cleanCursors(input?: DiscoveryCursors): DiscoveryCursors {
+  const result: DiscoveryCursors = {};
+  for (const query of AI_DISCOVERY_QUERIES) {
+    const cursor = input ? input[query] : "0";
+    if (typeof cursor === "string" && /^[a-z0-9_.-]{1,100}$/i.test(cursor)) result[query] = cursor;
+  }
+  return result;
 }
 
-const TIKTOK_URL = /tiktok\.com\//i;
-const DIRECT_VIDEO = /^https?:\/\/\S+\.(mp4|mov|webm)(\?\S*)?$/i;
-const INSTAGRAM_URL = /instagram\.com\/(reel|reels|p)\//i;
+/** Search actual character names and explicit AI-character terms, one page per query.
+ * Cursors make subsequent pages reachable; #viral/regional popularity never qualifies. */
+export async function mineTrending(_region = AI_REGION, options?: { force?: boolean; cursors?: DiscoveryCursors }): Promise<MiningResult> {
+  const cursors = cleanCursors(options?.cursors);
+  const key = JSON.stringify(cursors);
+  const running = pending.get(key);
+  if (running) return running;
+  const task = (async (): Promise<MiningResult> => {
+    const cached = await listAiVirals();
+    if (!options?.force && !options?.cursors && cached.length && Date.now() - Math.max(...cached.map((v) => v.minedAt)) < FEED_TTL_MS) {
+      return { added: 0, cursors, hasMore: true };
+    }
+    const deadline = Date.now() + RUN_TIMEOUT_MS;
+    const collected = new Map<string, Omit<Viral, "id">>();
+    const next: DiscoveryCursors = { ...cursors };
+    let warning: string | undefined;
+    let completed = 0;
+    for (const [query, cursor] of Object.entries(cursors)) {
+      if (Date.now() > deadline) { warning = "A busca parcial foi salva. Use Buscar mais para continuar."; break; }
+      try {
+        const data = await tikwm(`/feed/search?${new URLSearchParams({ keywords: query, count: "20", cursor })}`) as TikwmPage | null;
+        if (!data || !Array.isArray(data.videos)) throw new MiningProviderError("O provedor do TikTok não retornou uma lista de vídeos válida.");
+        completed += 1;
+        for (const item of data.videos) {
+          const viral = toViral(item);
+          if (viral && isAiCharacterVideo(viral)) collected.set(`${viral.source}:${viral.videoId}`, viral);
+        }
+        const nextCursor = String(data.cursor ?? "");
+        if ((data.hasMore === true || data.hasMore === 1) && nextCursor && nextCursor !== cursor && /^[a-z0-9_.-]{1,100}$/i.test(nextCursor)) next[query] = nextCursor;
+        else delete next[query];
+      } catch (error) {
+        warning = error instanceof Error ? error.message : "A busca do TikTok está indisponível agora.";
+        if (error instanceof MiningProviderError && error.unavailable) break;
+      }
+    }
+    const added = await upsertVirals([...collected.values()]);
+    if (!completed && warning) throw new Error(warning);
+    return { added, cursors: next, hasMore: Object.keys(next).length > 0, ...(warning ? { warning } : {}) };
+  })();
+  pending.set(key, task);
+  try { return await task; } finally { pending.delete(key); }
+}
 
-/** Importa um vídeo específico por URL (TikTok resolvido via tikwm; mp4 direto
-    aceito de qualquer origem, inclusive links de CDN do Instagram). */
-export async function mineByUrl(url: string): Promise<{ added: boolean; title: string }> {
-  const clean = url.trim();
-  if (TIKTOK_URL.test(clean)) {
-    const data = (await tikwm(`/?url=${encodeURIComponent(clean)}`)) as TikwmItem | null;
-    const viral = data ? toViral(data, "BR") : null;
-    if (!viral) throw new Error("Não consegui ler esse vídeo do TikTok");
-    viral.pageUrl = clean;
-    await upsertVirals([viral]);
-    return { added: true, title: viral.title };
+export async function refreshViralMedia(viral: Viral): Promise<Viral> {
+  if (viral.source !== "tiktok") return viral;
+  const parsed = parseSocialVideoUrl(viral.pageUrl);
+  if (!parsed || parsed.source !== "tiktok") throw new Error("Link original do vídeo inválido.");
+  const item = await tikwm(`/?url=${encodeURIComponent(parsed.url)}`) as TikwmItem | null;
+  const refreshed = item ? toViral(item) : null;
+  if (!refreshed || refreshed.videoId !== viral.videoId || !isAiCharacterVideo(refreshed)) throw new Error("Não foi possível renovar o vídeo original agora.");
+  await upsertVirals([refreshed]);
+  return { ...refreshed, id: viral.id };
+}
+
+/** Import only supported social URLs whose resolved metadata relates to AI characters. */
+export async function mineByUrl(input: string): Promise<{ added: boolean; title: string }> {
+  const parsed = parseSocialVideoUrl(input);
+  if (!parsed) throw new Error("Cole o link de um vídeo do TikTok ou Reel do Instagram relacionado a personagens de IA.");
+  if (parsed.source === "instagram") {
+    const { AI_PROFILES } = await import("@/data/ai-profiles");
+    const profile = AI_PROFILES.find((p) => p.posts.some((post) => post.code === parsed.code));
+    const post = profile?.posts.find((p) => p.code === parsed.code);
+    if (!profile || !post) throw new Error("Este Reel ainda não faz parte dos perfis de IA captados. A importação automática de outros Reels precisa de uma fonte de mídia autorizada do Instagram.");
+    if (!post.video) throw new Error("Este Reel está na aba Perfis de IA. O Instagram ainda não disponibilizou um arquivo para reprodução direta.");
+    const added = await upsertVirals([{
+      source: "instagram", pageUrl: parsed.url, playUrl: post.video, coverUrl: `/reel-thumbs/${post.code}.jpg`,
+      title: post.scene, authorName: profile.name, authorHandle: profile.handle,
+      duration: post.metrics?.duration ?? 0, views: post.metrics?.views ?? 0, likes: post.metrics?.likes ?? 0,
+      comments: post.metrics?.comments ?? 0, shares: 0, region: AI_REGION, minedAt: Date.now(),
+    }]);
+    return { added: added > 0, title: post.scene };
   }
-  if (DIRECT_VIDEO.test(clean)) {
-    const title = decodeURIComponent(clean.split("/").pop()?.split("?")[0] ?? "Vídeo importado");
-    await upsertVirals([
-      {
-        source: "url",
-        pageUrl: clean,
-        playUrl: clean,
-        coverUrl: "",
-        title,
-        authorName: "Importado por URL",
-        authorHandle: "",
-        duration: 0,
-        views: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        region: "BR",
-        minedAt: Date.now(),
-      },
-    ]);
-    return { added: true, title };
-  }
-  if (INSTAGRAM_URL.test(clean)) {
-    throw new Error(
-      "O Instagram não expõe o arquivo do Reel publicamente. Abra o Reel, copie o link direto do vídeo (.mp4) e cole aqui — ou use uma tendência do TikTok.",
-    );
-  }
-  throw new Error("Cole um link do TikTok ou uma URL direta de vídeo (.mp4)");
+  const item = await tikwm(`/?url=${encodeURIComponent(parsed.url)}`) as TikwmItem | null;
+  const viral = item ? toViral(item) : null;
+  if (!viral) throw new Error("Este link não retornou um vídeo reproduzível do TikTok.");
+  if (!isAiCharacterVideo(viral)) throw new Error("O autor e a legenda não identificam um personagem de IA ou um dos perfis acompanhados. Vídeos genéricos não entram neste catálogo.");
+  const added = await upsertVirals([viral]);
+  return { added: added > 0, title: viral.title };
 }

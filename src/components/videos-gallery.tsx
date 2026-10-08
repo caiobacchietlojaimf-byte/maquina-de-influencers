@@ -39,9 +39,9 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
         <div className="big">Nenhum vídeo ainda</div>
         <p>Aplique um movimento no seu influencer ou duplique uma tendência viral.</p>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
-          <Link href="/app/influencers?aba=movimento" className="btn btn-accent">
+          <Link href="/app/criar-videos" className="btn btn-accent">
             <Wand2 size={16} />
-            Aplicar movimento
+            Criar Vídeos
           </Link>
           <Link href="/app/virais" className="btn btn-ghost">
             <Flame size={16} />

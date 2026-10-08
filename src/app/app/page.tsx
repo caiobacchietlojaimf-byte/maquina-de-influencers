@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clapperboard, Flame, Send, Users } from "lucide-react";
+import { Clapperboard, Flame, Send, Users, Wand2 } from "lucide-react";
 
 import { requirePageUser } from "@/lib/auth";
 import { listInfluencers, listPosts, listVideos } from "@/lib/db";
@@ -103,6 +103,14 @@ export default async function HomePage() {
             máquina decidir.
           </p>
           <span className="go">Abrir estúdio →</span>
+        </Link>
+        <Link href="/app/criar-videos" className="home-card">
+          <div className="icon">
+            <Wand2 size={19} />
+          </div>
+          <h3>Criar Vídeos</h3>
+          <p>Escolha seu influencer e um movimento de referência, ajuste a cena e gere seu vídeo.</p>
+          <span className="go">Criar um vídeo →</span>
         </Link>
         <Link href="/app/videos" className="home-card">
           <div className="icon">

@@ -1,6 +1,7 @@
 /* Influencers de IA reais em alta — top reels por views com métricas
    colhidas do Instagram (snapshot) e prompt de duplicação por vídeo.
-   GERADO por gen-profiles.mjs; edite o gerador, não este arquivo à mão. */
+   Catálogo inicial gerado por gen-profiles.mjs, complementado por snapshots
+   verificados. Proveniência: docs/viral-catalog-provenance.md. */
 
 export type ReelMetrics = {
   views?: number;
@@ -9,17 +10,21 @@ export type ReelMetrics = {
   /** epoch segundos do post original. */
   postedAt?: number;
   duration?: number;
+  /** Data ISO (AAAA-MM-DD) de observação das métricas; não é data de publicação. */
+  observedAt?: string;
 };
 
 export type ProfilePost = {
   code: string;
   scene: string;
   prompt: string;
-  /** proporção largura/altura do vídeo (da capa). */
+  /** Proporção usada no card; referências sem mídia usam o padrão 9:16. */
   ar: number;
-  /** false = o Instagram bloqueia este reel em /embed/ (abrir no IG). */
+  /** false = reprodução embutida indisponível ou não verificada (abrir no IG). */
   embeddable: boolean;
-  /** caminho do mp4 hospedado no sistema (player nativo); ausente = embed. */
+  /** Capa disponível; um avatar pode representar referências sem capa verificada. */
+  thumbnail?: string;
+  /** Caminho do mp4 hospedado no sistema; ausência não garante disponibilidade de embed. */
   video?: string;
   metrics?: ReelMetrics;
 };
@@ -43,7 +48,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
     bio: "Influencer de IA brasileiro em alta: lifestyle, humor e trends com identidade consistente.",
     url: "https://www.instagram.com/moroniduarte/",
     avatar: "/avatars/moroniduarte.jpg",
-    followers: "263 mil",
+    followers: "308 mil",
     posts: [
       {
         code: "DeBwwYiIO-F",
@@ -51,7 +56,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         prompt: "The character from the reference image stars in this reel: performing this trending reel scene with sharp timing and charisma, same framing and energy as the original. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
         ar: 0.5625,
         embeddable: false,
-        metrics: { likes: 234920, comments: 3102, postedAt: 1791061358 },
+        metrics: { views: 7400000, likes: 245000, comments: 3240, postedAt: 1791061358, duration: 21.755645, observedAt: "2026-10-08" },
       },
       {
         code: "DeHKjppIP1s",
@@ -86,7 +91,7 @@ export const AI_PROFILES: readonly AiProfile[] = [
         ar: 0.5634,
         embeddable: true,
         video: "/reel-videos/DeBsCZbIQ2k.mp4",
-        metrics: { likes: 41829, comments: 998, postedAt: 1791018055 },
+        metrics: { views: 2700000, likes: 47300, comments: 1075, postedAt: 1791018055, observedAt: "2026-10-08" },
       },
       {
         code: "DeH2G83ISgh",
@@ -114,6 +119,177 @@ export const AI_PROFILES: readonly AiProfile[] = [
         embeddable: true,
         video: "/reel-videos/Dd_iAosITdb.mp4",
         metrics: { likes: 38015, comments: 566, postedAt: 1790945748 },
+      },
+      {
+        code: "DeEgs-dIaFQ",
+        scene: "Reel de @moroniduarte · DeEgs-dIaFQ",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 3200000, likes: 30600, comments: 288, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeND-2PoU4h",
+        scene: "Reel de @moroniduarte · DeND-2PoU4h",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 321000, likes: 2136, comments: 70, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNDTR9o5dM",
+        scene: "Reel de @moroniduarte · DeNDTR9o5dM",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 282000, likes: 2509, comments: 82, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNCmftIZa6",
+        scene: "Reel de @moroniduarte · DeNCmftIZa6",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 189000, likes: 1276, comments: 55, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNCGJDo1nz",
+        scene: "Reel de @moroniduarte · DeNCGJDo1nz",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 397000, likes: 3989, comments: 101, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNB-sNIgH5",
+        scene: "Reel de @moroniduarte · DeNB-sNIgH5",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 251000, likes: 2578, comments: 59, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNBw4UILFL",
+        scene: "Reel de @moroniduarte · DeNBw4UILFL",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 803000, likes: 33400, comments: 1060, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNAOuUI4-n",
+        scene: "Reel de @moroniduarte · DeNAOuUI4-n",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 144000, likes: 1436, comments: 38, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNBCdSI1fb",
+        scene: "Reel de @moroniduarte · DeNBCdSI1fb",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 275000, likes: 4204, comments: 113, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNA4h2o_3a",
+        scene: "Reel de @moroniduarte · DeNA4h2o_3a",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 524000, likes: 13700, comments: 176, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNA2VkoKye",
+        scene: "Reel de @moroniduarte · DeNA2VkoKye",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 199000, likes: 4637, comments: 106, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNAU0rIgcH",
+        scene: "Reel de @moroniduarte · DeNAU0rIgcH",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 190000, likes: 2785, comments: 90, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeNADsLocf7",
+        scene: "Reel de @moroniduarte · DeNADsLocf7",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 2300000, likes: 67900, comments: 652, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeM_8SBomYF",
+        scene: "Reel de @moroniduarte · DeM_8SBomYF",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 93500, likes: 534, comments: 17, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeM_3h3ow7X",
+        scene: "Reel de @moroniduarte · DeM_3h3ow7X",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 97500, likes: 756, comments: 19, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeM_t9hoBda",
+        scene: "Reel de @moroniduarte · DeM_t9hoBda",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 95100, likes: 1084, comments: 36, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeM_q8qIRrG",
+        scene: "Reel de @moroniduarte · DeM_q8qIRrG",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 91800, likes: 790, comments: 24, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeM_l1EIJlq",
+        scene: "Reel de @moroniduarte · DeM_l1EIJlq",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 145000, likes: 4743, comments: 83, observedAt: "2026-10-08" },
+      },
+      {
+        code: "DeM_hWDIVbE",
+        scene: "Reel de @moroniduarte · DeM_hWDIVbE",
+        prompt: "Create an original vertical 9:16 short video starring the character from the reference image. Preserve the character identity and outfit, with natural lighting, expressive movement and a clear visual hook. Use an original setting and sequence with engaging pacing.",
+        ar: 0.5625,
+        embeddable: false,
+        thumbnail: "/avatars/moroniduarte.jpg",
+        metrics: { views: 110000, likes: 3105, comments: 56, observedAt: "2026-10-08" },
       },
     ],
   },

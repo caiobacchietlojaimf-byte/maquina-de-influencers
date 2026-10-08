@@ -1,5 +1,10 @@
 import { requirePageUser } from "@/lib/auth";
-import { listPosts, listSocialAccounts, listVideos } from "@/lib/db";
+import {
+  listInfluencers,
+  listPosts,
+  listSocialAccounts,
+  listVideos,
+} from "@/lib/db";
 import { tiktokOAuthConfigured } from "@/lib/social";
 import { PublishCenter } from "@/components/publish-center";
 
@@ -14,12 +19,15 @@ export default async function PublicarPage({
   const user = await requirePageUser();
   const { video, conectado, erro } = await searchParams;
 
-  const [videosAll, accounts, posts] = await Promise.all([
+  const [videosAll, accounts, posts, influencers] = await Promise.all([
     listVideos(user.id),
     listSocialAccounts(user.id),
     listPosts(user.id),
+    listInfluencers(user.id),
   ]);
-  const completed = videosAll.filter((v) => v.status === "completed" && v.resultUrl);
+  const completed = videosAll.filter(
+    (v) => v.status === "completed" && v.resultUrl,
+  );
 
   return (
     <div>
@@ -29,8 +37,9 @@ export default async function PublicarPage({
             Publicar <span style={{ color: "var(--accent)" }}>& Agendar</span>
           </h1>
           <p className="sub">
-            O último passo da máquina: conecte suas contas, escolha um vídeo gerado, escreva a
-            legenda e publique agora ou agende. A fila roda sozinha no servidor.
+            Prepare seus Reels e TikToks com os personagens de IA: vídeo,
+            legenda e horário em um só lugar. Salve rascunhos e revise tudo
+            antes de publicar.
           </p>
         </div>
       </div>
@@ -48,10 +57,23 @@ export default async function PublicarPage({
           resultUrl: v.resultUrl!,
           thumbnailUrl: v.thumbnailUrl,
           kind: v.kind,
+          characterName: influencers.find(
+            (influencer) => influencer.id === v.influencerId,
+          )?.name,
         }))}
         tiktokOAuth={tiktokOAuthConfigured()}
+        backgroundPublishing={
+          !process.env.VERCEL ||
+          process.env.PUBLICATION_CRON_CONFIGURED === "true"
+        }
         preselectVideoId={video ?? null}
-        flash={conectado ? `Conta do ${conectado} conectada!` : erro ? "A conexão OAuth falhou — tente de novo." : null}
+        flash={
+          conectado
+            ? `Conta do ${conectado} conectada!`
+            : erro
+              ? "A conexão OAuth falhou — tente de novo."
+              : null
+        }
       />
     </div>
   );

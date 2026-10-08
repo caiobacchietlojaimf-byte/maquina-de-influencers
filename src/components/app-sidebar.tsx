@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Clapperboard, Flame, Home, LogOut, Menu, Send, Users } from "lucide-react";
+import { Clapperboard, Flame, Home, LogOut, Menu, Send, Users, Wand2 } from "lucide-react";
 
 import { LogoMark } from "./logo";
 
@@ -11,6 +11,7 @@ const ITEMS = [
   { href: "/app", label: "Início", icon: Home, exact: true },
   { href: "/app/virais", label: "Vídeos Virais", icon: Flame, badge: "Hot" },
   { href: "/app/influencers", label: "Influencers", icon: Users, badge: "Novo" },
+  { href: "/app/criar-videos", label: "Criar Vídeos", icon: Wand2, badge: "Novo" },
   { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
   { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },
 ] as const;
@@ -81,6 +82,7 @@ export function AppSidebar({
               href={item.href}
               className="nav-item"
               data-active={active}
+              aria-current={active ? "page" : undefined}
               title={collapsed ? item.label : undefined}
             >
               <Icon size={18} />

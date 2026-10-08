@@ -94,7 +94,7 @@ export type SocialAccount = {
   connectedAt: number;
 };
 
-export type PostStatus = "scheduled" | "posting" | "posted" | "failed";
+export type PostStatus = "draft" | "scheduled" | "posting" | "posted" | "failed";
 
 export type Post = {
   id: string;
@@ -108,6 +108,9 @@ export type Post = {
   error?: string;
   createdAt: number;
   postedAt?: number;
+  /** Frozen when scheduled so reconnecting an account cannot publish a demo. */
+  mode?: "demo" | "live";
+  providerId?: string;
 };
 
 /* ================= driver remoto (Supabase) ================= */
@@ -438,7 +441,7 @@ export async function deleteVideo(userId: string, id: string): Promise<boolean> 
 export async function listVirals(region?: string): Promise<Viral[]> {
   const sb = remote();
   if (sb) {
-    let query = sb.from("mi_virals").select("data").order("views", { ascending: false }).limit(60);
+    let query = sb.from("mi_virals").select("data").order("views", { ascending: false }).limit(240);
     if (region) query = query.or(`region.eq.${region},source.eq.url`);
     const { data, error } = await query;
     if (error) fail("listar virais", error);
@@ -655,33 +658,43 @@ export async function createPost(input: Omit<Post, "id" | "createdAt">): Promise
   });
 }
 
-export async function updatePost(id: string, patch: Partial<Post>): Promise<Post | undefined> {
+export async function updatePost(id: string, patch: Partial<Post>, expectedStatus?: PostStatus): Promise<Post | undefined> {
   const sb = remote();
   if (sb) {
     const { data, error } = await sb.from("mi_posts").select("data").eq("id", id).maybeSingle();
     if (error) fail("buscar publicação", error);
     if (!data) return undefined;
+    if (expectedStatus && rowData<Post>(data).status !== expectedStatus) return undefined;
     const merged = { ...rowData<Post>(data), ...patch };
-    const { error: updateError } = await sb
+    let query = sb
       .from("mi_posts")
       .update({ status: merged.status, scheduled_at: merged.scheduledAt, data: merged })
       .eq("id", id);
+    if (expectedStatus) query = query.eq("status", expectedStatus);
+    const { data: changed, error: updateError } = await query.select("id");
     if (updateError) fail("atualizar publicação", updateError);
+    if (!changed?.length) return undefined;
     return merged;
   }
   return mutate((db) => {
     const post = db.posts.find((p) => p.id === id);
     if (!post) return undefined;
+    if (expectedStatus && post.status !== expectedStatus) return undefined;
     Object.assign(post, patch);
     return post;
   });
 }
 
 export async function deletePost(userId: string, id: string): Promise<boolean> {
-  if (remote()) return deleteOwned("mi_posts", userId, id);
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_posts").delete().eq("id", id).eq("user_id", userId).neq("status", "posting").select("id");
+    if (error) fail("remover publicação", error);
+    return Boolean(data?.length);
+  }
   return mutate((db) => {
     const before = db.posts.length;
-    db.posts = db.posts.filter((p) => !(p.id === id && p.userId === userId));
+    db.posts = db.posts.filter((p) => !(p.id === id && p.userId === userId && p.status !== "posting"));
     return db.posts.length < before;
   });
 }
@@ -702,4 +715,32 @@ export async function listDuePosts(now: number): Promise<Post[]> {
 
 export async function getPostOwnerAccount(post: Post): Promise<SocialAccount | undefined> {
   return getSocialAccount(post.userId, post.platform);
+}
+
+export async function listPendingPosts(): Promise<Post[]> {
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_posts").select("data").eq("status", "posting");
+    if (error) fail("buscar publicações em processamento", error);
+    return (data ?? []).map((row) => rowData<Post>(row));
+  }
+  return load().posts.filter((post) => post.status === "posting");
+}
+
+/** Atomically claims a due job, including across multiple serverless workers. */
+export async function claimScheduledPost(post: Post): Promise<boolean> {
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_posts")
+      .update({ status: "posting", data: { ...post, status: "posting" } })
+      .eq("id", post.id).eq("status", "scheduled").select("id");
+    if (error) fail("reservar publicação", error);
+    return Boolean(data?.length);
+  }
+  return mutate((db) => {
+    const current = db.posts.find((item) => item.id === post.id && item.status === "scheduled");
+    if (!current) return false;
+    current.status = "posting";
+    return true;
+  });
 }
