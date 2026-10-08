@@ -122,13 +122,19 @@ test("finalization flags a shortened video instead of publishing it as completed
 test("real MP4 finalization copies the original audio packets and keeps picture duration and dimensions", async () => {
   const ffmpeg = require("@ffmpeg-installer/ffmpeg");
   const f = load("src/lib/finalize-edit.ts", { "@vercel/blob": {}, "./video-reference": media, "./character-edit": edit, "./video-media": {} });
-  const final = await f.preserveSourceAudio(original, original);
-  assert.equal(edit.checkEditResult(metadata, media.mp4Metadata(final)), undefined);
   const directory = mkdtempSync(path.join(tmpdir(), "mi-audio-test-"));
   try {
-    const a = path.join(directory, "a.mp4"), b = path.join(directory, "b.mp4");
-    writeFileSync(a, original); writeFileSync(b, final);
+    const a = path.join(directory, "a.mp4"), b = path.join(directory, "b.mp4"), silentPath = path.join(directory, "silent.mp4");
+    writeFileSync(a, original);
+    execFileSync(ffmpeg.path, ["-v", "error", "-i", a, "-an", "-c:v", "copy", silentPath], { windowsHide: true });
+    const silent = readFileSync(silentPath);
+    assert.equal(media.mp4Metadata(silent).hasAudio, false);
+    const final = await f.preserveSourceAudio(silent, original);
+    assert.equal(edit.checkEditResult(metadata, media.mp4Metadata(final)), undefined);
+    writeFileSync(b, final);
     const audio = file => execFileSync(ffmpeg.path, ["-v", "error", "-i", file, "-map", "0:a:0", "-c", "copy", "-f", "data", "pipe:1"], { windowsHide: true, maxBuffer: 5 * 1024 * 1024 });
     assert.deepEqual(audio(a), audio(b));
+    const withoutInventedAudio = await f.preserveSourceAudio(original, silent);
+    assert.equal(media.mp4Metadata(withoutInventedAudio).hasAudio, false);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

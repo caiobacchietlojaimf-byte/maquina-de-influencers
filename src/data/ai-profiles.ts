@@ -487,8 +487,8 @@ export const AI_PROFILES: readonly AiProfile[] = [
     posts: [
       {
         code: "Dd_qcXdgsdb",
-        scene: "Dança com violino e pandeiros",
-        prompt: "The character from the reference image stars in this reel: dancing joyfully surrounded by musicians with violins and tambourines, festive golden lighting. Vertical 9:16 Instagram reel, handheld smartphone look, natural motion and lighting, confident influencer energy, trending-reel pacing, hyper-realistic.",
+        scene: "Dança em grupo no salão",
+        prompt: "A man wearing a purple jacket dances among other people in an indoor hall. Use the original video as the source of scene details.",
         ar: 0.5625,
         embeddable: true,
         video: "/reel-videos/Dd_qcXdgsdb.mp4",

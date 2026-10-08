@@ -244,9 +244,9 @@ export function VideoStudio({
             {quote ? (
               <div className={styles.quote} aria-live="polite">
                 <b>Pronto para trocar o personagem</b>
-                <span>Original: {quote.metadata.duration.toFixed(2)}s · {quote.metadata.width} × {quote.metadata.height}</span>
+                <span>Original: {quote.metadata.duration.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}s · {quote.metadata.width} × {quote.metadata.height}</span>
                 <span>Genjutsu Object Swap · {quote.resolution}</span>
-                <strong>Estimativa da API: US$ {quote.estimatedUsd.toFixed(2)}</strong>
+                <strong>Estimativa da API: US$ {quote.estimatedUsd.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
                 <small>Preço de tabela de {EDIT_PRICE_DATE}, antes de descontos da sua conta. A Higgsfield cobra por segundo do vídeo de entrada, arredondado para cima. Consulte o valor vigente no provedor.</small>
                 <label className={styles.accept}><input type="checkbox" checked={acceptedEstimate} disabled={busy} onChange={e => setAcceptedEstimate(e.target.checked)} />Li a estimativa em dólares e quero gerar este vídeo.</label>
               </div>
