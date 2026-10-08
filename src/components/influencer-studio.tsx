@@ -53,6 +53,8 @@ import { VIDEO_PRESETS } from "@/data/video-presets";
 import type { Influencer } from "@/lib/db";
 import { RenderProbe } from "./render-probe";
 import { MotionPresetCard } from "./motion-preset-card";
+import { InfluencerDetails } from "./influencer-details";
+import detailStyles from "./influencer-details.module.css";
 
 type Preset = {
   id: string;
@@ -114,9 +116,11 @@ export function InfluencerStudio({
   const [rightTab, setRightTab] = useState<RightTab>("explore");
   const [scope, setScope] = useState<ExploreScope>("influencers");
   const [viewer, setViewer] = useState<Preset | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   /* ----- dados vivos ----- */
   const [influencers, setInfluencers] = useState<Influencer[]>(initialInfluencers);
+  const detail = influencers.find((influencer) => influencer.id === detailId);
   const hasPending = influencers.some((i) => i.status === "processing" || i.status === "queued");
 
   useEffect(() => {
@@ -446,6 +450,7 @@ export function InfluencerStudio({
                 <InfluencerCard
                   key={inf.id}
                   influencer={inf}
+                  onOpen={() => setDetailId(inf.id)}
                   onDelete={async () => {
                     await deleteInfluencerAction(inf.id);
                     setInfluencers((prev) => prev.filter((i) => i.id !== inf.id));
@@ -471,6 +476,11 @@ export function InfluencerStudio({
           )
         ) : null}
       </section>
+
+      {detail ? <InfluencerDetails key={detail.id} influencer={detail} onClose={() => setDetailId(null)} onRename={(id, nextName) => {
+        setInfluencers((current) => current.map((item) => item.id === id ? { ...item, name: nextName } : item));
+        router.refresh();
+      }} /> : null}
 
       {/* ------------------- visualizador de preset ------------------- */}
       {viewer ? (
@@ -504,11 +514,13 @@ export function InfluencerStudio({
 
 function InfluencerCard({
   influencer,
+  onOpen,
   onDelete,
   onRetry,
   onUseMotion,
 }: {
   influencer: Influencer;
+  onOpen: () => void;
   onDelete: () => void;
   onRetry: () => void;
   onUseMotion: () => void;
@@ -519,7 +531,8 @@ function InfluencerCard({
   });
 
   return (
-    <div className="gen-card">
+    <div className={`gen-card ${detailStyles.card}`}>
+      <button type="button" className={detailStyles.cardOpen} onClick={onOpen} aria-label={`Ver detalhes de ${influencer.name}`} />
       <div className="media">
         {influencer.status === "completed" && influencer.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -529,7 +542,7 @@ function InfluencerCard({
             <span style={{ color: "var(--danger)", fontSize: 13, padding: "0 14px", textAlign: "center" }}>
               {influencer.error ?? "A geração falhou"}
             </span>
-            <button type="button" className="btn btn-sm btn-ghost" onClick={onRetry}>
+            <button type="button" className={`btn btn-sm btn-ghost ${detailStyles.cardAction}`} onClick={onRetry}>
               <RotateCcw size={14} />
               Tentar de novo
             </button>
@@ -547,7 +560,7 @@ function InfluencerCard({
               ? "Falhou"
               : "Gerando"}
         </span>
-        <div className="actions">
+        <div className={`actions ${detailStyles.cardAction}`}>
           {influencer.status === "completed" && influencer.imageUrl ? (
             <>
               <a href={influencer.imageUrl} target="_blank" rel="noreferrer" title="Baixar imagem">

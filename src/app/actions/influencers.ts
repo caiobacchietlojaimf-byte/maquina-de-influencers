@@ -135,6 +135,21 @@ export async function deleteInfluencerAction(id: string): Promise<void> {
   revalidatePath("/app", "layout");
 }
 
+export async function renameInfluencerAction(id: string, value: string): Promise<{ name: string } | { error: string }> {
+  const user = await requireUser();
+  if (typeof value !== "string" || typeof id !== "string") return { error: "Nome inválido." };
+  const name = value.trim();
+  if (!name || name.length > 80) return { error: "Use um nome de 1 a 80 caracteres." };
+  try {
+    const influencer = await updateInfluencer(id, { name }, user.id);
+    if (!influencer) return { error: "Influencer não encontrado." };
+    revalidatePath("/app", "layout");
+    return { name: influencer.name };
+  } catch {
+    return { error: "Não foi possível salvar o nome. Tente novamente." };
+  }
+}
+
 export async function retryInfluencerAction(id: string): Promise<{ id: string } | { error: string }> {
   const user = await requireUser();
   const influencer = await getInfluencer(user.id, id);

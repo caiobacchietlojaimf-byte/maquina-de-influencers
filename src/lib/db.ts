@@ -38,6 +38,7 @@ export type Influencer = {
   gallery?: string[];
   error?: string;
   referenceUrl?: string;
+  revision?: string;
   createdAt: number;
 };
 
@@ -355,10 +356,30 @@ export async function createInfluencer(
 export async function updateInfluencer(
   id: string,
   patch: Partial<Influencer>,
+  userId?: string,
 ): Promise<Influencer | undefined> {
-  if (remote()) return patchEntity<Influencer>("mi_influencers", id, patch);
+  const sb = remote();
+  if (sb) {
+    // Compare-and-swap keeps polling results and name edits from overwriting each other.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let query = sb.from("mi_influencers").select("data").eq("id", id);
+      if (userId) query = query.eq("user_id", userId);
+      const { data, error } = await query.maybeSingle();
+      if (error) fail("buscar influencer", error);
+      if (!data) return undefined;
+      const current = rowData<Influencer>(data);
+      const merged = { ...current, ...patch, revision: randomUUID() };
+      let update = sb.from("mi_influencers").update({ data: merged }).eq("id", id);
+      update = current.revision ? update.eq("data->>revision", current.revision) : update.is("data->>revision", null);
+      if (userId) update = update.eq("user_id", userId);
+      const { data: changed, error: updateError } = await update.select("data").maybeSingle();
+      if (updateError) fail("atualizar influencer", updateError);
+      if (changed) return rowData<Influencer>(changed);
+    }
+    throw new Error("O influencer foi atualizado. Tente salvar novamente.");
+  }
   return mutate((db) => {
-    const influencer = db.influencers.find((i) => i.id === id);
+    const influencer = db.influencers.find((i) => i.id === id && (!userId || i.userId === userId));
     if (!influencer) return undefined;
     Object.assign(influencer, patch);
     return influencer;
