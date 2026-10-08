@@ -5,6 +5,7 @@ import "server-only";
    "Authorization: Key id:secret". A chave vive no servidor (HF_API_KEY). */
 
 const MODEL_ID = /^[a-z0-9][a-z0-9._/-]*$/i;
+const API_ORIGIN = "https://api.higgsfield.ai";
 
 export class PlatformError extends Error {
   readonly status: number;
@@ -42,6 +43,8 @@ function credentials(): { apiKey: string; baseUrl: string } {
     throw new Error("HF_API_KEY ausente ou inválida (formato id:secret) no .env.local");
   }
   if (!baseUrl) throw new Error("HF_API_BASE_URL ausente no .env.local");
+  // Credentials must never follow a configurable URL to another service.
+  if (baseUrl !== API_ORIGIN) throw new Error("Endereço da API de geração inválido");
   return { apiKey, baseUrl };
 }
 
@@ -56,6 +59,10 @@ async function send(method: "GET" | "POST", pathName: string, body?: Record<stri
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
     cache: "no-store",
+    redirect: "error",
+  }).catch(() => {
+    // Network errors can include request details; expose only a safe message.
+    throw new PlatformError(502, { detail: "Não foi possível conectar à plataforma de geração. Tente novamente." });
   });
   const payload = await readJson(response);
   if (!response.ok) throw new PlatformError(response.status, payload);
@@ -106,7 +113,14 @@ function stringField(value: Record<string, unknown>, key: string): string | unde
 }
 
 async function readJson(response: Response): Promise<unknown> {
-  const text = await response.text();
+  // Redact upstream echoes before they can reach actions, stored errors or UI.
+  let text = await response.text();
+  const key = process.env.HF_API_KEY?.trim();
+  if (key) {
+    for (const secret of [key, ...key.split(":")].filter(value => value.length >= 8)) {
+      text = text.replaceAll(secret, "[redacted]");
+    }
+  }
   if (!text) return null;
   try {
     return JSON.parse(text) as unknown;
