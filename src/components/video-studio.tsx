@@ -7,7 +7,7 @@ import { ArrowRight, Clapperboard, Search, Sparkles, Upload, Users, X } from "lu
 
 import { pollInfluencersAction } from "@/app/actions/influencers";
 import { prepareCharacterEditAction, generateCharacterEditAction } from "@/app/actions/character-edit";
-import { EDIT_PRICE_DATE, EDIT_RATES, type EditQuote, type EditResolution, type EditTargetMode, type EditSource } from "@/lib/character-edit";
+import { EDIT_PRICE_DATE, EDIT_ENGINES, type EditEngine, type EditQuote, type EditResolution, type EditTargetMode, type EditSource } from "@/lib/character-edit";
 import { verifyVideoReferenceAction } from "@/app/actions/video-reference";
 import { MAX_REFERENCE_BYTES, type StudioReference } from "@/lib/video-reference";
 import { MOTION_PRESETS, type MotionPreset } from "@/data/motion-presets";
@@ -56,10 +56,12 @@ export function VideoStudio({
   const [preparing, setPreparing] = useState(false);
   const [quote, setQuote] = useState<EditQuote | null>(null);
   const [acceptedEstimate, setAcceptedEstimate] = useState(false);
-  const [resolution, setResolution] = useState<EditResolution>("720p");
+  const [engine, setEngine] = useState<EditEngine>("fal-kling-pro");
+  const [resolution, setResolution] = useState<EditResolution>("auto");
+  const engineConfig = EDIT_ENGINES[engine];
   const referenceReady = reference ? reference.duration >= 4 && reference.duration <= 30 : Boolean(presetId);
   const busy = submitting || uploading || preparing;
-  useEffect(() => { setQuote(null); setAcceptedEstimate(false); }, [reference, presetId, influencerId, prompt, targetMode, resolution]);
+  useEffect(() => { setQuote(null); setAcceptedEstimate(false); }, [reference, presetId, influencerId, prompt, targetMode, resolution, engine]);
   const hasPending = influencers.some((inf) => inf.status === "processing" || inf.status === "queued");
   const ready = useMemo(() => influencers.filter((inf) => inf.status === "completed" && inf.imageUrl), [influencers]);
   const influencer = ready.find((inf) => inf.id === influencerId);
@@ -94,7 +96,7 @@ export function VideoStudio({
     if (busy || !influencer || !referenceReady) return;
     setPreparing(true); setError(null); setQuote(null); setAcceptedEstimate(false);
     try {
-      const result = await prepareCharacterEditAction({ influencerId: influencer.id, source: editSource(), targetMode, target: targetMode === "manual" ? prompt.trim() : undefined, resolution });
+      const result = await prepareCharacterEditAction({ influencerId: influencer.id, source: editSource(), targetMode, target: targetMode === "manual" ? prompt.trim() : undefined, resolution, engine });
       if ("error" in result) setError(result.error); else setQuote(result.quote);
     } catch { setError("Não foi possível preparar a troca. Tente novamente."); }
     finally { setPreparing(false); }
@@ -198,7 +200,6 @@ export function VideoStudio({
               {uploading && <progress aria-label="Progresso do envio" max={100} value={progress} className={styles.progress} />}
               <p className={styles.hint}>Envie o vídeo original ou escolha uma referência. O upload e a preparação não iniciam uma geração paga.</p>
               </>}
-              <p className={styles.hint}>Troca localizada de personagem · Genjutsu Object Swap</p>
               {reference ? (
                 <div className={styles.selection}>
                   <video key={reference.videoUrl} className={styles.preview} src={reference.videoUrl} poster={reference.thumbnail} controls playsInline preload="metadata" aria-label={`Vídeo de referência: ${reference.name}`} />
@@ -219,11 +220,16 @@ export function VideoStudio({
             </fieldset>
 
             <div className="field">
+              <label htmlFor={`${formId}-engine`} className={styles.fieldLabel}>Modelo de edição</label>
+              <select id={`${formId}-engine`} className="input" value={engine} disabled={busy} onChange={event => { const next = event.target.value as EditEngine; setEngine(next); setResolution(next === "higgsfield" || next === "fal-wan" ? "720p" : EDIT_ENGINES[next].resolutions[0]); if (next === "fal-wan") setTargetMode("main"); }}>
+                {(Object.keys(EDIT_ENGINES) as EditEngine[]).map(key => <option key={key} value={key}>{EDIT_ENGINES[key].label}</option>)}
+              </select>
+              <p className={styles.hint}>{engineConfig.note}</p>
               <fieldset className={styles.fieldset} disabled={busy}>
                 <legend className={styles.fieldLabel}><span>3</span> Quem deve ser substituído?</legend>
                 <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "main"} onChange={() => setTargetMode("main")} />Personagem principal (automático)</label>
-                <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "manual"} onChange={() => setTargetMode("manual")} />Indicar uma pessoa</label>
-                {targetMode === "main" ? <p className={styles.hint}>A IA escolhe o protagonista durante a edição e mantém essa pessoa como alvo. Se houver vários protagonistas, indique uma pessoa para evitar ambiguidade.</p> : <>
+                <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "manual"} disabled={engine === "fal-wan"} onChange={() => setTargetMode("manual")} />Indicar uma pessoa{engine === "fal-wan" ? " (use Kling)" : ""}</label>
+                {targetMode === "main" ? <p className={styles.hint}>{engine === "fal-wan" ? "O Wan faz a seleção automaticamente. Use uma cena com uma única pessoa." : "A IA escolhe o protagonista durante a edição. Em cenas com várias pessoas ou trechos, indique roupa e aparência para manter o mesmo alvo."}</p> : <>
               <label htmlFor={`${formId}-prompt`} className={styles.fieldLabel}>Descreva a pessoa no vídeo</label>
               <textarea
                 id={`${formId}-prompt`}
@@ -240,9 +246,7 @@ export function VideoStudio({
               </fieldset>
               <label htmlFor={`${formId}-quality`} className={styles.fieldLabel}>Qualidade do vídeo</label>
               <select id={`${formId}-quality`} className="input" value={resolution} disabled={busy} onChange={event => setResolution(event.target.value as EditResolution)}>
-                <option value="480p">480p · menor custo e definição</option>
-                <option value="720p">720p · qualidade padrão</option>
-                <option value="1080p">1080p · maior resolução e custo</option>
+                {engineConfig.resolutions.map(value => <option key={value} value={value}>{value === "auto" ? "Resolução definida pelo modelo" : `${value}${value === "480p" ? " · menor custo e definição" : value === "1080p" ? " · maior resolução" : " · qualidade padrão"}`}</option>)}
               </select>
               <p className={styles.hint}>Preservação solicitada: duração, câmera, cenário e demais pessoas. O áudio original é recolocado no arquivo final. A fidelidade visual ainda depende da IA.</p>
             </div>
@@ -256,17 +260,18 @@ export function VideoStudio({
               <div className={styles.quote} aria-live="polite">
                 <b>Pronto para trocar o personagem</b>
                 <span>Original: {quote.metadata.duration.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}s · {quote.metadata.width} × {quote.metadata.height}</span>
-                <span>Genjutsu Object Swap · {quote.resolution}</span>
-                <strong>Estimativa sem desconto: US$ {quote.estimatedUsd.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                <span>{Math.ceil(quote.metadata.duration)} segundos cobrados × US$ {EDIT_RATES[quote.resolution].toLocaleString("pt-BR", { minimumFractionDigits: 3 })}/s</span>
-                <small>Preço de tabela de {EDIT_PRICE_DATE}. A duração é arredondada para cima. Descontos da sua conta podem reduzir o valor; não conseguimos confirmá-los aqui. Nenhuma geração foi cobrada nesta preparação. <a href="https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground" target="_blank" rel="noreferrer">Ver tabela oficial</a>.</small>
+                <span>{EDIT_ENGINES[quote.engine ?? "higgsfield"].label}{quote.resolution !== "auto" ? ` · ${quote.resolution}` : ""}</span>
+                {quote.segmentCount && quote.segmentCount > 1 ? <span>{quote.segmentCount} trechos serão editados e unidos em um único vídeo, com o áudio original completo.</span> : null}
+                <strong>Estimativa da edição: US$ {quote.estimatedUsd.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                <span>{quote.costDetail}</span>
+                <small>Tabela de {EDIT_PRICE_DATE}; cobrança final conforme sua conta no provedor. Nenhuma geração foi cobrada nesta preparação. <a href={engine === "higgsfield" ? "https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground" : `https://fal.ai/models/${engineConfig.model}`} target="_blank" rel="noreferrer">Ver tabela oficial</a>.</small>
                 <label className={styles.accept}><input type="checkbox" checked={acceptedEstimate} disabled={busy} onChange={e => setAcceptedEstimate(e.target.checked)} />Li a estimativa em dólares e quero gerar este vídeo.</label>
               </div>
             ) : null}
             <button type="button" className="generate-btn" disabled={busy || !influencer || !referenceReady || (targetMode === "manual" && prompt.trim().length < 8) || !enoughCredits || (Boolean(quote) && !acceptedEstimate)} onClick={quote ? generate : prepare}>
               {busy ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Conferindo original…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Gerar troca de personagem" : "Preparar troca e ver custo"}{quote && <span className="cost">✦ {VIDEO_COST}</span>}</>}
             </button>
-            <p className={styles.hint}>A preparação é gratuita. Uma geração usa {VIDEO_COST} créditos do sistema e saldo da sua API. Resultados com duração ou proporção divergentes serão sinalizados para revisão.</p>
+            <p className={styles.hint}>A preparação não cobra geração. Uma edição completa usa {VIDEO_COST} créditos do sistema e saldo da {engineConfig.provider === "fal" ? "fal.ai" : "Higgsfield"}. Duração e proporção são conferidas; a fidelidade visual precisa ser revisada.</p>
           </div>
         </aside>
 

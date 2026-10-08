@@ -20,6 +20,8 @@ import { getStatus, isConfigured, submitGeneration, TERMINAL_STATUSES } from "@/
 
 import { VIDEO_COST } from "@/lib/costs";
 import { finalizeCharacterEdit } from "@/lib/finalize-edit";
+import { getFalGenerationStatus } from "@/lib/fal";
+import { finalizeSegmentedEdit } from "@/lib/finalize-segmented-edit";
 
 /** Vídeo a partir da imagem do influencer + prompt (tendências virais). */
 const I2V_MODEL = "kling-video/v3.0/std/image-to-video";
@@ -107,8 +109,30 @@ export async function pollVideosAction(): Promise<Video[]> {
         }
         return;
       }
+      if (video.edit?.provider === "fal" && video.status === "queued" && Date.now() - video.createdAt > 300000) {
+        const allSubmitted = video.edit.segments?.length && video.edit.segments.every(p => p.requestId);
+        await updateVideo(video.id, allSubmitted ? { status: "processing" } : { status: "review", error: "O envio dos trechos foi interrompido. Confira os pedidos registrados no provedor; nenhum trecho será reenviado automaticamente." });
+        return;
+      }
       if (!video.requestId) return;
       try {
+        if (video.edit?.provider === "fal") {
+          // Submissions are persisted one by one; queued means not all were sent yet.
+          if (video.status !== "processing") return;
+          const parts = video.edit.segments ?? [{ sourceUrl: video.edit.sourceUrl, start: 0, source: video.edit.source, requestId: video.requestId }];
+          if (parts.some(p => !p.requestId)) return;
+          const statuses = await Promise.all(parts.map(p => getFalGenerationStatus(video.edit!.model, p.requestId!)));
+          const failed = statuses.find(s => s.status === "failed");
+          if (failed) { await updateVideo(video.id, { status: "review", error: `A fal.ai não concluiu a edição: ${failed.error ?? "falha no processamento"}. Nenhuma nova geração foi solicitada.` }); return; }
+          if (statuses.some(s => s.status !== "completed" || !s.videoUrl)) return;
+          if (await claimVideoFinalization(video)) {
+            const urls = statuses.map(s => s.videoUrl!);
+            const edit = { ...video.edit, segments: parts.map((p, i) => ({ ...p, resultUrl: urls[i] })) };
+            const complete = { ...video, edit };
+            await updateVideo(video.id, parts.length > 1 ? await finalizeSegmentedEdit(complete, urls) : await finalizeCharacterEdit(complete, urls[0]));
+          }
+          return;
+        }
         const status = await getStatus(video.requestId);
         if (!TERMINAL_STATUSES.has(status.status)) return;
         if (status.status === "completed" && status.video?.url) {

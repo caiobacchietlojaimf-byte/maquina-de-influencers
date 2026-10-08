@@ -1,11 +1,13 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { EditResolution } from "./character-edit";
+import type { EditResolution, EditEngine } from "./character-edit";
 import type { VideoMetadata } from "./video-reference";
 export type EditReceipt = {
   id: string; userId: string; influencerId: string; imageUrl: string; sourceUrl: string;
   name: string; target: string; metadata: VideoMetadata; resolution: EditResolution;
   estimatedUsd: number; expiresAt: number;
+  engine?: EditEngine; seed?: number;
+  segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata }>;
 };
 function signature(value: string) {
   if (!process.env.AUTH_SECRET) throw new Error("Configuração da edição indisponível.");

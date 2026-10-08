@@ -60,12 +60,15 @@ export type Video = {
   createdAt: number;
   edit?: {
     model: string; sourceUrl: string; imageUrl: string; target: string;
+    provider?: "fal" | "higgsfield"; seed?: number;
+    segments?: Array<{ sourceUrl: string; start: number; source: { duration: number; width: number; height: number; hasAudio: boolean }; requestId?: string; resultUrl?: string }>;
     source: { duration: number; width: number; height: number; hasAudio: boolean };
-    resolution: "480p" | "720p" | "1080p"; estimatedUsd: number;
+    resolution: "480p" | "720p" | "1080p" | "auto"; estimatedUsd: number;
     result?: { duration: number; width: number; height: number; hasAudio: boolean };
     audioPreserved?: boolean;
   };
   finalizationStartedAt?: number;
+  deletedAt?: number;
 };
 
 export type Viral = {
@@ -406,9 +409,9 @@ export async function deleteInfluencer(userId: string, id: string): Promise<bool
 /* ================= vídeos ================= */
 
 export async function listVideos(userId: string): Promise<Video[]> {
-  if (remote()) return listByUser<Video>("mi_videos", userId);
+  if (remote()) return (await listByUser<Video>("mi_videos", userId)).filter(v => !v.deletedAt);
   return load()
-    .videos.filter((v) => v.userId === userId)
+    .videos.filter((v) => v.userId === userId && !v.deletedAt)
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
@@ -496,6 +499,14 @@ export async function updateVideo(id: string, patch: Partial<Video>): Promise<Vi
 }
 
 export async function deleteVideo(userId: string, id: string): Promise<boolean> {
+  const video = await getVideo(userId, id);
+  if (video?.edit) {
+    if (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)) return false;
+    // Keep the quote UUID as an idempotency tombstone even after hiding the card.
+    // Deleting it would allow the same signed quote to submit another paid job.
+    await updateVideo(id, { deletedAt: Date.now() });
+    return true;
+  }
   if (remote()) return deleteOwned("mi_videos", userId, id);
   return mutate((db) => {
     const before = db.videos.length;

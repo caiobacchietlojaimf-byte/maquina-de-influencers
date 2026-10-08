@@ -6,6 +6,7 @@ import { Download, Film, Flame, Send, Trash2, Wand2 } from "lucide-react";
 
 import { deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
 import type { Video } from "@/lib/db";
+import { editModelLabel } from "@/lib/character-edit";
 
 const FILTERS = [
   { id: "all", label: "Todos" },
@@ -114,6 +115,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 <button
                   type="button"
                   title="Excluir"
+                  disabled={Boolean(video.edit && (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)))}
                   onClick={async () => {
                     await deleteVideoAction(video.id);
                     setVideos((prev) => prev.filter((v) => v.id !== video.id));
@@ -133,7 +135,8 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               </span>
             </div>
             {video.edit && <div style={{ padding: "0 14px 14px", display: "grid", gap: 8, fontSize: 12 }}>
-              <span>Genjutsu Object Swap · {video.edit.resolution}</span>
+              <span>{editModelLabel(video.edit.model)}{video.edit.resolution !== "auto" ? ` · ${video.edit.resolution}` : ""}</span>
+              {video.edit.result && <span>Resultado: {video.edit.result.width} × {video.edit.result.height}</span>}
               <span>Original: {video.edit.source.duration.toFixed(2)}s{video.edit.result ? ` · Resultado: ${video.edit.result.duration.toFixed(2)}s` : ""}</span>
               {video.edit.audioPreserved && <span>Áudio original preservado · duração e proporção conferidas</span>}
               {video.error && <p role="status" style={{ color: "var(--danger)" }}>{video.error}</p>}
@@ -142,6 +145,13 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 <video src={video.edit.sourceUrl} controls playsInline preload="none" style={{ width: "100%", marginTop: 8 }} aria-label={`Original de ${video.presetName ?? "vídeo"}`} />
                 <p>{video.edit.target}</p>
               </details>
+              {video.edit.segments && video.edit.segments.length > 1 && <details>
+                <summary style={{ cursor: "pointer" }}>Trechos da edição ({video.edit.segments.length})</summary>
+                {video.edit.segments.map((part, index) => <div key={part.sourceUrl} style={{ marginTop: 8 }}>
+                  <p>Trecho {index + 1} · {part.source.duration.toFixed(2)}s{part.requestId ? ` · Pedido ${part.requestId}` : ""}</p>
+                  {part.resultUrl && <video src={part.resultUrl} controls playsInline preload="none" style={{ width: "100%" }} aria-label={`Resultado do trecho ${index + 1}`} />}
+                </div>)}
+              </details>}
             </div>}
           </div>
         ))}
