@@ -371,7 +371,7 @@ export function VideoStudio({
                 {exportedPackage ? <a className="btn btn-ghost" href={exportedPackage.url} download={exportedPackage.filename} target="_blank" rel="noopener noreferrer"><Download size={16} />Baixar pacote ZIP</a> : <button type="button" className="btn btn-ghost" disabled={busy || !influencer || !referenceReady || !targetReady} onClick={() => void exportPackage()}>
                   {exporting ? <><span className="spinner" />Exportando pacote…</> : <><Package size={16} />Exportar pacote</>}
                 </button>}
-                <HelpTooltip label="O que inclui o pacote de exportação">Baixe um ZIP com o vídeo original e seu áudio, a imagem do influencer, os prompts, os trechos quando necessários e um guia para continuar a edição fora do sistema. A exportação não gera um novo vídeo e não usa créditos de geração.</HelpTooltip>
+                <HelpTooltip label="O que inclui o pacote de exportação">Baixe o original com áudio, a foto, os prompts e os trechos necessários. No outro assistente, cole COMECE-AQUI.txt: ele orienta a usar o modelo selecionado em modo de edição de vídeo. O aplicativo precisa oferecer esse recurso. Exportar não usa créditos de geração.</HelpTooltip>
               </div>
             </div>
             {exportedPackage && <p className="sr-only" role="status">Pacote pronto para baixar.</p>}

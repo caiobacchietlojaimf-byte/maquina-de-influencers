@@ -72,7 +72,7 @@ export async function exportCharacterEdit(input: PrepareEditInput, options: Prep
       target: input.targetMode === "main" ? MAIN_CHARACTER_TARGET : input.target!.trim(),
     });
     const slug = name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 64) || "video";
-    const filename = `genjutsu-${slug}.zip`;
+    const filename = `troca-personagem-${slug}.zip`;
     const archive = new ZipFile();
     const output = archive.outputStream as Readable;
     const activeEntries = new Set<Readable>();

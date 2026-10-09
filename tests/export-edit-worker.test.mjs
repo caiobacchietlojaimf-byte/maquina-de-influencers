@@ -136,7 +136,7 @@ test("export preserves original bytes and creates a complete usable ZIP with zer
   const result = await f.exportCharacterEdit(input, { signal, onProgress: event => progress.push(event.stage) });
   assert.equal(result.error, undefined);
   assert.equal(result.url, `${blobUrl}?download=1`);
-  assert.equal(result.filename, "genjutsu-supercar.zip");
+  assert.equal(result.filename, "troca-personagem-supercar.zip");
   assert.deepEqual(f.ownerReads, [["owner", "character"]]);
   assert.equal(f.splits.length, 1);
   assert.equal(f.splits[0][0], original);
@@ -223,6 +223,6 @@ test("archive filename is safe and upload failures never expose storage error de
   assert.ok(result.error);
   assert.ok(!result.error.includes("private-token"));
   assert.equal(result.url, undefined);
-  assert.ok(f.uploads[0].path.endsWith("/genjutsu-meu-video-teste-exemplo.zip"));
+  assert.ok(f.uploads[0].path.endsWith("/troca-personagem-meu-video-teste-exemplo.zip"));
   unzip(f.uploads[0].bytes);
 });
