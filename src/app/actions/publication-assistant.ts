@@ -1,7 +1,7 @@
 "use server";
 
 import { requireUser } from "@/lib/auth";
-import { preparePublication, type PreparationInput } from "@/lib/publication-assistant";
+import { preparePublication, improvePublication, type PreparationInput, type ImprovementInput } from "@/lib/publication-assistant";
 import { getInstagramPerformance } from "@/lib/instagram-performance";
 import type { InstagramPerformance, PublicationSuggestion } from "@/lib/publication-assistant-types";
 
@@ -14,4 +14,10 @@ export async function preparePublicationAction(input: PreparationInput): Promise
 export async function getInstagramPerformanceAction(): Promise<InstagramPerformance> {
   const user = await requireUser();
   return getInstagramPerformance(user.id);
+}
+
+export async function improvePublicationAction(input: ImprovementInput): Promise<{ suggestion: PublicationSuggestion } | { error: string }> {
+  const user = await requireUser();
+  try { return await improvePublication(user.id, input); }
+  catch { return { error: "Não foi possível melhorar o post agora. Sua legenda foi preservada." }; }
 }

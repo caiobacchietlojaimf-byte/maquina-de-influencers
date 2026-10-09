@@ -13,7 +13,7 @@ const compiled = ts.transpileModule(readFileSync(new URL("../src/lib/db.ts", imp
 }).outputText;
 const NOW = Date.parse("2026-10-09T12:00:00Z");
 const URL_A = "https://store.example/finished-a.mp4", URL_B = "https://store.example/finished-b.mp4";
-const SLOT = "instagram:comments", HASH_A = "a".repeat(64), HASH_B = "b".repeat(64);
+const SLOT = "instagram:comments", IMPROVE_SLOT = "instagram:comments:improve", HASH_A = "a".repeat(64), HASH_B = "b".repeat(64);
 const freshVideo = (extra = {}) => ({ id: "video", userId: "owner", kind: "viral", name: "Scene", status: "completed", resultUrl: URL_A, edit: { model: "test" }, createdAt: NOW, ...extra });
 const freshUser = (extra = {}) => ({ id: "owner", credits: 3875, createdAt: NOW, ...extra });
 const suggestion = (videoId = "video") => ({ videoId, caption: "Qual cena vem depois?", alternatives: [], hashtags: [], keywords: [], goal: "comments", method: "context", generatedAt: NOW, source: { title: "Scene", kind: "video-context" } });
@@ -147,6 +147,104 @@ for (const [mode, setup] of [["local", local], ["remote CAS", remote]]) {
     await f.db.setUserSuspended("owner", true);
     assert.equal(await f.db.reserveCaptionRequest("owner", NOW + 86_400_002), false);
     assert.equal((await f.db.findUserById("owner")).credits, 3875);
+  });
+
+  test(`${mode}: improve has a separate fixed slot and changed captions cannot replace a pending request`, async t => {
+    const f = setup(t);
+    const prepared = await f.db.claimVideoCaption("owner", "video", SLOT, HASH_A, URL_A);
+    const first = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    assert.equal(prepared.claimed, true); assert.equal(first.claimed, true);
+    assert.notEqual(prepared.entry.claimId, first.entry.claimId);
+    const changedWhilePending = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_B, URL_A);
+    assert.equal(changedWhilePending.claimed, false); assert.equal(changedWhilePending.entry.claimId, first.entry.claimId);
+    assert.equal(await f.db.finishVideoCaption("owner", "video", IMPROVE_SLOT, first.entry.claimId, suggestion()), true);
+    assert.equal((await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A)).claimed, false);
+    const changedAfterReady = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_B, URL_A);
+    assert.equal(changedAfterReady.claimed, true); assert.notEqual(changedAfterReady.entry.claimId, first.entry.claimId);
+    const final = await f.db.getVideo("owner", "video");
+    assert.equal(final.captionCache[SLOT].claimId, prepared.entry.claimId);
+    assert.equal(Object.keys(final.captionCache).length, 2);
+  });
+
+  test(`${mode}: a terminal improve error persists and reopening never reserves the same paid request again`, async t => {
+    const f = setup(t);
+    const first = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    const message = "A melhoria não foi confirmada. Sua legenda atual foi preservada.";
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, first.entry.claimId, message), true);
+    const reopened = f.reopen();
+    const cached = await reopened.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    assert.equal(cached.claimed, false); assert.equal(cached.entry.state, "ready");
+    assert.equal(cached.entry.error, message); assert.equal(cached.entry.suggestion, undefined);
+    assert.equal(await reopened.finishVideoCaption("owner", "video", IMPROVE_SLOT, first.entry.claimId, suggestion()), false);
+    assert.equal((await reopened.findUserById("owner")).credits, 3875);
+  });
+
+  test(`${mode}: only a safe pre-submission retry deadline can reopen a failed improvement`, async t => {
+    const entry = { fingerprint: HASH_A, claimId: "quota-claim", state: "ready", startedAt: NOW - 4000, resultUrl: URL_A, error: "Limite de análises", retryAt: NOW + 1000 };
+    const f = setup(t, { video: { captionCache: { [IMPROVE_SLOT]: entry } } });
+    const beforeDeadline = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    assert.equal(beforeDeadline.claimed, false); assert.equal(beforeDeadline.entry.claimId, entry.claimId);
+    await f.db.updateVideo("video", { captionCache: { [IMPROVE_SLOT]: { ...entry, retryAt: NOW - 1 } } });
+    const afterDeadline = await f.reopen().claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    assert.equal(afterDeadline.claimed, true); assert.notEqual(afterDeadline.entry.claimId, entry.claimId);
+    assert.equal(afterDeadline.entry.error, undefined); assert.equal(afterDeadline.entry.retryAt, undefined);
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, entry.claimId, "Late quota failure"), false);
+    assert.equal((await f.db.findUserById("owner")).credits, 3875);
+  });
+
+  test(`${mode}: replacement media starts a fresh claim and old completion cannot attach to it`, async t => {
+    const f = setup(t);
+    const old = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    await f.db.updateVideo("video", { resultUrl: URL_B });
+    const current = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_B, URL_B);
+    assert.equal(current.claimed, true); assert.notEqual(current.entry.claimId, old.entry.claimId);
+    assert.equal(current.entry.resultUrl, URL_B);
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, old.entry.claimId, "Late failure"), false);
+    assert.equal(await f.db.finishVideoCaption("owner", "video", IMPROVE_SLOT, old.entry.claimId, suggestion()), false);
+    assert.equal(await f.db.finishVideoCaption("owner", "video", IMPROVE_SLOT, current.entry.claimId, suggestion()), true);
+  });
+
+  test(`${mode}: terminal errors enforce owner, claim, selected media and deletion guards`, async t => {
+    const f = setup(t);
+    const first = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    assert.equal(await f.db.finishVideoCaptionError("stranger", "video", IMPROVE_SLOT, first.entry.claimId, "Falha"), false);
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, "stale", "Falha"), false);
+    await f.db.updateVideo("video", { resultUrl: URL_B });
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, first.entry.claimId, "Falha"), false);
+    await f.db.deleteVideo("owner", "video");
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, first.entry.claimId, "Falha"), false);
+    const final = await f.db.getVideo("owner", "video");
+    assert.ok(final.deletedAt); assert.equal(final.captionCache[IMPROVE_SLOT].error, undefined);
+  });
+
+  test(`${mode}: success clears a stale pending error and a late error cannot replace the suggestion`, async t => {
+    const entry = { fingerprint: HASH_A, claimId: "existing-claim", state: "pending", startedAt: NOW, resultUrl: URL_A, error: "Old provisional error" };
+    const f = setup(t, { video: { captionCache: { [IMPROVE_SLOT]: entry } } });
+    assert.equal(await f.db.finishVideoCaption("owner", "video", IMPROVE_SLOT, entry.claimId, suggestion()), true);
+    assert.equal(await f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, entry.claimId, "Late error"), false);
+    const final = (await f.db.getVideo("owner", "video")).captionCache[IMPROVE_SLOT];
+    assert.equal(final.state, "ready"); assert.equal(final.error, undefined); assert.equal(final.suggestion.caption, suggestion().caption);
+  });
+
+  test(`${mode}: competing success and failure produce exactly one terminal outcome`, async t => {
+    const f = setup(t);
+    const first = await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A);
+    const results = await Promise.all([
+      f.db.finishVideoCaption("owner", "video", IMPROVE_SLOT, first.entry.claimId, suggestion()),
+      f.db.finishVideoCaptionError("owner", "video", IMPROVE_SLOT, first.entry.claimId, "A solicitação falhou."),
+    ]);
+    assert.equal(results.filter(Boolean).length, 1);
+    const final = (await f.db.getVideo("owner", "video")).captionCache[IMPROVE_SLOT];
+    assert.equal(final.state, "ready"); assert.equal(Boolean(final.error) !== Boolean(final.suggestion), true);
+    assert.equal((await f.db.claimVideoCaption("owner", "video", IMPROVE_SLOT, HASH_A, URL_A)).claimed, false);
+  });
+
+  test(`${mode}: arbitrary suffixes cannot create unbounded improvement cache slots`, async t => {
+    const f = setup(t);
+    for (const slot of ["instagram:comments:improve:extra", "instagram:comments:random-request", "instagram:__proto__:improve", "__proto__"]) {
+      await assert.rejects(f.db.claimVideoCaption("owner", "video", slot, HASH_A, URL_A));
+    }
+    assert.equal(Object.keys((await f.db.getVideo("owner", "video")).captionCache ?? {}).length, 0);
   });
 }
 

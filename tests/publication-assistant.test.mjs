@@ -7,9 +7,10 @@ import ts from 'typescript';
 
 const code = ts.transpileModule(readFileSync(new URL('../src/lib/publication-assistant.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 const input = (patch = {}) => ({ videoId: 'video-1', platform: 'instagram', goal: 'comments', ...patch });
+const improveInput = (patch = {}) => input({ caption: 'Meu passeio de hoje pelo parque. Qual caminho você escolheria?', ...patch });
 const generated = () => ({ caption: 'Legenda factual criada da cena observada.', alternatives: ['Outra abordagem do vídeo.'], keywords: ['parque', 'passeio', 'natureza'], hashtags: ['#Parque', '#Passeio', '#Natureza'], sceneSummary: 'Uma pessoa caminha no parque.' });
 function setup(options = {}) {
-  const calls = { getVideo: [], influencer: [], context: [], claim: [], reserve: [], provider: [], performance: [], finish: [], fallback: [] };
+  const calls = { getVideo: [], influencer: [], context: [], claim: [], reserve: [], provider: [], performance: [], finish: [], finishError: [], fallback: [] };
   const state = {
     video: { id: 'video-1', userId: 'owner', influencerId: 'selected-version', status: 'completed', resultUrl: 'https://blob.test/complete.mp4', ...options.video },
     context: { sourceTitle: 'Passeio no parque', characterName: 'Dante', keywords: [], matchedBy: 'id', ...options.context },
@@ -27,7 +28,8 @@ function setup(options = {}) {
       calls.claim.push({ userId, id, slot, fingerprint, expectedResultUrl });
       if (options.claimMissing || (expectedResultUrl && state.video.resultUrl !== expectedResultUrl)) return;
       const prior = state.video.captionCache?.[slot];
-      if (prior && (prior.fingerprint === fingerprint || prior.state === 'pending')) return { claimed: false, entry: structuredClone(prior) };
+      const mayRetryUnsubmitted = prior?.state === 'ready' && prior.error && prior.retryAt && prior.retryAt <= clock;
+      if (prior && prior.resultUrl === state.video.resultUrl && !mayRetryUnsubmitted && (prior.fingerprint === fingerprint || prior.state === 'pending')) return { claimed: false, entry: structuredClone(prior) };
       const entry = { fingerprint, claimId: `claim-${++claimIndex}`, state: 'pending', startedAt: clock, resultUrl: state.video.resultUrl };
       state.video.captionCache = { ...state.video.captionCache, [slot]: entry };
       return { claimed: true, entry: structuredClone(entry) };
@@ -36,7 +38,14 @@ function setup(options = {}) {
       calls.finish.push({ userId, id, slot, claimId, suggestion });
       const row = state.video, entry = row?.captionCache?.[slot];
       if (!row || row.userId !== userId || row.id !== id || row.deletedAt || row.status !== 'completed' || !row.resultUrl || entry?.claimId !== claimId || entry.state !== 'pending' || entry.resultUrl !== row.resultUrl) return false;
-      row.captionCache[slot] = { ...entry, state: 'ready', suggestion: structuredClone(suggestion) };
+      row.captionCache[slot] = { ...entry, state: 'ready', suggestion: structuredClone(suggestion), error: undefined, retryAt: undefined };
+      return true;
+    },
+    finishVideoCaptionError: async (userId, id, slot, claimId, error, retryAt) => {
+      calls.finishError.push({ userId, id, slot, claimId, error, retryAt });
+      const row = state.video, entry = row?.captionCache?.[slot];
+      if (!row || row.userId !== userId || row.id !== id || row.deletedAt || row.status !== 'completed' || !row.resultUrl || entry?.claimId !== claimId || entry.state !== 'pending' || entry.resultUrl !== row.resultUrl) return false;
+      row.captionCache[slot] = { ...entry, state: 'ready', suggestion: undefined, error: error.slice(0, 500), ...(retryAt ? { retryAt } : {}) };
       return true;
     },
   };
@@ -44,7 +53,7 @@ function setup(options = {}) {
     'server-only': {}, 'node:crypto': { createHash }, './db': db,
     './publication-context': { resolvePublicationContext: async (...args) => { calls.context.push(args); return state.context; } },
     './caption-provider': { CAPTION_PROVIDER_VERSION: 'test-v1', generatePublicationCaption: async (args) => { calls.provider.push(args); return options.generate ? options.generate(args, state) : generated(); } },
-    './instagram-performance': { getInstagramPerformance: async (...args) => { calls.performance.push(args); return state.performance; } },
+    './instagram-performance': { getInstagramPerformance: async (...args) => { calls.performance.push(args); return options.readPerformance ? options.readPerformance(state) : state.performance; } },
     './publication-fallback': { publicationFallback: (videoId, context, goal, notice) => {
       calls.fallback.push({ videoId, context, goal, notice });
       return { videoId, caption: 'Rascunho baseado no contexto conhecido.', alternatives: [{ label: 'Variação 2', caption: 'Alternativa do contexto.' }], keywords: ['contexto'], hashtags: ['#Contexto'], goal, source: { title: context.sourceTitle ?? 'Vídeo', kind: 'reference-context' }, method: 'context', generatedAt: clock, notice };
@@ -162,4 +171,143 @@ test('a replacement of the video URL during analysis rejects the stale caption a
   assert.ok('error' in result); assert.match(result.error, /vídeo mudou/);
   assert.equal(api.calls.provider.length, 1); assert.equal(api.state.video.captionCache['instagram:comments'].state, 'pending');
   assert.equal(api.calls.claim[0].expectedResultUrl, 'https://blob.test/complete.mp4');
+});
+
+test('improvement rejects malformed input and non-owned or unfinished media before reserving paid work', async () => {
+  for (const malformed of [undefined, null, {}, improveInput({ caption: '' }), improveInput({ caption: '  \n ' }), improveInput({ caption: 123 }), improveInput({ caption: 'a'.repeat(2201) }), improveInput({ videoId: '../other' }), improveInput({ platform: 'youtube' }), improveInput({ goal: 'sell' })]) {
+    const api = setup();
+    assert.ok('error' in await api.improvePublication('owner', malformed));
+    assert.equal(api.calls.getVideo.length, 0); assert.equal(api.calls.provider.length, 0);
+  }
+  for (const patch of [{ userId: 'stranger' }, { deletedAt: 10 }, { status: 'processing' }, { resultUrl: undefined }]) {
+    const api = setup({ video: patch });
+    assert.ok('error' in await api.improvePublication('owner', improveInput()));
+    for (const key of ['context', 'claim', 'reserve', 'provider', 'performance']) assert.equal(api.calls[key].length, 0, key);
+  }
+});
+
+test('improvement uses the selected owner version and user draft without mutating its input or publishing', async () => {
+  const api = setup(), draft = Object.freeze(improveInput({ caption: '  Meu passeio no cafe\u0301 do parque. Qual caminho você escolheria?  ' }));
+  const result = await api.improvePublication('owner', draft);
+  assert.equal(result.suggestion.method, 'ai'); assert.equal(result.suggestion.caption, generated().caption);
+  assert.equal(api.calls.provider[0].currentCaption, 'Meu passeio no café do parque. Qual caminho você escolheria?');
+  assert.equal(draft.caption, '  Meu passeio no cafe\u0301 do parque. Qual caminho você escolheria?  ');
+  assert.equal(api.calls.influencer[0][0], 'owner'); assert.equal(api.calls.influencer[0][1], 'selected-version');
+  assert.equal(api.calls.provider[0].video.influencerId, 'selected-version');
+  assert.equal(api.calls.claim[0].slot, 'instagram:comments:improve');
+  assert.equal(api.calls.claim[0].expectedResultUrl, 'https://blob.test/complete.mp4');
+  assert.equal(api.state.video.caption, undefined, 'suggestion is stored only as a suggestion, not applied as a draft');
+});
+
+test('unchanged and canonically equivalent drafts reuse the improvement with no second provider call', async () => {
+  const api = setup();
+  const first = await api.improvePublication('owner', improveInput({ caption: '  Café de hoje no parque. Qual caminho você escolheria?  ' }));
+  const reopened = await api.improvePublication('owner', improveInput({ caption: 'Cafe\u0301 de hoje no parque. Qual caminho você escolheria?' }));
+  assert.equal(JSON.stringify(first), JSON.stringify(reopened));
+  assert.equal(api.calls.claim[0].fingerprint, api.calls.claim[1].fingerprint);
+  assert.equal(api.calls.provider.length, 1); assert.equal(api.calls.reserve.length, 1); assert.equal(api.calls.performance.length, 1);
+});
+
+test('changed ready drafts get distinct fingerprints while preparation and improvement caches stay separate', async () => {
+  const api = setup();
+  await api.preparePublication('owner', input());
+  await api.improvePublication('owner', improveInput());
+  await api.improvePublication('owner', improveInput({ caption: 'O caminho ganhou outra cor hoje. Você também passeia por aqui?' }));
+  assert.deepEqual(api.calls.claim.map(call => call.slot), ['instagram:comments', 'instagram:comments:improve', 'instagram:comments:improve']);
+  assert.notEqual(api.calls.claim[1].fingerprint, api.calls.claim[2].fingerprint);
+  assert.equal(Object.keys(api.state.video.captionCache).length, 2);
+  assert.equal(api.calls.provider.length, 3);
+});
+
+test('a live improvement with another caption blocks new work and never applies that older suggestion', async () => {
+  let markStarted, releaseProvider;
+  const started = new Promise(resolve => { markStarted = resolve; }), waiting = new Promise(resolve => { releaseProvider = resolve; });
+  const api = setup({ generate: async () => { markStarted(); return waiting; } });
+  const first = api.improvePublication('owner', improveInput());
+  await started;
+  const changed = await api.improvePublication('owner', improveInput({ caption: 'Outro rascunho diferente, que escrevi enquanto esperava.' }));
+  assert.ok('error' in changed); assert.match(changed.error, /andamento/);
+  assert.equal(api.calls.provider.length, 1); assert.equal(api.calls.reserve.length, 1);
+  releaseProvider(generated());
+  assert.ok('suggestion' in await first);
+});
+
+test('an expired pending improvement with another caption is retired without new paid work', async () => {
+  const api = setup({ video: { captionCache: { 'instagram:comments:improve': { claimId: 'abandoned', state: 'pending', startedAt: 1, fingerprint: 'old-fingerprint', resultUrl: 'https://blob.test/complete.mp4' } } } });
+  const result = await api.improvePublication('owner', improveInput());
+  assert.ok('error' in result); assert.equal(api.calls.provider.length, 0); assert.equal(api.calls.reserve.length, 0);
+  assert.equal(api.state.video.captionCache['instagram:comments:improve'].state, 'ready');
+  assert.equal(api.calls.finishError[0].claimId, 'abandoned');
+});
+
+test('same-caption concurrent improvements share one paid operation', { timeout: 3000 }, async () => {
+  let markStarted, releaseProvider;
+  const started = new Promise(resolve => { markStarted = resolve; }), waiting = new Promise(resolve => { releaseProvider = resolve; });
+  const api = setup({ generate: async () => { markStarted(); return waiting; } });
+  const first = api.improvePublication('owner', improveInput());
+  await started;
+  const second = api.improvePublication('owner', improveInput());
+  queueMicrotask(() => releaseProvider(generated()));
+  const results = await Promise.all([first, second]);
+  assert.equal(results[0].suggestion.caption, results[1].suggestion.caption);
+  assert.equal(api.calls.provider.length, 1); assert.equal(api.calls.reserve.length, 1);
+});
+
+test('uncertain improvement failures preserve the draft and terminal error prevents another POST', async () => {
+  const api = setup({ generate: () => { throw new Error('PRIVATE_PROVIDER_ERROR accepted then timed out'); } }), draft = improveInput();
+  const original = JSON.stringify(draft), first = await api.improvePublication('owner', draft);
+  api.advance(86_400_001);
+  const reopened = await api.improvePublication('owner', draft);
+  assert.ok('error' in first); assert.equal(JSON.stringify(first), JSON.stringify(reopened));
+  assert.equal(JSON.stringify(draft), original); assert.doesNotMatch(JSON.stringify(first), /PRIVATE_PROVIDER_ERROR/);
+  assert.equal(api.calls.provider.length, 1); assert.equal(api.calls.reserve.length, 1);
+  assert.equal(api.state.video.captionCache['instagram:comments:improve'].retryAt, undefined);
+  assert.equal(api.state.video.captionCache['instagram:comments:improve'].suggestion, undefined);
+});
+
+test('quota failure may retry after its safe deadline but cannot call providers before then', async () => {
+  const api = setup({ quota: false });
+  const limited = await api.improvePublication('owner', improveInput());
+  assert.ok('error' in limited); assert.match(limited.error, /limite/);
+  api.state.quota = true;
+  assert.equal(JSON.stringify(await api.improvePublication('owner', improveInput())), JSON.stringify(limited));
+  assert.equal(api.calls.provider.length, 0); assert.equal(api.calls.reserve.length, 1); assert.equal(api.calls.performance.length, 0);
+  api.advance(3_600_001);
+  const later = await api.improvePublication('owner', improveInput());
+  assert.ok('suggestion' in later); assert.equal(api.calls.provider.length, 1); assert.equal(api.calls.reserve.length, 2);
+  const entry = api.state.video.captionCache['instagram:comments:improve'];
+  assert.equal(entry.error, undefined); assert.equal(entry.retryAt, undefined);
+});
+
+test('no provider key or missing claim cannot reserve improvement quota or submit work', async () => {
+  for (const options of [{ env: { FAL_KEY: '' } }, { claimMissing: true }]) {
+    const api = setup(options);
+    const result = await api.improvePublication('owner', improveInput());
+    assert.ok('error' in result); assert.equal(api.calls.provider.length, 0); assert.equal(api.calls.reserve.length, 0);
+    assert.equal(api.calls.performance.length, 0); assert.equal(api.calls.finish.length, 0);
+  }
+});
+
+test('deletion or media replacement during improvement prevents returning and persisting stale suggestions', async () => {
+  for (const mutation of [state => { state.video.deletedAt = 100; }, state => { state.video.resultUrl = 'https://blob.test/replacement.mp4'; }]) {
+    const api = setup({ generate: (_input, state) => { mutation(state); return generated(); } });
+    const result = await api.improvePublication('owner', improveInput());
+    assert.ok('error' in result); assert.match(result.error, /vídeo mudou/);
+    assert.equal(api.calls.provider.length, 1); assert.equal(api.state.video.captionCache['instagram:comments:improve'].suggestion, undefined);
+  }
+});
+
+test('media deletion while reading account metrics blocks the paid improvement call', async () => {
+  const api = setup({ readPerformance: state => { state.video.deletedAt = 100; return state.performance; } });
+  const result = await api.improvePublication('owner', improveInput());
+  assert.ok('error' in result); assert.equal(api.calls.provider.length, 0); assert.equal(api.calls.reserve.length, 1);
+});
+
+test('TikTok improvement skips Instagram metrics and only verified comparable records inform Instagram drafts', async () => {
+  const api = setup({ performance: { status: 'ready', posts: [{ caption: 'Oculto', comments: 1 }, { caption: 'Outro', likes: 2 }, { caption: 'Visível', likes: 5, comments: 2 }], summary: 'Amostra incompleta', recommendations: [] } });
+  await api.improvePublication('owner', improveInput());
+  assert.equal(api.calls.provider[0].performanceContext, undefined);
+  await api.improvePublication('owner', improveInput({ platform: 'tiktok' }));
+  assert.equal(api.calls.performance.length, 1);
+  assert.equal(api.calls.claim[1].slot, 'tiktok:comments:improve');
 });

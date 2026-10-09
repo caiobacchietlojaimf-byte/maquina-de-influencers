@@ -188,6 +188,7 @@
 }
 .labelRow {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -206,6 +207,17 @@
 .labelRow button:disabled {
   opacity: 0.45;
 }
+.captionActions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.captionActions button:first-child { color: var(--accent-text); }
+.improvementArea { display: grid; gap: 10px; }
+.improvementArea:not(:has(.suggestionStatus > *, .improvement, .undoImprovement)) { display: none; }
+.improvement { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--s1); }
+.improvement h3 { font-size: 12px; font-weight: 600; margin: 0; }
+.improvedCaption, .improvementComparison p { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; font-size: 12px; line-height: 1.6; color: var(--tx2); margin: 0; }
+.improvementComparison summary { cursor: pointer; color: var(--tx3); font-size: 11px; }
+.improvementComparison p { margin-top: 10px; }
+.improvementActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.undoImprovement { justify-self: start; }
 .captionInput {
   min-height: 180px;
   resize: vertical;

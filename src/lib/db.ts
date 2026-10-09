@@ -78,6 +78,9 @@ export type VideoKind = "motion" | "viral" | "custom";
 export type CaptionCacheEntry = {
   fingerprint: string; claimId: string; startedAt: number; resultUrl: string;
   state: "pending" | "ready"; suggestion?: PublicationSuggestion;
+  error?: string;
+  /** Only pre-submission limits may expire; uncertain paid calls never retry. */
+  retryAt?: number;
 };
 export type PublicationSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset"; id: string } | { kind: "upload" };
 
@@ -780,13 +783,14 @@ async function mutateVideoCaptions<T>(userId: string, id: string, change: (video
 }
 
 export async function claimVideoCaption(userId: string, id: string, slot: string, fingerprint: string, expectedResultUrl?: string): Promise<{ claimed: boolean; entry: CaptionCacheEntry } | undefined> {
-  if (!/^(instagram|tiktok):(comments|shares|saves|follows)$/.test(slot) || !/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error("Preparação inválida.");
+  if (!/^(instagram|tiktok):(comments|shares|saves|follows)(:improve)?$/.test(slot) || !/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error("Preparação inválida.");
   return mutateVideoCaptions(userId, id, video => {
     if (expectedResultUrl && video.resultUrl !== expectedResultUrl) return;
     const prior = video.captionCache?.[slot];
     // Never evict work for the same media. A genuinely replaced media URL gets
     // a new claim; its previous finalizer cannot pass the claimId comparison.
-    if (prior && prior.resultUrl === video.resultUrl && (prior.fingerprint === fingerprint || prior.state === "pending")) return { claimed: false, entry: prior };
+    const mayRetryUnsubmitted = prior?.state === "ready" && prior.error && prior.retryAt && prior.retryAt <= Date.now();
+    if (prior && prior.resultUrl === video.resultUrl && !mayRetryUnsubmitted && (prior.fingerprint === fingerprint || prior.state === "pending")) return { claimed: false, entry: prior };
     const entry: CaptionCacheEntry = { fingerprint, claimId: randomUUID(), state: "pending", startedAt: Date.now(), resultUrl: video.resultUrl! };
     video.captionCache = { ...video.captionCache, [slot]: entry };
     return { claimed: true, entry };
@@ -797,7 +801,17 @@ export async function finishVideoCaption(userId: string, id: string, slot: strin
   return Boolean(await mutateVideoCaptions(userId, id, video => {
     const entry = video.captionCache?.[slot];
     if (!entry || entry.claimId !== claimId || entry.state !== "pending" || suggestion.videoId !== id || entry.resultUrl !== video.resultUrl) return false;
-    video.captionCache = { ...video.captionCache, [slot]: { ...entry, state: "ready", suggestion } };
+    video.captionCache = { ...video.captionCache, [slot]: { ...entry, state: "ready", suggestion, error: undefined, retryAt: undefined } };
+    return true;
+  }));
+}
+
+/** Retain an uncertain improvement outcome so repeated clicks cannot pay again. */
+export async function finishVideoCaptionError(userId: string, id: string, slot: string, claimId: string, error: string, retryAt?: number): Promise<boolean> {
+  return Boolean(await mutateVideoCaptions(userId, id, video => {
+    const entry = video.captionCache?.[slot];
+    if (!entry || entry.claimId !== claimId || entry.state !== "pending" || entry.resultUrl !== video.resultUrl) return false;
+    video.captionCache = { ...video.captionCache, [slot]: { ...entry, state: "ready", suggestion: undefined, error: error.slice(0, 500), ...(retryAt ? { retryAt } : {}) } };
     return true;
   }));
 }

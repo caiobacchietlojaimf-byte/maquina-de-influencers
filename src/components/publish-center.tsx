@@ -19,6 +19,7 @@ import {
   Copy,
   WandSparkles,
   RefreshCw,
+  Undo2,
   ChartNoAxesCombined,
   Film,
   AlertCircle,
@@ -34,7 +35,7 @@ import {
   savePostDraftAction,
   schedulePostAction,
 } from "@/app/actions/posts";
-import { getInstagramPerformanceAction, preparePublicationAction } from "@/app/actions/publication-assistant";
+import { getInstagramPerformanceAction, improvePublicationAction, preparePublicationAction } from "@/app/actions/publication-assistant";
 import type { InstagramPerformance, PublicationSuggestion } from "@/lib/publication-assistant-types";
 import type { Post, SocialPlatform } from "@/lib/db";
 import type { TikTokCreator } from "@/lib/social";
@@ -93,6 +94,13 @@ const SUGGESTION_SOURCES: Record<PublicationSuggestion["source"]["kind"], string
 };
 
 type SuggestionRequestState = { session: number; request: number; captionRevision: number };
+type ImprovementPreview = {
+  suggestion: PublicationSuggestion;
+  sent: SuggestionRequestState;
+  originalCaption: string;
+  selectedCaption: string;
+};
+type ImprovementUndo = { originalCaption: string; appliedCaption: string; captionRevision: number };
 
 /** A response may supply options after typing, but cannot overwrite a newer edit. */
 export function isCurrentPublicationSuggestion(sent: SuggestionRequestState, current: SuggestionRequestState): boolean {
@@ -100,6 +108,9 @@ export function isCurrentPublicationSuggestion(sent: SuggestionRequestState, cur
 }
 export function canApplyPublicationSuggestion(sent: SuggestionRequestState, current: SuggestionRequestState, edited: boolean): boolean {
   return isCurrentPublicationSuggestion(sent, current) && !edited && sent.captionRevision === current.captionRevision;
+}
+export function canUndoPublicationImprovement(undo: ImprovementUndo | null, caption: string, revision: number): boolean {
+  return Boolean(undo && undo.appliedCaption === caption && undo.captionRevision === revision);
 }
 function captionAlternatives(suggestion: PublicationSuggestion) {
   const options = [...suggestion.alternatives];
@@ -150,6 +161,11 @@ export function PublishCenter({
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
   const [suggestionRefresh, setSuggestionRefresh] = useState(0);
+  const [improvement, setImprovement] = useState<ImprovementPreview | null>(null);
+  const [improving, setImproving] = useState(false);
+  const [improvementError, setImprovementError] = useState<string | null>(null);
+  const [improvementUndo, setImprovementUndo] = useState<ImprovementUndo | null>(null);
+  const improvementRequest = useRef<{ sent: SuggestionRequestState; timer: ReturnType<typeof setTimeout> } | null>(null);
   const [performance, setPerformance] = useState<InstagramPerformance | null>(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [performanceError, setPerformanceError] = useState<string | null>(null);
@@ -181,6 +197,7 @@ export function PublishCenter({
   const instagramAccount = accounts.find(account => account.platform === "instagram" && account.status === "connected");
   const instagramConnectionKey = instagramAccount ? `${instagramAccount.username}:${instagramAccount.connectedAt}` : null;
   const review = inspectCaption(caption);
+  const contextSuggestion = improvement?.suggestion ?? suggestion;
   const tiktokReady = Boolean(creator && privacy && tiktokConsent && (!commercial || ownBrand || paidBrand) && !(commercial && paidBrand && privacy === "SELF_ONLY"));
   const shownPosts = posts.filter(
     (post) =>
@@ -196,6 +213,10 @@ export function PublishCenter({
   useEffect(() => {
     setPosts(initialPosts);
   }, [initialPosts]);
+  useEffect(() => () => {
+    if (improvementRequest.current) clearTimeout(improvementRequest.current.timer);
+    improvementRequest.current = null;
+  }, []);
   useEffect(() => {
     if (!composerOpen || platform !== "tiktok" || pickedAccount?.status !== "connected") return;
     let active = true;
@@ -286,10 +307,12 @@ export function PublishCenter({
 
   function closeComposer() {
     suggestionState.current = { ...suggestionState.current, session: suggestionState.current.session + 1, request: suggestionState.current.request + 1 };
+    clearImprovement();
     setComposerOpen(false);
   }
   function resetCaptionSession(edited: boolean) {
     suggestionState.current = { session: suggestionState.current.session + 1, request: suggestionState.current.request + 1, captionRevision: suggestionState.current.captionRevision + 1 };
+    clearImprovement();
     captionEdited.current = edited;
     setComposerSession(suggestionState.current.session);
     setSuggestion(null);
@@ -297,6 +320,7 @@ export function PublishCenter({
   }
   function changeCaptionContext() {
     suggestionState.current = { ...suggestionState.current, request: suggestionState.current.request + 1 };
+    clearImprovement();
     setSuggestion(null);
     setSuggestionError(null);
     if (!captionEdited.current) setCaption("");
@@ -304,7 +328,67 @@ export function PublishCenter({
   function editCaption(value: string) {
     captionEdited.current = true;
     suggestionState.current = { ...suggestionState.current, captionRevision: suggestionState.current.captionRevision + 1 };
+    setImprovementUndo(null);
     setCaption(value);
+  }
+  function clearImprovement() {
+    if (improvementRequest.current) clearTimeout(improvementRequest.current.timer);
+    improvementRequest.current = null;
+    setImprovement(null);
+    setImproving(false);
+    setImprovementError(null);
+    setImprovementUndo(null);
+  }
+  function improveCaption() {
+    if (busy || !composerOpen || !videoId || improvementRequest.current) return;
+    if (!caption.trim() || caption.trim().length > CAPTION_LIMIT) {
+      setImprovementError(`Escreva uma legenda de 1 a ${CAPTION_LIMIT.toLocaleString("pt-BR")} caracteres para melhorar.`);
+      return;
+    }
+    clearImprovement();
+    // Invalidate automatic preparation before dispatching a user-requested improvement.
+    const sent = { ...suggestionState.current, request: suggestionState.current.request + 1 };
+    suggestionState.current = sent;
+    const originalCaption = caption;
+    setSuggestionLoading(false);
+    setSuggestionError(null);
+    setImproving(true);
+    const isCurrent = () => improvementRequest.current?.sent === sent && isCurrentPublicationSuggestion(sent, suggestionState.current);
+    const timer = setTimeout(() => {
+      if (!isCurrent()) return;
+      improvementRequest.current = null;
+      setImproving(false);
+      setImprovementError("A melhoria demorou. Sua legenda foi mantida. Tente novamente ou continue editando.");
+    }, 80_000);
+    improvementRequest.current = { sent, timer };
+    startTransition(() => {
+      void improvePublicationAction({ videoId, platform, goal, caption: originalCaption }).then(result => {
+        if (!isCurrent()) return;
+        if ("error" in result) { setImprovementError(result.error); return; }
+        if (result.suggestion.videoId !== videoId) { setImprovementError("Não foi possível conferir a melhoria deste vídeo. Sua legenda foi mantida."); return; }
+        setImprovement({ suggestion: result.suggestion, sent, originalCaption, selectedCaption: result.suggestion.caption });
+      }).catch(() => {
+        if (isCurrent()) setImprovementError("Não foi possível melhorar agora. Sua legenda foi mantida. Tente novamente.");
+      }).finally(() => {
+        clearTimeout(timer);
+        if (isCurrent()) {
+          improvementRequest.current = null;
+          setImproving(false);
+        }
+      });
+    });
+  }
+  function applyImprovement() {
+    if (!improvement || busy || !isCurrentPublicationSuggestion(improvement.sent, suggestionState.current)) return;
+    const previousCaption = caption;
+    editCaption(improvement.selectedCaption);
+    setImprovementUndo({ originalCaption: previousCaption, appliedCaption: improvement.selectedCaption, captionRevision: suggestionState.current.captionRevision });
+    setSuggestion(improvement.suggestion);
+    setImprovement(null);
+  }
+  function undoImprovement() {
+    if (busy || !canUndoPublicationImprovement(improvementUndo, caption, suggestionState.current.captionRevision)) return;
+    editCaption(improvementUndo!.originalCaption);
   }
 
   const refreshAccounts = async () => {
@@ -845,14 +929,14 @@ export function PublishCenter({
               <div className="field">
                 <div className={styles.labelRow}>
                   <label htmlFor="pub-caption">3. Legenda</label>
-                  <button
-                    type="button"
-                    onClick={copyCaption}
-                    disabled={!caption.trim()}
-                  >
-                    <Copy size={13} />
-                    Copiar
-                  </button>
+                  <div className={styles.captionActions}>
+                    <button type="button" onClick={improveCaption} disabled={busy || improving || !videoId || !caption.trim() || caption.trim().length > CAPTION_LIMIT} aria-controls="pub-improvement">
+                      <WandSparkles size={13} aria-hidden="true" />Melhorar post
+                    </button>
+                    <button type="button" onClick={copyCaption} disabled={!caption.trim()}>
+                      <Copy size={13} aria-hidden="true" />Copiar
+                    </button>
+                  </div>
                 </div>
                 <div className={styles.suggestionStatus} role="status">
                   {suggestionLoading ? <><span className="spinner" aria-hidden="true" />Preparando legenda…</> : suggestionError ? <><span>{suggestionError}</span><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setSuggestionRefresh(value => value + 1)}><RefreshCw size={13} />Tentar novamente</button></> : suggestion ? <><WandSparkles size={14} /><span>{caption === suggestion.caption ? "Legenda pronta para revisar" : "Sugestões prontas · seu texto foi mantido"}</span>{caption !== suggestion.caption ? <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => editCaption(suggestion.caption)}>Aplicar sugestão</button> : null}</> : null}
@@ -876,6 +960,28 @@ export function PublishCenter({
                   </span>
                   <span>{review.hashtags.length} hashtags</span>
                 </div>
+                <div id="pub-improvement" className={styles.improvementArea}>
+                  <div className={styles.suggestionStatus} role="status" aria-live="polite">
+                    {improving ? <><span className="spinner" aria-hidden="true" />Melhorando seu post…</> : improvementError ? <><span>{improvementError}</span><button type="button" className="btn btn-ghost btn-sm" disabled={busy || !caption.trim() || caption.trim().length > CAPTION_LIMIT} onClick={improveCaption}><RefreshCw size={13} />Tentar melhoria novamente</button></> : improvement ? <><WandSparkles size={14} aria-hidden="true" /><span>Melhoria pronta para comparar</span></> : null}
+                  </div>
+                  {improvement ? <section className={styles.improvement} aria-labelledby="pub-improvement-title">
+                    <h3 id="pub-improvement-title">Sugestão de melhoria</h3>
+                    <div className={styles.captionVariants} role="group" aria-label="Variações da melhoria">
+                      {captionAlternatives(improvement.suggestion).map((alternative, index) => <button type="button" key={`${index}-${alternative.label}`} className="chip" aria-pressed={improvement.selectedCaption === alternative.caption} data-active={improvement.selectedCaption === alternative.caption} disabled={busy} onClick={() => setImprovement(current => current ? { ...current, selectedCaption: alternative.caption } : null)}>{alternative.label}</button>)}
+                    </div>
+                    <p className={styles.improvedCaption}>{improvement.selectedCaption}</p>
+                    <details className={styles.improvementComparison}>
+                      <summary>Comparar com o texto enviado</summary>
+                      <p>{improvement.originalCaption}</p>
+                    </details>
+                    {improvement.sent.captionRevision !== suggestionState.current.captionRevision ? <p className={styles.help}>Você editou a legenda durante a melhoria. Compare também com seu texto atual acima.</p> : null}
+                    <div className={styles.improvementActions}>
+                      <button type="button" className="btn btn-accent btn-sm" onClick={applyImprovement} disabled={busy || !improvement.selectedCaption.trim() || improvement.selectedCaption.length > CAPTION_LIMIT}>Aplicar melhoria</button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImprovement(null)} disabled={busy}>Descartar</button>
+                    </div>
+                  </section> : null}
+                  {canUndoPublicationImprovement(improvementUndo, caption, suggestionState.current.captionRevision) ? <button type="button" className={`btn btn-ghost btn-sm ${styles.undoImprovement}`} disabled={busy} onClick={undoImprovement}><Undo2 size={13} aria-hidden="true" />Desfazer melhoria</button> : null}
+                </div>
                 {review.warnings.length ? (
                   <ul className={styles.review}>
                     {review.warnings.map((warning) => (
@@ -896,11 +1002,11 @@ export function PublishCenter({
                 <summary><WandSparkles size={15} />Contexto e objetivo</summary>
                 <div className={styles.assistantBody}>
                   <div className="field"><label htmlFor="pub-goal">Objetivo da publicação</label><select id="pub-goal" className="input" value={goal} disabled={busy} onChange={(event) => { if (event.target.value !== goal) changeCaptionContext(); setGoal(event.target.value as CaptionGoal); }}>{Object.entries(CAPTION_GOALS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</select></div>
-                  {suggestion ? <>
-                    <p className={styles.help}>{SUGGESTION_SOURCES[suggestion.source.kind]}: {suggestion.source.title}</p>
-                    {suggestion.keywords.length ? <div className={styles.keywords} aria-label="Palavras-chave da legenda">{suggestion.keywords.map(keyword => <span key={keyword}>{keyword}</span>)}</div> : null}
-                    {suggestion.source.url && /^https:\/\//.test(suggestion.source.url) ? <a className={styles.sourceLink} href={suggestion.source.url} target="_blank" rel="noreferrer"><ExternalLink size={12} />Ver referência</a> : null}
-                    {suggestion.notice ? <p className={styles.help}>{suggestion.notice}</p> : null}
+                  {contextSuggestion ? <>
+                    <p className={styles.help}>{SUGGESTION_SOURCES[contextSuggestion.source.kind]}: {contextSuggestion.source.title}</p>
+                    {contextSuggestion.keywords.length ? <div className={styles.keywords} aria-label="Palavras-chave da legenda">{contextSuggestion.keywords.map(keyword => <span key={keyword}>{keyword}</span>)}</div> : null}
+                    {contextSuggestion.source.url && /^https:\/\//.test(contextSuggestion.source.url) ? <a className={styles.sourceLink} href={contextSuggestion.source.url} target="_blank" rel="noreferrer"><ExternalLink size={12} />Ver referência</a> : null}
+                    {contextSuggestion.notice ? <p className={styles.help}>{contextSuggestion.notice}</p> : null}
                   </> : null}
                 </div>
               </details>
