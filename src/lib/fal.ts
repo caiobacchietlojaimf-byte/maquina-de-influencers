@@ -75,7 +75,7 @@ function messageFromBody(body: unknown, fallback: string): string {
   return fallback;
 }
 
-async function send(method: "POST" | "GET", path: string, input?: Record<string, unknown>): Promise<unknown> {
+async function send(method: "POST" | "GET" | "PUT", path: string, input?: Record<string, unknown>): Promise<unknown> {
   const key = credentials();
   let response: Response;
   let body: string;
@@ -128,6 +128,17 @@ export async function submitFalGeneration(model: string, input: Record<string, u
     throw new FalError(502, "A fal.ai não retornou um identificador válido. A solicitação não foi reenviada.");
   }
   return { requestId };
+}
+
+/** Best effort: fal only guarantees no charge for requests still IN_QUEUE. */
+export async function cancelFalGeneration(model: string, requestId: string): Promise<void> {
+  const app = queueApp(model);
+  if (typeof requestId !== "string" || !REQUEST_ID.test(requestId)) throw new FalError(400, "Identificador da geração inválido.");
+  try { await send("PUT", `${app}/requests/${requestId}/cancel`); }
+  catch (error) {
+    // 400 = already completed; the cancellation is then simply a no-op.
+    if (!(error instanceof FalError && error.status === 400)) throw error;
+  }
 }
 
 export async function getFalGenerationStatus(model: string, requestId: string): Promise<FalGenerationStatus> {

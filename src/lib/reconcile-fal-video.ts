@@ -8,7 +8,7 @@ let mediaWork = Promise.resolve();
 
 /** Reads existing requests only. Shared by authenticated polling and verified callbacks. */
 export async function reconcileFalVideo(video: Video, force = false): Promise<void> {
-  if (!video.edit || video.edit.provider !== "fal" || video.deletedAt || video.status === "completed") return;
+  if (!video.edit || video.edit.provider !== "fal" || video.edit.cancelledAt || video.deletedAt || video.status === "completed") return;
   const originalEdit = video.edit;
   if (!force && video.polling?.nextCheckAt && video.polling.nextCheckAt > Date.now()) return;
   const parts = video.edit.segments ?? [{ sourceUrl: video.edit.sourceUrl, start: 0, source: video.edit.source, requestId: video.requestId }];

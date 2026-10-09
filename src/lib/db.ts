@@ -119,6 +119,8 @@ export type Video = {
     resolution: "480p" | "720p" | "1080p" | "auto"; estimatedUsd: number;
     result?: VideoMetadata;
     audioPreserved?: boolean;
+    /** Cancelled by the user: polling stops and late provider results are ignored. */
+    cancelledAt?: number;
   };
   finalizationStartedAt?: number;
   polling?: { checkedAt: number; failures: number; providerStatus?: "queued" | "processing" | "completed" | "failed"; error?: string; nextCheckAt?: number };

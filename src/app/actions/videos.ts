@@ -15,8 +15,10 @@ import {
   getVideo,
   listVideos,
   updateVideo,
+  updateVideoFromPoll,
   type Video,
 } from "@/lib/db";
+import { cancelFalGeneration, getFalGenerationStatus } from "@/lib/fal";
 import { buildViralPrompt } from "@/lib/prompt";
 import { getStatus, isConfigured, submitGeneration, PlatformError, TERMINAL_STATUSES } from "@/lib/platform";
 
@@ -159,4 +161,34 @@ export async function deleteVideoAction(id: string): Promise<void> {
   const user = await requireUser();
   if (!await deleteVideo(user.id, id)) throw new Error("Não foi possível excluir este vídeo. Aguarde a confirmação do pedido e tente novamente.");
   revalidatePath("/app", "layout");
+}
+
+/** Stops a fal edit the user gave up on. Credits return only when no part ever
+ * left the provider queue, because fal does not bill queued requests. */
+export async function cancelVideoAction(id: string): Promise<{ refunded: boolean } | { error: string }> {
+  const user = await requireUser();
+  const video = await getVideo(user.id, id);
+  if (!video?.edit || video.edit.provider !== "fal" || video.deletedAt || video.edit.cancelledAt) return { error: "Este vídeo não pode ser cancelado." };
+  if (video.status !== "queued" && video.status !== "processing") return { error: "Este vídeo já foi concluído ou interrompido." };
+  if (video.finalizationStartedAt) return { error: "O resultado já chegou e está sendo montado. Aguarde alguns instantes." };
+  const parts = (video.edit.segments ?? [{ requestId: video.requestId, resultUrl: video.resultUrl }]).filter(part => part.requestId && !part.resultUrl);
+  if (!parts.length) return { error: "O resultado já chegou e está sendo montado. Aguarde alguns instantes." };
+  let neverStarted = !video.edit.segments?.some(part => part.resultUrl);
+  for (const part of parts) {
+    try {
+      const status = await getFalGenerationStatus(video.edit.model, part.requestId!);
+      if (status.status !== "queued") neverStarted = false;
+    } catch { neverStarted = false; }
+  }
+  await Promise.all(parts.map(part => cancelFalGeneration(video.edit!.model, part.requestId!).catch(() => undefined)));
+  const cancelled = await updateVideoFromPoll(video, {
+    status: "review",
+    error: neverStarted ? "Geração cancelada por você antes de começar. Os créditos foram devolvidos." : "Geração cancelada por você. A fal.ai já tinha começado a processar, então pode cobrar o trecho iniciado.",
+    polling: { checkedAt: Date.now(), failures: 0, providerStatus: "failed" },
+    edit: { ...video.edit, cancelledAt: Date.now() },
+  });
+  if (!cancelled) return { error: "O status deste vídeo mudou agora. Atualize a página." };
+  if (neverStarted && video.creditCost) await adjustCredits(user.id, video.creditCost);
+  revalidatePath("/app", "layout");
+  return { refunded: neverStarted && Boolean(video.creditCost) };
 }

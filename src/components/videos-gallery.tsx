@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Film, Flame, Send, Trash2, Wand2 } from "lucide-react";
+import { Ban, Download, Film, Flame, RotateCcw, Send, Trash2, Wand2 } from "lucide-react";
 
-import { deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
+import { cancelVideoAction, deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
 import { canDeleteVideo } from "@/lib/video-deletion";
 import type { Video } from "@/lib/db";
 import { editModelLabel } from "@/lib/character-edit";
@@ -28,6 +28,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
   const pollRevision = useRef(0);
   const pollInFlight = useRef(false);
   const [pollError, setPollError] = useState("");
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const hasPending = videos.some((v) => v.status === "processing" || v.status === "queued");
 
   useEffect(() => () => {
@@ -54,6 +55,18 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
     }, 4000);
     return () => { disposed = true; clearInterval(timer); };
   }, [hasPending]);
+
+  async function cancel(video: Video) {
+    if (cancelling || !window.confirm("Cancelar esta geração? Se a fal.ai ainda não tiver começado, os créditos voltam. Se já começou, ela pode cobrar o que processou.")) return;
+    setCancelling(video.id);
+    try {
+      const result = await cancelVideoAction(video.id);
+      if ("error" in result) { setPollError(result.error); return; }
+      pollRevision.current++;
+      setVideos(await pollVideosAction());
+    } catch { setPollError("Não foi possível cancelar agora. Tente novamente."); }
+    finally { setCancelling(null); }
+  }
 
   async function finalize(video: Video) {
     if (!canFinalizeExistingEdit(video) || activeFinalizations.current.has(video.id)) return;
@@ -193,6 +206,16 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               <span>Original: {video.edit.source.duration.toFixed(2)}s{video.edit.result ? ` · Resultado: ${video.edit.result.duration.toFixed(2)}s` : ""}</span>
               {video.edit.audioPreserved && <span>{video.status === "review" ? "Áudio original preservado · confira o aviso da edição" : "Áudio original preservado · duração e proporção conferidas"}</span>}
               {video.error && <p role="status" style={{ color: "var(--danger)" }}>{video.error}</p>}
+              {video.edit.provider === "fal" && !video.edit.cancelledAt && (video.status === "queued" || video.status === "processing") && !video.finalizationStartedAt && (
+                <button type="button" className="btn btn-ghost btn-sm" disabled={cancelling !== null} onClick={() => void cancel(video)}>
+                  {cancelling === video.id ? <><span className="spinner" />Cancelando…</> : <><Ban size={14} />Cancelar geração</>}
+                </button>
+              )}
+              {video.edit.cancelledAt && video.influencerId && (
+                <Link className="btn btn-accent btn-sm" href={`/app/criar-videos?influencer=${encodeURIComponent(video.influencerId)}`}>
+                  <RotateCcw size={14} />Gerar de novo
+                </Link>
+              )}
               {canFinalizeExistingEdit(video) && <>
                 <button type="button" className="btn btn-accent btn-sm" disabled={finalizing.has(video.id)} onClick={() => void finalize(video)}>
                   {finalizing.has(video.id) ? <><span className="spinner" />Finalizando vídeo e áudio…</> : <><Film size={14} />Finalizar vídeo completo</>}
