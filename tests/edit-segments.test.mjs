@@ -86,16 +86,37 @@ test("silent sources split without synthesizing audio; short sources remain byte
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("a 30-second source yields two valid 15-second segments, and incompatible outputs cannot be joined", async () => {
+test("lossless keyframe splitting keeps identical pictures and reports the actual cut position", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-test-copy-segments-"));
+  try {
+    const sourcePath = path.join(directory, "keyframes.mp4");
+    ff(["-f", "lavfi", "-i", "testsrc2=size=96x160:rate=24", "-t", "17", "-c:v", "libx264", "-crf", "28", "-g", "24", "-keyint_min", "24", "-sc_threshold", "0", "-bf", "0", "-y", sourcePath]);
+    const source = readFileSync(sourcePath), metadata = media.mp4Metadata(source);
+    const parts = await segments.splitEditSource(source, metadata.duration);
+    assert.equal(parts.length, 2);
+    assert.equal(parts[0].duration, 9, "the balanced 8.5s request moves to the independently decodable 9s keyframe");
+    assert.equal(parts[1].start, 9, "the returned start must use the actual pictures, not the proposed midpoint");
+    assert.equal(parts[1].duration, 8);
+    assert.equal(parts.reduce((sum, part) => sum + media.mp4Metadata(part.bytes).frameCount, 0), metadata.frameCount);
+    const hashes = file => ff(["-threads", "1", "-i", file, "-map", "0:v:0", "-vsync", "0", "-f", "framemd5", "pipe:1"]).toString().split(/\r?\n/).filter(line => line && !line.startsWith("#")).map(line => line.split(",").at(-1).trim());
+    const actual = parts.flatMap((part, index) => {
+      const output = path.join(directory, `part-${index}.mp4`); writeFileSync(output, part.bytes); return hashes(output);
+    });
+    assert.deepEqual([...actual], hashes(sourcePath), "every full-resolution decoded frame must remain bit-identical and in order");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("a 30-second long-GOP source falls back to two valid 15-second segments, and incompatible outputs cannot be joined", async () => {
   const directory = mkdtempSync(path.join(tmpdir(), "mi-test-boundary-segments-"));
   try {
     const sourcePath = path.join(directory, "thirty.mp4");
-    ff(["-f", "lavfi", "-i", "testsrc2=size=96x160:rate=24", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=29.9", "-t", "30", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac", "-y", sourcePath]);
+    ff(["-f", "lavfi", "-i", "testsrc2=size=96x160:rate=24", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=29.9", "-t", "30", "-c:v", "libx264", "-preset", "ultrafast", "-g", "999", "-sc_threshold", "0", "-c:a", "aac", "-y", sourcePath]);
     const source = readFileSync(sourcePath), metadata = media.mp4Metadata(source);
     assert.equal(metadata.duration, 30);
     const parts = await segments.splitEditSource(source, metadata.duration);
     assert.equal(parts.length, 2);
     assert.equal(parts[0].duration, 15); assert.equal(parts[1].duration, 15);
+    assert.equal(parts.reduce((sum, part) => sum + media.mp4Metadata(part.bytes).frameCount, 0), metadata.frameCount);
     assert.equal(media.mp4Metadata(await segments.joinEditedSegments(parts.map(part => part.bytes))).duration, 30);
     await assert.rejects(segments.joinEditedSegments([parts[0].bytes, original]), /dimensões diferentes/);
   } finally { rmSync(directory, { recursive: true, force: true }); }

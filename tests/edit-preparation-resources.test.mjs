@@ -75,7 +75,7 @@ test("cancelled preparation kills and reaps the real FFmpeg process", async () =
     optionsUsed = options;
     const operation = new Promise((resolve, reject) => {
       child = execFile(file, args, options, (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }));
-      child.once("spawn", () => setTimeout(() => controller.abort(new Error("cancelled during encoding")), 30));
+      child.once("spawn", () => controller.abort(new Error("cancelled during encoding")));
     });
     operation.child = child; return operation;
   };

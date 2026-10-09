@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
-import { mp4Metadata } from "./video-reference";
+import { mp4Metadata, type VideoMetadata } from "./video-reference";
 
 const run = promisify(execFile);
 const DURATION_TOLERANCE = 0.15;
@@ -23,20 +23,24 @@ export function planEditSegments(duration: number): EditSegment[] {
   return [{ start: 0, duration: midpoint }, { start: midpoint, duration: duration - midpoint }];
 }
 
-async function transcode(args: string[], signal?: AbortSignal): Promise<void> {
+async function transcode(args: string[], signal?: AbortSignal, phase: "copy" | "encode" | "join" = "encode"): Promise<void> {
   signal?.throwIfAborted();
   let closed: Promise<void> | undefined;
   try {
     const operation = run(ffmpeg.path, ["-hide_banner", "-loglevel", "error", "-nostdin", ...args], {
-      timeout: 180000, signal, killSignal: "SIGKILL", windowsHide: true, maxBuffer: 2 * 1024 * 1024,
+      timeout: phase === "copy" ? 15000 : 180000, signal, killSignal: "SIGKILL", windowsHide: true, maxBuffer: 2 * 1024 * 1024,
     });
     closed = new Promise(resolve => operation.child.once("close", () => resolve()));
     await operation;
-  } catch {
+  } catch (error) {
     // Abort may reject before the OS has released output files. Reap the child
     // before the caller removes its temporary directory (especially on Windows).
     await closed;
     signal?.throwIfAborted();
+    const failure = error as { code?: unknown; signal?: unknown; killed?: unknown };
+    // Deliberately exclude command arguments, stderr, local paths and credentials.
+    const log = phase === "copy" ? console.warn : console.error;
+    log("video-transcode-failed", { phase, code: typeof failure.code === "string" || typeof failure.code === "number" ? failure.code : null, signal: typeof failure.signal === "string" ? failure.signal : null, killed: failure.killed === true });
     throw new Error("Não foi possível preparar os trechos do vídeo com segurança. Nenhum trecho foi cortado para caber no modelo.");
   }
 }
@@ -46,7 +50,28 @@ async function transcode(args: string[], signal?: AbortSignal): Promise<void> {
 // memory: two slice threads, one reference and no future-frame buffering.
 const encoding = ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency", "-crf", "17", "-threads", "2", "-x264-params", "bframes=0:rc-lookahead=0:sync-lookahead=0:ref=1:sliced-threads=1", "-pix_fmt", "yuv420p", "-vsync", "0"];
 
-/** Decode every original frame; adjacent trims never change playback speed. Finalization restores original audio. */
+async function readPreparedSegments(files: string[], source: VideoMetadata, signal?: AbortSignal): Promise<PreparedEditSegment[]> {
+  const segments: PreparedEditSegment[] = [];
+  let pictures = 0, frames = 0;
+  for (const file of files) {
+    const bytes = await readFile(/* turbopackIgnore: true */ file, { signal });
+    const actual = mp4Metadata(bytes);
+    if (actual.duration < 3 || actual.duration > 15 || actual.width !== source.width || actual.height !== source.height || actual.hasAudio) {
+      throw new Error("Um trecho não preservou os requisitos de duração, imagem ou áudio. A geração foi interrompida antes do envio.");
+    }
+    segments.push({ start: pictures, duration: actual.duration, bytes });
+    pictures += actual.videoDuration ?? actual.duration;
+    frames += actual.frameCount ?? 0;
+  }
+  if (Math.abs(segments.reduce((sum, part) => sum + part.duration, 0) - source.duration) > DURATION_TOLERANCE
+    || Math.abs(pictures - (source.videoDuration ?? source.duration)) > DURATION_TOLERANCE) {
+    throw new Error("Os trechos não preservaram a duração completa do vídeo original.");
+  }
+  if (source.frameCount && frames !== source.frameCount) throw new Error("Os trechos não preservaram todos os quadros do vídeo original.");
+  return segments;
+}
+
+/** Prefer lossless keyframe cuts; decode only when two valid lossless ranges cannot cover every original frame. */
 export async function splitEditSource(bytes: Buffer, duration: number, options: SplitEditOptions = {}): Promise<PreparedEditSegment[]> {
   options.signal?.throwIfAborted();
   const plan = planEditSegments(duration);
@@ -57,32 +82,34 @@ export async function splitEditSource(bytes: Buffer, duration: number, options: 
   try {
     const input = path.join(directory, "original.mp4");
     await writeFile(input, bytes, { signal: options.signal });
+    options.onProgress?.(0, plan.length);
+    if (source.frameCount && Number.isSafeInteger(source.frameCount)) {
+      // The segment muxer moves the cut to the next independently decodable
+      // keyframe. Accept it ONLY if both parts stay <=15s and retain every frame.
+      // Trying the lower valid boundary also finds keyframes before the midpoint.
+      const cuts = [...new Set([plan[1].start, Math.max(3, (source.videoDuration ?? duration) - 15)])];
+      const copies = [path.join(directory, "copy-0.mp4"), path.join(directory, "copy-1.mp4")];
+      for (const cut of cuts) {
+        try {
+          await transcode(["-threads", "1", "-i", input, "-map", "0:v:0", "-an", "-c:v", "copy", "-bsf:v", "h264_mp4toannexb", "-f", "segment", "-segment_times", cut.toFixed(9), "-reset_timestamps", "1", "-segment_format", "mp4", "-segment_format_options", "movflags=+faststart", "-y", path.join(directory, "copy-%d.mp4")], options.signal, "copy");
+          const copied = await readPreparedSegments(copies, source, options.signal);
+          options.onProgress?.(plan.length, plan.length);
+          return copied;
+        } catch { options.signal?.throwIfAborted(); }
+        finally { await Promise.all(copies.map(file => rm(file, { force: true }))); }
+      }
+    }
     const outputs = plan.map((_, index) => path.join(directory, `segment-${index}.mp4`));
     const filter = `[0:v:0]split=${plan.length}${plan.map((_, index) => `[part${index}]`).join("")};`
       + plan.map((segment, index) => `[part${index}]trim=start=${segment.start.toFixed(9)}:end=${(segment.start + segment.duration).toFixed(9)},setpts=PTS-STARTPTS[out${index}]`).join(";");
     // Decode the original only once. Both branches retain all frames in their
     // adjacent ranges, without cropping/scaling or keyframe-based seeking.
     // Limit decoder and filter concurrency as well as encoder threads for 4K.
-    options.onProgress?.(0, plan.length);
     await transcode(["-threads", "1", "-i", input, "-filter_complex_threads", "1", "-filter_complex", filter,
       ...outputs.flatMap((output, index) => ["-map", `[out${index}]`, "-an", ...encoding, "-map_metadata", "-1", "-movflags", "+faststart", "-y", output]),
     ], options.signal);
-    const segments: PreparedEditSegment[] = [];
-    for (const [index, segment] of plan.entries()) {
-      // AAC encoder priming can turn a 15s range into a 15.02s container, above the model limit.
-      // Send only pictures for segmented jobs; retain the original full audio for final stream-copy.
-      // Runtime temporary files must not be traced into the deployment bundle.
-      const prepared = await readFile(/* turbopackIgnore: true */ outputs[index], { signal: options.signal });
-      const actual = mp4Metadata(prepared);
-      if (actual.duration < 3 || actual.duration > 15 || actual.width !== source.width || actual.height !== source.height || actual.hasAudio) {
-        throw new Error("Um trecho não preservou os requisitos de duração, imagem ou áudio. A geração foi interrompida antes do envio.");
-      }
-      segments.push({ start: segment.start, duration: actual.duration, bytes: prepared });
-      options.onProgress?.(index + 1, plan.length);
-    }
-    if (Math.abs(segments.reduce((sum, part) => sum + part.duration, 0) - source.duration) > DURATION_TOLERANCE) {
-      throw new Error("Os trechos não preservaram a duração completa do vídeo original.");
-    }
+    const segments = await readPreparedSegments(outputs, source, options.signal);
+    options.onProgress?.(plan.length, plan.length);
     return segments;
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -107,7 +134,7 @@ export async function joinEditedSegments(buffers: Buffer[]): Promise<Buffer> {
     // The concat filter uses each VIDEO stream's timestamps, avoiding gaps from segment audio padding.
     const filter = files.map((_, index) => `[${index}:v:0]setpts=PTS-STARTPTS[v${index}]`).join(";")
       + ";" + files.map((_, index) => `[v${index}]`).join("") + `concat=n=${files.length}:v=1:a=0[outv]`;
-    await transcode([...files.flatMap(file => ["-threads", "1", "-i", file]), "-filter_complex_threads", "1", "-filter_complex", filter, "-map", "[outv]", "-an", ...encoding, "-map_metadata", "-1", "-movflags", "+faststart", "-y", output]);
+    await transcode([...files.flatMap(file => ["-threads", "1", "-i", file]), "-filter_complex_threads", "1", "-filter_complex", filter, "-map", "[outv]", "-an", ...encoding, "-map_metadata", "-1", "-movflags", "+faststart", "-y", output], undefined, "join");
     const assembled = await readFile(output), actual = mp4Metadata(assembled);
     if (actual.width !== first.width || actual.height !== first.height || Math.abs(actual.duration - metadata.reduce((sum, part) => sum + part.duration, 0)) > DURATION_TOLERANCE) {
       throw new Error("A montagem não preservou a duração ou as dimensões dos trechos gerados.");
