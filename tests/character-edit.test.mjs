@@ -64,7 +64,7 @@ function fixture(overrides = {}) {
     adjustCredits: async (...args) => charges.push(args), ...overrides.db };
   class PlatformError extends Error { constructor(status) { super("Provider failed"); this.status = status; } }
   class FalError extends Error { constructor(status) { super("Fal provider failed"); this.status = status; } }
-  const actions = load("src/app/actions/character-edit.ts", {
+  const mocks = {
     "next/cache": { revalidatePath() {} }, "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 8000 }) },
     "@vercel/blob": { put: async (...args) => {
       snapshots.push(args);
@@ -77,7 +77,7 @@ function fixture(overrides = {}) {
     "@/data/motion-presets": { getMotionPreset: () => ({ drivingVideo: receipt.sourceUrl, name: "Preset", kind: "object_swap" }) },
     "@/lib/ai-discovery": { isAiCharacterVideo: () => true },
     "@/lib/uploaded-reference": { readUploadedReference: (token, user) => { if (token !== "owned-upload" || user !== "owner") throw new Error("Invalid upload"); return { videoUrl: receipt.sourceUrl, name: "Upload" }; } },
-    "@/lib/video-media": { publicMediaUrl: v => v, inspectPublicVideo: async url => overrides.inspect ? overrides.inspect(url, metadataByUrl.get(url)) : metadataByUrl.get(url), readPublicVideo: async () => overrides.bytes ?? original },
+    "@/lib/video-media": { publicMediaUrl: v => v, inspectPublicVideo: async url => overrides.inspect ? overrides.inspect(url, metadataByUrl.get(url)) : metadataByUrl.get(url), readPublicVideo: async (...args) => overrides.read ? overrides.read(...args) : overrides.bytes ?? original },
     "@/lib/video-reference": fixtureMedia, "@/lib/character-edit": edit, "@/lib/edit-quote": quotes,
     "@/lib/finalize-edit": { ensureVideoToolsAvailable: async () => {} },
     "@/lib/edit-segments": { splitEditSource: async (...args) => { splitCalls.push(args); return parts; } },
@@ -88,8 +88,10 @@ function fixture(overrides = {}) {
     } },
     "@/lib/platform": { isConfigured: () => true, PlatformError, submitGeneration: async (...args) => { submissions.push(args); if (overrides.failure) throw new PlatformError(overrides.failure); return { requestId: "provider-request" }; } },
     "@/lib/costs": { VIDEO_COST: 1000 },
-  });
-  return { actions, rows, submissions, falSubmissions, charges, snapshots, splitCalls, parts, metadataByUrl };
+  };
+  const preparation = load("src/lib/prepare-character-edit.ts", mocks);
+  const actions = load("src/app/actions/character-edit.ts", { ...mocks, "@/lib/prepare-character-edit": preparation });
+  return { actions, preparation, rows, submissions, falSubmissions, charges, snapshots, splitCalls, parts, metadataByUrl };
 }
 
 test("catalog, discovery, presets and owned uploads all prepare a frozen original without paying the provider", async () => {
@@ -103,6 +105,43 @@ test("catalog, discovery, presets and owned uploads all prepare a frozen origina
   assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0);
   const invalid = await f.actions.prepareCharacterEditAction({ influencerId: "character", source: { kind: "upload", token: "foreign" }, target: receipt.target, resolution: "720p" });
   assert.ok(invalid.error);
+});
+
+test("preparation reports actual completed stages and returns a signed quote without any paid calls", async () => {
+  const f = fixture(), events = [];
+  const signal = new AbortController().signal;
+  const prepared = await f.preparation.prepareCharacterEdit({ influencerId: "character", source: { kind: "upload", token: "owned-upload" }, targetMode: "main", engine: "fal-kling-pro", resolution: "auto" }, {
+    signal,
+    onProgress: event => events.push({ ...event, snapshotCount: f.snapshots.length, splitCount: f.splitCalls.length }),
+  });
+  assert.ok(prepared.quote, prepared.error);
+  const stages = events.map(event => event.stage);
+  assert.equal(stages[0], "auth"); assert.equal(stages.at(-1), "ready");
+  assert.ok(stages.indexOf("download") < stages.indexOf("snapshot"));
+  assert.ok(stages.indexOf("snapshot") < stages.indexOf("segments"));
+  assert.equal(events.find(event => event.stage === "download").snapshotCount, 0);
+  assert.equal(events.find(event => event.stage === "segments").snapshotCount, 1);
+  assert.equal(events.at(-1).snapshotCount, 3); assert.equal(events.at(-1).splitCount, 1);
+  assert.ok(events.every(event => event.type === "progress" && event.message.length > 0));
+  assert.equal(quotes.readEditQuote(prepared.quote.token, "owner").engine, "fal-kling-pro");
+  assert.equal(f.snapshots[0][2].abortSignal, signal);
+  assert.equal(f.charges.length, 0); assert.equal(f.submissions.length, 0); assert.equal(f.falSubmissions.length, 0);
+});
+
+test("cancelled preparation stops before snapshots, debit or paid submissions even after downloading the original", async () => {
+  const input = { influencerId: "character", source: { kind: "preset", id: "preset" }, targetMode: "main", engine: "fal-kling-pro", resolution: "auto" };
+  for (const timing of ["before", "download"]) {
+    const abort = new AbortController(), events = [];
+    let downloads = 0;
+    if (timing === "before") abort.abort();
+    const f = fixture({ read: async () => { downloads++; abort.abort(); return original; } });
+    const result = await f.preparation.prepareCharacterEdit(input, { signal: abort.signal, onProgress: event => events.push(event) });
+    assert.ok(result.error); assert.equal(result.quote, undefined);
+    assert.equal(downloads, timing === "before" ? 0 : 1);
+    assert.equal(events.some(event => event.stage === "ready"), false);
+    assert.equal(f.snapshots.length, 0); assert.equal(f.splitCalls.length, 0); assert.equal(f.rows.size, 0);
+    assert.equal(f.charges.length, 0); assert.equal(f.submissions.length, 0); assert.equal(f.falSubmissions.length, 0);
+  }
 });
 
 test("confirmed quote submits Object Swap once with original video + character image and no invented scene", async () => {

@@ -115,6 +115,10 @@
 .targetChoice:has(input:checked) { border-color: var(--accent); background: var(--s1); }
 .targetChoice input { accent-color: var(--accent); flex-shrink: 0; }
 .quote a { text-decoration: underline; }
+.preparation { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--s1); }
+.preparation p { color: var(--tx); font-size: 12.5px; line-height: 1.5; }
+.preparation > span { color: var(--tx3); font-size: 11px; line-height: 1.5; }
+.preparation button { justify-self: start; }
 
 .selection > span {
   color: var(--accent);

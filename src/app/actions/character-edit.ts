@@ -1,72 +1,18 @@
 "use server";
-import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { put } from "@vercel/blob";
 import { requireUser } from "@/lib/auth";
-import { getInfluencer, getViral, getVideo, createVideoOnce, reserveVideoCredits, updateVideo, adjustCredits, type Video } from "@/lib/db";
-import { getProfile } from "@/data/ai-profiles";
-import { getMotionPreset } from "@/data/motion-presets";
-import { isAiCharacterVideo } from "@/lib/ai-discovery";
-import { readUploadedReference } from "@/lib/uploaded-reference";
-import { publicMediaUrl, inspectPublicVideo, readPublicVideo } from "@/lib/video-media";
-import { mp4Metadata } from "@/lib/video-reference";
-import { EDIT_ENGINES, MAIN_CHARACTER_TARGET, buildCharacterEditPrompt, buildProviderEditInput, validateProviderEdit, estimateProviderEdit, isEditEngine, type EditEngine, type EditResolution, type EditTargetMode, type EditSource, type EditQuote } from "@/lib/character-edit";
-import { readEditQuote, signEditQuote } from "@/lib/edit-quote";
+import { getInfluencer, getVideo, createVideoOnce, reserveVideoCredits, updateVideo, adjustCredits, type Video } from "@/lib/db";
+import { inspectPublicVideo } from "@/lib/video-media";
+import { EDIT_ENGINES, MAIN_CHARACTER_TARGET, buildCharacterEditPrompt, buildProviderEditInput, validateProviderEdit, isEditEngine, type EditQuote } from "@/lib/character-edit";
+import { readEditQuote } from "@/lib/edit-quote";
 import { isConfigured, submitGeneration, PlatformError } from "@/lib/platform";
 import { VIDEO_COST } from "@/lib/costs";
-import { ensureVideoToolsAvailable } from "@/lib/finalize-edit";
 import { isFalConfigured, submitFalGeneration, FalError } from "@/lib/fal";
-import { splitEditSource } from "@/lib/edit-segments";
 
-export async function prepareCharacterEditAction(input: { influencerId: string; source: EditSource; target?: string; targetMode?: EditTargetMode; resolution: EditResolution; engine?: EditEngine }): Promise<{ quote: EditQuote } | { error: string }> {
-  const user = await requireUser();
-  try {
-    const engine = input.engine ?? "higgsfield";
-    if (!isEditEngine(engine)) return { error: "Modelo de edição inválido." };
-    if (!(EDIT_ENGINES[engine].provider === "fal" ? isFalConfigured() : isConfigured())) return { error: "A API escolhida não está configurada no servidor." };
-    if (!["480p", "720p", "1080p", "auto"].includes(input.resolution)) return { error: "Resolução inválida." };
-    // Older clients supplied a manual description without a mode.
-    const targetMode = input.targetMode ?? "manual";
-    if (targetMode !== "main" && targetMode !== "manual") return { error: "Seleção de personagem inválida." };
-    if (targetMode === "manual" && (typeof input.target !== "string" || input.target.trim().length < 8 || input.target.length > 500)) return { error: "Descreva quem será substituído (8 a 500 caracteres), incluindo roupa e posição no vídeo." };
-    const target = targetMode === "main" ? MAIN_CHARACTER_TARGET : input.target!.trim();
-    const inf = await getInfluencer(user.id, input.influencerId);
-    if (!inf?.imageUrl || inf.status !== "completed") return { error: "Selecione um influencer pronto da sua conta." };
-    let url: string | undefined, name: string | undefined;
-    const source = input.source;
-    if (source.kind === "profile") {
-      const profile = getProfile(source.handle), post = profile?.posts.find(p => p.code === source.id);
-      url = post?.video; name = profile && post ? `@${profile.handle} · ${post.scene}` : undefined;
-    } else if (source.kind === "viral") {
-      const viral = await getViral(source.id);
-      if (viral && isAiCharacterVideo(viral)) { url = viral.playUrl; name = viral.title; }
-    } else if (source.kind === "preset") {
-      const preset = getMotionPreset(source.id); url = preset?.drivingVideo; name = preset?.name;
-    } else if (source.kind === "upload") {
-      const uploaded = readUploadedReference(source.token, user.id); url = uploaded.videoUrl; name = uploaded.name;
-    }
-    if (!url || !name) return { error: "Vídeo original não encontrado. Selecione ou envie outra referência." };
-    const bytes = await readPublicVideo(publicMediaUrl(url));
-    const metadata = mp4Metadata(bytes);
-    const invalid = validateProviderEdit(engine, metadata, input.resolution, targetMode);
-    if (invalid) return { error: invalid };
-    await ensureVideoToolsAvailable();
-    const id = randomUUID();
-    // Freeze the ORIGINAL bytes: social/CDN links can expire while generation is queued.
-    const snapshot = await put(`edit-sources/${user.id}/${id}.mp4`, bytes, { access: "public", contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: false });
-    const sourceUrl = snapshot.url;
-    const segments = [];
-    if (engine.startsWith("fal-kling") && metadata.duration > 15) {
-      const parts = await splitEditSource(bytes, metadata.duration);
-      for (const [index, part] of parts.entries()) {
-        const stored = await put(`edit-sources/${user.id}/${id}-${index}.mp4`, part.bytes, { access: "public", contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: false });
-        segments.push({ sourceUrl: stored.url, start: part.start, source: mp4Metadata(part.bytes) });
-      }
-    } else segments.push({ sourceUrl, start: 0, source: metadata });
-    const cost = estimateProviderEdit(engine, metadata, input.resolution, segments.map(s => s.source.duration));
-    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, expiresAt: Date.now() + 15 * 60000 };
-    return { quote: { token: signEditQuote(receipt), name, sourceUrl, metadata, resolution: receipt.resolution, engine, segmentCount: segments.length, costDetail: cost.costDetail, estimatedUsd: receipt.estimatedUsd, expiresAt: receipt.expiresAt } };
-  } catch (error) { return { error: error instanceof Error ? error.message : "Não foi possível preparar o vídeo." }; }
+import { prepareCharacterEdit } from "@/lib/prepare-character-edit";
+
+export async function prepareCharacterEditAction(input: Parameters<typeof prepareCharacterEdit>[0]): Promise<{ quote: EditQuote } | { error: string }> {
+  return prepareCharacterEdit(input, { signal: AbortSignal.timeout(190000) });
 }
 
 export async function generateCharacterEditAction(input: { quoteToken: string; acceptedEstimate: boolean }): Promise<{ id: string } | { error: string }> {

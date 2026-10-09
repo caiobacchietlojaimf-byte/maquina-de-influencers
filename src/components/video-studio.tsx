@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowRight, Clapperboard, Search, Sparkles, Upload, Users, X } from "lucide-react";
 
 import { pollInfluencersAction } from "@/app/actions/influencers";
-import { prepareCharacterEditAction, generateCharacterEditAction } from "@/app/actions/character-edit";
+import { generateCharacterEditAction } from "@/app/actions/character-edit";
+import { prepareEditClient, PrepareEditClientError } from "@/lib/prepare-edit-client";
 import { EDIT_PRICE_DATE, EDIT_ENGINES, type EditEngine, type EditQuote, type EditResolution, type EditTargetMode, type EditSource } from "@/lib/character-edit";
 import { verifyVideoReferenceAction } from "@/app/actions/video-reference";
 import { MAX_REFERENCE_BYTES, type StudioReference } from "@/lib/video-reference";
@@ -54,6 +55,10 @@ export function VideoStudio({
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [preparing, setPreparing] = useState(false);
+  const [prepareMessage, setPrepareMessage] = useState("");
+  const [prepareSeconds, setPrepareSeconds] = useState(0);
+  const activePreparation = useRef<{ id: number; controller: AbortController; startedAt: number } | null>(null);
+  const preparationSequence = useRef(0);
   const [quote, setQuote] = useState<EditQuote | null>(null);
   const [acceptedEstimate, setAcceptedEstimate] = useState(false);
   const [engine, setEngine] = useState<EditEngine>("fal-kling-pro");
@@ -62,6 +67,18 @@ export function VideoStudio({
   const referenceReady = reference ? reference.duration >= 4 && reference.duration <= 30 : Boolean(presetId);
   const busy = submitting || uploading || preparing;
   useEffect(() => { setQuote(null); setAcceptedEstimate(false); }, [reference, presetId, influencerId, prompt, targetMode, resolution, engine]);
+  useEffect(() => () => {
+    const active = activePreparation.current;
+    activePreparation.current = null;
+    active?.controller.abort();
+  }, []);
+  useEffect(() => {
+    if (!preparing) return;
+    const timer = setInterval(() => {
+      if (activePreparation.current) setPrepareSeconds(Math.floor((Date.now() - activePreparation.current.startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [preparing]);
   const hasPending = influencers.some((inf) => inf.status === "processing" || inf.status === "queued");
   const ready = useMemo(() => influencers.filter((inf) => inf.status === "completed" && inf.imageUrl), [influencers]);
   const influencer = ready.find((inf) => inf.id === influencerId);
@@ -93,13 +110,31 @@ export function VideoStudio({
     return { kind: "preset", id: presetId! };
   }
   async function prepare() {
-    if (busy || !influencer || !referenceReady) return;
+    if (busy || activePreparation.current || !influencer || !referenceReady) return;
+    const active = { id: ++preparationSequence.current, controller: new AbortController(), startedAt: Date.now() };
+    activePreparation.current = active;
     setPreparing(true); setError(null); setQuote(null); setAcceptedEstimate(false);
+    setPrepareMessage("Conectando para preparar o vídeo…"); setPrepareSeconds(0);
     try {
-      const result = await prepareCharacterEditAction({ influencerId: influencer.id, source: editSource(), targetMode, target: targetMode === "manual" ? prompt.trim() : undefined, resolution, engine });
+      const result = await prepareEditClient({ influencerId: influencer.id, source: editSource(), targetMode, target: targetMode === "manual" ? prompt.trim() : undefined, resolution, engine }, {
+        signal: active.controller.signal,
+        onProgress: event => { if (activePreparation.current?.id === active.id) setPrepareMessage(event.message); },
+      });
+      if (activePreparation.current?.id !== active.id) return;
       if ("error" in result) setError(result.error); else setQuote(result.quote);
-    } catch { setError("Não foi possível preparar a troca. Tente novamente."); }
-    finally { setPreparing(false); }
+    } catch (caught) {
+      if (activePreparation.current?.id !== active.id) return;
+      if (caught instanceof PrepareEditClientError && caught.code === "cancelled") return;
+      setError(caught instanceof Error ? caught.message : "A conexão com a preparação foi interrompida. Tente novamente; nenhuma geração foi iniciada.");
+    } finally {
+      if (activePreparation.current?.id === active.id) { activePreparation.current = null; setPreparing(false); }
+    }
+  }
+  function cancelPreparation() {
+    const active = activePreparation.current;
+    activePreparation.current = null;
+    active?.controller.abort();
+    setPreparing(false); setPrepareMessage(""); setError(null);
   }
   async function generate() {
     if (busy || !quote || !acceptedEstimate) return;
@@ -256,6 +291,11 @@ export function VideoStudio({
             <p className={styles.creditBalance}>Saldo: <b>{credits.toLocaleString("pt-BR")} créditos</b></p>
             {!enoughCredits ? <p className={styles.error} role="status">Você precisa de {VIDEO_COST} créditos para gerar um vídeo.</p> : null}
             {error ? <p className="auth-error" role="alert">{error}</p> : null}
+            {preparing ? <div className={styles.preparation}>
+              <p role="status" aria-live="polite">{prepareMessage}</p>
+              <span>Tempo decorrido: {Math.floor(prepareSeconds / 60)}:{String(prepareSeconds % 60).padStart(2, "0")}. Nenhuma geração foi iniciada.</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={cancelPreparation}>Cancelar preparação</button>
+            </div> : null}
             {quote ? (
               <div className={styles.quote} aria-live="polite">
                 <b>Pronto para trocar o personagem</b>
@@ -269,7 +309,7 @@ export function VideoStudio({
               </div>
             ) : null}
             <button type="button" className="generate-btn" disabled={busy || !influencer || !referenceReady || (targetMode === "manual" && prompt.trim().length < 8) || !enoughCredits || (Boolean(quote) && !acceptedEstimate)} onClick={quote ? generate : prepare}>
-              {busy ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Conferindo original…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Gerar troca de personagem" : "Preparar troca e ver custo"}{quote && <span className="cost">✦ {VIDEO_COST}</span>}</>}
+              {busy ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Preparando vídeo…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Gerar troca de personagem" : "Preparar troca e ver custo"}{quote && <span className="cost">✦ {VIDEO_COST}</span>}</>}
             </button>
             <p className={styles.hint}>A preparação não cobra geração. Uma edição completa usa {VIDEO_COST} créditos do sistema e saldo da {engineConfig.provider === "fal" ? "fal.ai" : "Higgsfield"}. Duração e proporção são conferidas; a fidelidade visual precisa ser revisada.</p>
           </div>
