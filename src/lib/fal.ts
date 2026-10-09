@@ -106,9 +106,23 @@ async function send(method: "POST" | "GET", path: string, input?: Record<string,
   return payload;
 }
 
-export async function submitFalGeneration(model: string, input: Record<string, unknown>): Promise<{ requestId: string }> {
+export function falVideoWebhookUrl(videoId: string): string | undefined {
+  const base = process.env.PUBLIC_BASE_URL || (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined);
+  if (!base || !/^[a-f0-9-]{36}$/i.test(videoId)) return undefined;
+  try {
+    const url = new URL(base);
+    if (url.protocol !== "https:" || url.username || url.password || url.port || !url.hostname.includes(".")) return undefined;
+    return new URL(`/api/fal/webhook/${videoId}`, url.origin).href;
+  } catch { return undefined; }
+}
+
+export async function submitFalGeneration(model: string, input: Record<string, unknown>, webhookUrl?: string): Promise<{ requestId: string }> {
   queueApp(model);
-  const data = record(await send("POST", model, input));
+  if (webhookUrl) {
+    const url = new URL(webhookUrl);
+    if (url.protocol !== "https:" || url.username || url.password || url.port) throw new FalError(400, "Endereço de confirmação inválido.");
+  }
+  const data = record(await send("POST", `${model}${webhookUrl ? `?fal_webhook=${encodeURIComponent(webhookUrl)}` : ""}`, input));
   const requestId = data.request_id;
   if (typeof requestId !== "string" || !REQUEST_ID.test(requestId) || redact(requestId) !== requestId) {
     throw new FalError(502, "A fal.ai não retornou um identificador válido. A solicitação não foi reenviada.");

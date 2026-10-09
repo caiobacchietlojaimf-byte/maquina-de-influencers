@@ -14,7 +14,7 @@ export default async function VideosPage() {
       <div className="page-head">
         <div>
           <h1>
-            Meus <span style={{ color: "var(--accent)" }}>Vídeos</span>
+            Meus <span style={{ color: "var(--accent-text)" }}>Vídeos</span>
           </h1>
           <p className="sub">
             Suas trocas de personagem e vídeos gerados. As gerações

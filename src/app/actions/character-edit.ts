@@ -7,7 +7,7 @@ import { EDIT_ENGINES, MAIN_CHARACTER_TARGET, buildCharacterEditPrompt, buildPro
 import { readEditQuote } from "@/lib/edit-quote";
 import { isConfigured, submitGeneration, PlatformError } from "@/lib/platform";
 import { VIDEO_COST } from "@/lib/costs";
-import { isFalConfigured, submitFalGeneration, FalError } from "@/lib/fal";
+import { isFalConfigured, submitFalGeneration, FalError, falVideoWebhookUrl } from "@/lib/fal";
 
 import { prepareCharacterEdit } from "@/lib/prepare-character-edit";
 
@@ -48,7 +48,7 @@ export async function generateCharacterEditAction(input: { quoteToken: string; a
         if (receipt.assembly === "overlap-v1" && segments.length > 1 && typeof payload.prompt === "string") {
           payload.prompt += "\nThis video is an overlapping excerpt of a longer continuous take. Keep the source person's exact screen position, body scale and distance from the camera throughout, especially at the first and last frames. Continue the existing action without introducing an entrance, a new pose, a framing reset or an ending. Keep the same face, hair, clothing fit, accessories and colors throughout the excerpt.";
         }
-        const queued = config.provider === "fal" ? await submitFalGeneration(config.model, payload) : await submitGeneration(config.model, payload);
+        const queued = config.provider === "fal" ? await submitFalGeneration(config.model, payload, falVideoWebhookUrl(video.id)) : await submitGeneration(config.model, payload);
         providerRequestId = queued.requestId;
         part.requestId = queued.requestId;
         await updateVideo(video.id, { requestId: video.edit!.segments![0].requestId, edit: video.edit });
@@ -57,7 +57,7 @@ export async function generateCharacterEditAction(input: { quoteToken: string; a
       await updateVideo(video.id, { status: "processing" });
     } catch (error) {
       // A network/5xx failure can occur AFTER acceptance. Never silently retry or change models.
-      const uncertain = Boolean(providerRequestId) || !(error instanceof PlatformError || error instanceof FalError) || error.status >= 500;
+      const uncertain = Boolean(providerRequestId) || !(error instanceof PlatformError || error instanceof FalError) || error.status >= 500 || error.status === 408;
       await updateVideo(video.id, { status: uncertain ? "review" : "failed", edit: video.edit, ...(providerRequestId ? { requestId: video.edit!.segments![0].requestId ?? providerRequestId } : {}), error: uncertain ? "Uma solicitação pode ter sido aceita, mas o envio completo não foi confirmado. Confira os pedidos no provedor antes de repetir. Nenhum trecho será reenviado automaticamente." : (error instanceof Error ? error.message : "Edição recusada pelo provedor.") });
       if (!uncertain) await adjustCredits(user.id, VIDEO_COST);
       return { error: uncertain ? "Confirmação pendente: confira Meus Vídeos e as solicitações do provedor antes de repetir." : "O provedor recusou a edição. Veja os detalhes em Meus Vídeos; os créditos do sistema foram devolvidos." };

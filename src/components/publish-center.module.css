@@ -123,7 +123,7 @@
   line-height: 1.5;
 }
 .help a {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .assistant {
   border: 1px solid var(--line-2);
@@ -141,7 +141,7 @@
   font-weight: 600;
 }
 .assistant summary svg {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .assistant summary::after {
   content: "+";
@@ -206,7 +206,7 @@
 }
 .review svg {
   flex-shrink: 0;
-  color: var(--accent);
+  color: var(--accent-text);
   margin-top: 1px;
 }
 .preview {

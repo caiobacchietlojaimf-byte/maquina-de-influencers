@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { VideoMetadata } from "./video-reference";
+import type { PlanGrant, PlanId } from "./plans";
 
 /* Camada de dados com dois drivers e a MESMA API assíncrona:
    - Supabase (Postgres) quando SUPABASE_URL + SUPABASE_KEY + MI_DB_SECRET
@@ -21,6 +22,8 @@ export type User = {
   salt: string;
   credits: number;
   creditRevision?: string;
+  planGrants?: Record<string, PlanGrant>;
+  suspendedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   createdAt: number;
 };
@@ -59,6 +62,7 @@ export type Video = {
   userId: string;
   influencerId?: string;
   kind: VideoKind;
+  requestFingerprint?: string;
   presetId?: string;
   presetName?: string;
   prompt: string;
@@ -79,6 +83,7 @@ export type Video = {
     audioPreserved?: boolean;
   };
   finalizationStartedAt?: number;
+  polling?: { checkedAt: number; failures: number; providerStatus?: "queued" | "processing" | "completed" | "failed"; error?: string; nextCheckAt?: number };
   deletedAt?: number;
 };
 
@@ -115,6 +120,20 @@ export type SocialAccount = {
   expiresAt?: number;
   igUserId?: string;
   connectedAt: number;
+  oauthProvider?: "instagram" | "facebook" | "tiktok";
+  providerUserId?: string;
+  scopes?: string[];
+  refreshExpiresAt?: number;
+};
+
+export type TikTokPostOptions = {
+  privacyLevel: string;
+  allowComment: boolean;
+  allowDuet: boolean;
+  allowStitch: boolean;
+  brandOrganic: boolean;
+  brandedContent: boolean;
+  consentAt: number;
 };
 
 export type PostStatus = "draft" | "scheduled" | "posting" | "posted" | "failed";
@@ -134,6 +153,22 @@ export type Post = {
   /** Frozen when scheduled so reconnecting an account cannot publish a demo. */
   mode?: "demo" | "live";
   providerId?: string;
+  accountId?: string;
+  accountUserId?: string;
+  requestKey?: string;
+  requestFingerprint?: string;
+  submissionStartedAt?: number;
+  publishStartedAt?: number;
+  nextAttemptAt?: number;
+  attempts?: number;
+  publicationUncertain?: boolean;
+  leaseId?: string;
+  leaseUntil?: number;
+  revision?: string;
+  tiktok?: TikTokPostOptions;
+  deletedAt?: number;
+  videoDuration?: number;
+  videoUrl?: string;
 };
 
 /* ================= driver remoto (Supabase) ================= */
@@ -270,9 +305,39 @@ export async function createUser(input: Omit<User, "id" | "createdAt">): Promise
 export async function adjustCredits(userId: string, delta: number): Promise<number> {
   if (!Number.isFinite(delta)) throw new Error("Valor de créditos inválido");
   return mutateCredits(userId, user => {
-    user.credits = Math.max(0, user.credits + delta);
+    // Refunded plans may leave debt. A generation refund must repay only its
+    // own amount, not silently forgive the rest by clamping the balance.
+    user.credits += delta;
     return user.credits;
   });
+}
+
+/** Local commerce driver; the remote equivalent locks both order and user in SQL. */
+export async function grantPlanCredits(userId: string, orderId: string, planId: PlanId, credits: number, now: number, revoke = false) {
+  return mutateCredits(userId, user => {
+    const grants = { ...user.planGrants };
+    const prior = grants[orderId];
+    if (revoke) {
+      if (prior && !prior.revoked) { user.credits -= prior.credits; grants[orderId] = { ...prior, revoked: true }; }
+    } else if (!prior) {
+      const until = Math.max(now, ...Object.values(grants).filter(g => !g.revoked && g.planId === planId).map(g => g.expiresAt));
+      grants[orderId] = { planId, credits, startsAt: now, expiresAt: until + 30 * 86400000 };
+      user.credits += credits;
+    }
+    user.planGrants = grants;
+  });
+}
+
+export async function listAdminUsers(): Promise<User[]> {
+  const sb = remote();
+  if (!sb) return [...load().users].sort((a,b) => b.createdAt - a.createdAt);
+  const { data, error } = await sb.from("mi_users").select("data").order("created_at", { ascending: false }).limit(500);
+  if (error) fail("listar usuários", error);
+  return (data ?? []).map(row => rowData<User>(row));
+}
+
+export async function setUserSuspended(userId: string, suspended: boolean) {
+  return mutateCredits(userId, user => { user.suspendedAt = suspended ? Date.now() : undefined; });
 }
 
 /** Balance and reservation ledger change together, with a revision against ABA races. */
@@ -601,6 +666,25 @@ export async function claimVideoFinalization(video: Video): Promise<boolean> {
   return mutate(db => { const current = db.videos.find(v => v.id === video.id); if (!current || current.status !== video.status || current.finalizationStartedAt !== video.finalizationStartedAt) return false; Object.assign(current, patch); return true; });
 }
 
+/** A delayed poll cannot overwrite a newer finalization or completed media URL. */
+export async function updateVideoFromPoll(snapshot: Video, patch: Partial<Video>): Promise<boolean> {
+  const matches = (current: Video | undefined) => current && !current.deletedAt && current.status === snapshot.status && current.finalizationStartedAt === snapshot.finalizationStartedAt;
+  const sb = remote();
+  if (!sb) return mutate(db => {
+    const current = db.videos.find(v => v.id === snapshot.id && v.userId === snapshot.userId);
+    if (!matches(current)) return false;
+    Object.assign(current!, patch);
+    return true;
+  });
+  const current = await getVideo(snapshot.userId, snapshot.id);
+  if (!matches(current)) return false;
+  let query = sb.from("mi_videos").update({ data: { ...current!, ...patch } }).eq("id", snapshot.id).eq("user_id", snapshot.userId).eq("data->>status", snapshot.status).is("data->>deletedAt", null);
+  query = snapshot.finalizationStartedAt ? query.eq("data->>finalizationStartedAt", String(snapshot.finalizationStartedAt)) : query.is("data->>finalizationStartedAt", null);
+  const { data, error } = await query.select("id");
+  if (error) fail("atualizar consulta de vídeo", error);
+  return Boolean(data?.length);
+}
+
 export async function updateVideo(id: string, patch: Partial<Video>): Promise<Video | undefined> {
   if (remote()) return patchEntity<Video>("mi_videos", id, patch);
   return mutate((db) => {
@@ -613,7 +697,7 @@ export async function updateVideo(id: string, patch: Partial<Video>): Promise<Vi
 
 export async function deleteVideo(userId: string, id: string): Promise<boolean> {
   const video = await getVideo(userId, id);
-  if (video?.edit) {
+  if (video?.edit || video?.requestFingerprint) {
     if (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)) return false;
     // Keep the quote UUID as an idempotency tombstone even after hiding the card.
     // Deleting it would allow the same signed quote to submit another paid job.
@@ -757,6 +841,9 @@ export async function getSocialAccount(
 export async function upsertSocialAccount(
   input: Omit<SocialAccount, "id" | "connectedAt">,
 ): Promise<SocialAccount> {
+  const { sealSocialToken } = await import("./social-token");
+  const owner = `${input.userId}:${input.platform}`;
+  input = { ...input, accessToken: sealSocialToken(input.accessToken, owner), refreshToken: sealSocialToken(input.refreshToken, owner) };
   const sb = remote();
   if (sb) {
     const existing = await getSocialAccount(input.userId, input.platform);
@@ -784,6 +871,27 @@ export async function upsertSocialAccount(
     const account: SocialAccount = { ...input, id: randomUUID(), connectedAt: Date.now() };
     db.socialAccounts.push(account);
     return account;
+  });
+}
+
+/** Refresh must not resurrect a disconnected account or overwrite a new login. */
+export async function refreshSocialAccountTokens(account: SocialAccount, patch: Pick<SocialAccount, "accessToken" | "refreshToken" | "expiresAt" | "refreshExpiresAt" | "scopes">): Promise<SocialAccount | undefined> {
+  const { sealSocialToken } = await import("./social-token");
+  const owner = `${account.userId}:${account.platform}`;
+  const merged = { ...account, expiresAt: patch.expiresAt, refreshExpiresAt: patch.refreshExpiresAt, scopes: patch.scopes ?? account.scopes, accessToken: sealSocialToken(patch.accessToken, owner), refreshToken: sealSocialToken(patch.refreshToken, owner) };
+  const sb = remote();
+  if (sb) {
+    let query = sb.from("mi_social_accounts").update({ data: merged }).eq("id", account.id).eq("user_id", account.userId).eq("data->>connectedAt", String(account.connectedAt));
+    query = account.accessToken ? query.eq("data->>accessToken", account.accessToken) : query.is("data->>accessToken", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("renovar conexão", error);
+    return data?.length ? merged : undefined;
+  }
+  return mutate((db) => {
+    const index = db.socialAccounts.findIndex((a) => a.id === account.id && a.connectedAt === account.connectedAt && a.accessToken === account.accessToken);
+    if (index < 0) return undefined;
+    db.socialAccounts[index] = merged;
+    return merged;
   });
 }
 
@@ -820,12 +928,13 @@ export async function listPosts(userId: string): Promise<Post[]> {
       .from("mi_posts")
       .select("data")
       .eq("user_id", userId)
+      .is("data->>deletedAt", null)
       .order("scheduled_at", { ascending: false });
     if (error) fail("listar publicações", error);
     return (data ?? []).map((row) => rowData<Post>(row));
   }
   return load()
-    .posts.filter((p) => p.userId === userId)
+    .posts.filter((p) => p.userId === userId && !p.deletedAt)
     .sort((a, b) => b.scheduledAt - a.scheduledAt);
 }
 
@@ -850,6 +959,66 @@ export async function createPost(input: Omit<Post, "id" | "createdAt">): Promise
   });
 }
 
+/** A retried scheduling action with the same request key cannot enqueue twice. */
+export async function createPostOnce(input: Omit<Post, "createdAt">): Promise<Post> {
+  const post: Post = { ...input, createdAt: Date.now(), revision: randomUUID() };
+  const sb = remote();
+  if (sb) {
+    const { error } = await sb.from("mi_posts").upsert({ id: post.id, user_id: post.userId, status: post.status, scheduled_at: post.scheduledAt, created_at: post.createdAt, data: post }, { onConflict: "id", ignoreDuplicates: true });
+    if (error) fail("agendar publicação", error);
+    const { data, error: readError } = await sb.from("mi_posts").select("data").eq("id", post.id).eq("user_id", post.userId).single();
+    if (readError) fail("confirmar agendamento", readError);
+    return rowData<Post>(data);
+  }
+  return mutate((db) => {
+    const existing = db.posts.find((p) => p.id === post.id);
+    if (existing) {
+      if (existing.userId !== post.userId) throw new Error("Publicação indisponível.");
+      return existing;
+    }
+    db.posts.push(post);
+    return post;
+  });
+}
+
+/** All scheduler transitions use a DB CAS, not an in-process lock. */
+export async function claimPostWork(post: Post, now: number): Promise<Post | undefined> {
+  if (post.deletedAt || (post.status !== "scheduled" && post.status !== "posting") || post.scheduledAt > now || (post.leaseUntil ?? 0) > now || (post.nextAttemptAt ?? 0) > now) return undefined;
+  const next: Post = { ...post, status: "posting", leaseId: randomUUID(), leaseUntil: now + 90_000, revision: randomUUID() };
+  const sb = remote();
+  if (sb) {
+    let query = sb.from("mi_posts").update({ status: "posting", data: next }).eq("id", post.id).eq("status", post.status);
+    query = post.revision ? query.eq("data->>revision", post.revision) : query.is("data->>revision", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("reservar publicação", error);
+    return data?.length ? next : undefined;
+  }
+  return mutate((db) => {
+    const index = db.posts.findIndex((p) => p.id === post.id && p.status === post.status && p.revision === post.revision);
+    if (index < 0) return undefined;
+    db.posts[index] = next;
+    return next;
+  });
+}
+
+/** Checkpoint before each non-idempotent request, or release after polling. */
+export async function savePostWork(post: Post, patch: Partial<Post>, release = true): Promise<Post | undefined> {
+  if (!post.leaseId) return undefined;
+  const next: Post = { ...post, ...patch, id: post.id, userId: post.userId, revision: randomUUID(), ...(release ? { leaseId: undefined, leaseUntil: undefined } : {}) };
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_posts").update({ status: next.status, scheduled_at: next.scheduledAt, data: next }).eq("id", post.id).eq("status", "posting").eq("data->>leaseId", post.leaseId).eq("data->>revision", post.revision!).select("id");
+    if (error) fail("salvar processamento da publicação", error);
+    return data?.length ? next : undefined;
+  }
+  return mutate((db) => {
+    const index = db.posts.findIndex((p) => p.id === post.id && p.status === "posting" && p.leaseId === post.leaseId && p.revision === post.revision);
+    if (index < 0) return undefined;
+    db.posts[index] = next;
+    return next;
+  });
+}
+
 export async function updatePost(id: string, patch: Partial<Post>, expectedStatus?: PostStatus): Promise<Post | undefined> {
   const sb = remote();
   if (sb) {
@@ -857,12 +1026,14 @@ export async function updatePost(id: string, patch: Partial<Post>, expectedStatu
     if (error) fail("buscar publicação", error);
     if (!data) return undefined;
     if (expectedStatus && rowData<Post>(data).status !== expectedStatus) return undefined;
-    const merged = { ...rowData<Post>(data), ...patch };
+    const current = rowData<Post>(data);
+    const merged = { ...current, ...patch, revision: randomUUID() };
     let query = sb
       .from("mi_posts")
       .update({ status: merged.status, scheduled_at: merged.scheduledAt, data: merged })
       .eq("id", id);
     if (expectedStatus) query = query.eq("status", expectedStatus);
+    query = current.revision ? query.eq("data->>revision", current.revision) : query.is("data->>revision", null);
     const { data: changed, error: updateError } = await query.select("id");
     if (updateError) fail("atualizar publicação", updateError);
     if (!changed?.length) return undefined;
@@ -872,7 +1043,7 @@ export async function updatePost(id: string, patch: Partial<Post>, expectedStatu
     const post = db.posts.find((p) => p.id === id);
     if (!post) return undefined;
     if (expectedStatus && post.status !== expectedStatus) return undefined;
-    Object.assign(post, patch);
+    Object.assign(post, patch, { revision: randomUUID() });
     return post;
   });
 }
@@ -880,14 +1051,24 @@ export async function updatePost(id: string, patch: Partial<Post>, expectedStatu
 export async function deletePost(userId: string, id: string): Promise<boolean> {
   const sb = remote();
   if (sb) {
-    const { data, error } = await sb.from("mi_posts").delete().eq("id", id).eq("user_id", userId).neq("status", "posting").select("id");
+    const { data: existing, error: readError } = await sb.from("mi_posts").select("data").eq("id", id).eq("user_id", userId).maybeSingle();
+    if (readError) fail("buscar publicação", readError);
+    if (!existing) return false;
+    const current = rowData<Post>(existing);
+    if (current.status === "posting") return false;
+    if (current.deletedAt) return true;
+    const next = { ...current, deletedAt: Date.now(), revision: randomUUID() };
+    let query = sb.from("mi_posts").update({ data: next }).eq("id", id).eq("user_id", userId).neq("status", "posting");
+    query = current.revision ? query.eq("data->>revision", current.revision) : query.is("data->>revision", null);
+    const { data, error } = await query.select("id");
     if (error) fail("remover publicação", error);
     return Boolean(data?.length);
   }
   return mutate((db) => {
-    const before = db.posts.length;
-    db.posts = db.posts.filter((p) => !(p.id === id && p.userId === userId && p.status !== "posting"));
-    return db.posts.length < before;
+    const post = db.posts.find((p) => p.id === id && p.userId === userId && p.status !== "posting");
+    if (!post) return false;
+    post.deletedAt = Date.now(); post.revision = randomUUID();
+    return true;
   });
 }
 
@@ -898,11 +1079,12 @@ export async function listDuePosts(now: number): Promise<Post[]> {
       .from("mi_posts")
       .select("data")
       .eq("status", "scheduled")
+      .is("data->>deletedAt", null)
       .lte("scheduled_at", now);
     if (error) fail("buscar fila", error);
     return (data ?? []).map((row) => rowData<Post>(row));
   }
-  return load().posts.filter((p) => p.status === "scheduled" && p.scheduledAt <= now);
+  return load().posts.filter((p) => p.status === "scheduled" && !p.deletedAt && p.scheduledAt <= now);
 }
 
 export async function getPostOwnerAccount(post: Post): Promise<SocialAccount | undefined> {
@@ -912,11 +1094,11 @@ export async function getPostOwnerAccount(post: Post): Promise<SocialAccount | u
 export async function listPendingPosts(): Promise<Post[]> {
   const sb = remote();
   if (sb) {
-    const { data, error } = await sb.from("mi_posts").select("data").eq("status", "posting");
+    const { data, error } = await sb.from("mi_posts").select("data").eq("status", "posting").is("data->>deletedAt", null);
     if (error) fail("buscar publicações em processamento", error);
     return (data ?? []).map((row) => rowData<Post>(row));
   }
-  return load().posts.filter((post) => post.status === "posting");
+  return load().posts.filter((post) => post.status === "posting" && !post.deletedAt);
 }
 
 /** Atomically claims a due job, including across multiple serverless workers. */

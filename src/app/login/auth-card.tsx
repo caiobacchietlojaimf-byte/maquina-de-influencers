@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 import { loginAction, registerAction, type AuthState } from "@/app/actions/auth";
+import type { PlanId } from "@/lib/plans";
 
 function PasswordInput({
   id,
@@ -27,6 +28,7 @@ function PasswordInput({
         type={visible ? "text" : "password"}
         required
         minLength={minLength}
+        maxLength={128}
         autoComplete={autoComplete}
         style={{ paddingRight: 46 }}
       />
@@ -44,7 +46,7 @@ function PasswordInput({
           borderRadius: 9,
           display: "grid",
           placeItems: "center",
-          color: visible ? "var(--accent)" : "var(--tx3)",
+          color: visible ? "var(--accent-text)" : "var(--tx3)",
         }}
       >
         {visible ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -53,7 +55,7 @@ function PasswordInput({
   );
 }
 
-export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" }) {
+export function AuthCard({ initialMode, planId }: { initialMode: "login" | "cadastro"; planId?: PlanId }) {
   const [mode, setMode] = useState<"login" | "cadastro">(initialMode);
   const [loginState, login, loginPending] = useActionState<AuthState, FormData>(loginAction, null);
   const [registerState, register, registerPending] = useActionState<AuthState, FormData>(
@@ -78,6 +80,7 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" })
 
       {mode === "login" ? (
         <form className="auth-form" action={login}>
+          <input type="hidden" name="planId" value={planId ?? ""}/>
           {error ? <div className="auth-error">{error}</div> : null}
           <div className="field">
             <label htmlFor="login-email">E-mail</label>
@@ -93,6 +96,7 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" })
         </form>
       ) : (
         <form className="auth-form" action={register}>
+          <input type="hidden" name="planId" value={planId ?? ""}/>
           {error ? <div className="auth-error">{error}</div> : null}
           <div className="field">
             <label htmlFor="reg-name">Nome</label>
@@ -104,13 +108,13 @@ export function AuthCard({ initialMode }: { initialMode: "login" | "cadastro" })
           </div>
           <div className="field">
             <label htmlFor="reg-password">Senha</label>
-            <PasswordInput id="reg-password" name="password" autoComplete="new-password" minLength={6} />
+            <PasswordInput id="reg-password" name="password" autoComplete="new-password" minLength={10} />
           </div>
           <button className="btn btn-accent" disabled={pending} type="submit">
-            {pending ? <span className="spinner" /> : "Criar conta e ganhar créditos"}
+            {pending ? <span className="spinner" /> : "Criar minha conta"}
           </button>
           <p style={{ color: "var(--tx3)", fontSize: 12, textAlign: "center" }}>
-            Contas novas começam com 10.000 créditos para gerar.
+            Conheça a plataforma e escolha seu plano para começar a gerar.
           </p>
         </form>
       )}

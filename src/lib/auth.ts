@@ -18,6 +18,7 @@ const SESSION_TTL_S = 60 * 60 * 24 * 30;
 function secret(): string {
   const env = process.env.AUTH_SECRET?.trim();
   if (env) return env;
+  if (process.env.VERCEL) throw new Error("Autenticação indisponível");
   const dataDir =
     process.env.DATA_DIR ||
     (process.env.VERCEL ? "/tmp/maquina-data" : path.join(process.cwd(), "data"));
@@ -52,10 +53,11 @@ export function mintSession(userId: string): string {
 }
 
 export function readSessionToken(token: string | undefined): string | null {
-  if (!token) return null;
+  if (!token || token.length > 256) return null;
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [userId, expires, signature] = parts;
+  if (!/^[a-zA-Z0-9-]{1,64}$/.test(userId) || !/^\d{1,12}$/.test(expires)) return null;
   const payload = `${userId}.${expires}`;
   const expected = sign(payload);
   const a = Buffer.from(signature);
@@ -93,7 +95,8 @@ export const currentUser = cache(async (): Promise<User | null> => {
   const jar = await cookies();
   const userId = readSessionToken(jar.get(SESSION_COOKIE)?.value);
   if (!userId) return null;
-  return (await findUserById(userId)) ?? null;
+  const user = await findUserById(userId);
+  return user && !user.suspendedAt ? user : null;
 });
 
 /** Usuário logado ou lança (para server actions protegidas). */

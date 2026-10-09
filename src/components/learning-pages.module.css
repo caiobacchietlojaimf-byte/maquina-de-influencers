@@ -1,0 +1,40 @@
+.page { max-width: 1100px; margin: 0 auto; }
+.page :is(a, summary):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 4px; }
+.hero { display: flex; align-items: start; justify-content: space-between; gap: 28px; margin-bottom: 28px; }
+.hero h1 { font: 700 clamp(25px, 3vw, 38px) var(--font-display); letter-spacing: -.04em; margin: 10px 0 12px; }
+.hero p { color: var(--tx2); font-size: 14px; line-height: 1.75; max-width: 660px; }
+.badge { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 9px; color: var(--accent-text); background: var(--accent-08); font-size: 11px; font-weight: 600; }
+.intro { display: flex; align-items: start; gap: 12px; margin: 22px 0; padding: 18px; border: 1px solid var(--line); border-radius: 14px; color: var(--tx2); background: var(--s1); font-size: 13px; line-height: 1.7; }
+.intro svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-text); }
+.modules { display: grid; gap: 14px; }
+.module { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+.module > summary { display: flex; align-items: center; gap: 18px; padding: 22px; cursor: pointer; list-style: none; }
+.module > summary::-webkit-details-marker { display: none; }
+.module > summary > svg:last-child { margin-left: auto; flex-shrink: 0; transition: transform .15s; }
+.module[open] > summary > svg:last-child { transform: rotate(180deg); }
+.number { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line-2); border-radius: 12px; color: var(--accent-text); font: 700 14px var(--font-display); flex-shrink: 0; }
+.module h2 { font-size: 16px; line-height: 1.4; margin-bottom: 4px; }
+.module summary p { color: var(--tx3); font-size: 12px; line-height: 1.5; }
+.body { border-top: 1px solid var(--line); padding: 24px; font-size: 14px; line-height: 1.85; }
+.body h3 { font-size: 14px; margin: 22px 0 9px; }
+.body > p { color: var(--tx2); margin-bottom: 14px; }
+.body ul { display: grid; gap: 10px; padding-left: 20px; list-style: disc; color: var(--tx2); }
+.body pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 18px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--s1); font: 12px/1.8 var(--font-ui); color: var(--tx); margin: 12px 0 18px; }
+.exercise { padding: 16px 18px; margin-top: 20px; border-left: 3px solid var(--accent-text); background: var(--accent-08); color: var(--tx2); font-size: 13px; }
+.exercise strong { color: var(--tx); display: block; margin-bottom: 6px; }
+.locked { padding: 28px; border: 1px solid var(--line-2); border-radius: 18px; background: var(--panel); margin-bottom: 24px; }
+.locked h2 { font-size: 20px; margin: 14px 0 9px; }
+.locked p { color: var(--tx2); line-height: 1.7; max-width: 620px; margin-bottom: 20px; }
+.previewGrid, .roadmap { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+.previewGrid article, .roadmap article { border: 1px solid var(--line); border-radius: 16px; padding: 22px; background: var(--panel); }
+.previewGrid h2, .roadmap h2 { font-size: 15px; margin: 14px 0 10px; }
+.previewGrid p, .roadmap p { font-size: 13px; line-height: 1.7; color: var(--tx2); }
+.roadmap span { font-size: 11px; font-weight: 600; color: var(--tx3); }
+.ready { margin-top: 28px; padding: 26px; border: 1px solid var(--line); border-radius: 18px; }
+.ready h2 { font-size: 19px; margin-bottom: 14px; }
+.ready ul { display: grid; gap: 12px; }
+.ready li { display: flex; gap: 10px; align-items: start; color: var(--tx2); font-size: 13px; line-height: 1.7; }
+.ready li svg { flex-shrink: 0; color: var(--accent-text); margin-top: 3px; }
+.links { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 22px; }
+.links a { white-space: normal; height: auto; min-height: 42px; text-align: center; padding-block: 10px; }
+@media(max-width:650px) { .hero { display: block; } .hero > a { margin-top: 20px; } .previewGrid, .roadmap { grid-template-columns: minmax(0,1fr); } .module > summary { padding: 16px; gap: 10px; } .module h2 { font-size: 14px; } .module summary p { font-size: 11px; } .body { padding: 18px; } .locked, .ready { padding: 20px; } }

@@ -20,10 +20,19 @@ test("hiding a completed edit preserves its single-use UUID; pending edits and f
     assert.equal(await db.deleteVideo("owner", video.id), false);
     assert.equal(await db.deleteVideo("someone-else", video.id), false);
     assert.equal((await db.listVideos("owner")).length, 1);
+    const observed = structuredClone(await db.getVideo("owner", video.id));
+    assert.equal(await db.updateVideoFromPoll({ ...observed, userId: "someone-else" }, { error: "foreign" }), false);
+    assert.equal(await db.claimVideoFinalization(observed), true);
+    assert.equal(await db.updateVideoFromPoll(observed, { status: "review", error: "late status response" }), false);
+    assert.ok((await db.getVideo("owner", video.id)).finalizationStartedAt);
     await db.updateVideo(video.id, { status: "completed", resultUrl: "https://example.com/final.mp4" });
+    assert.equal(await db.updateVideoFromPoll(observed, { status: "processing", resultUrl: "https://example.com/raw.mp4" }), false);
+    assert.equal((await db.getVideo("owner", video.id)).resultUrl, "https://example.com/final.mp4");
+    const completed = structuredClone(await db.getVideo("owner", video.id));
     assert.equal(await db.deleteVideo("owner", video.id), true);
     assert.equal((await db.listVideos("owner")).length, 0);
     assert.ok((await db.getVideo("owner", video.id)).deletedAt);
+    assert.equal(await db.updateVideoFromPoll(completed, { error: "late response after deletion" }), false);
     assert.equal(await db.createVideoOnce(video), false);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

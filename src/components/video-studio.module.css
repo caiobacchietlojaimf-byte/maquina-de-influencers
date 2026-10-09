@@ -8,7 +8,7 @@
 }
 
 .accent {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .layout {
@@ -80,7 +80,7 @@
   height: 22px;
   border-radius: 50%;
   border: 1px solid var(--line);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
 }
 
@@ -110,7 +110,7 @@
 }
 
 .emptyInfluencers > svg {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .selection {
@@ -133,7 +133,7 @@
   text-align: center;
   cursor: pointer;
 }
-.upload svg { color: var(--accent); }
+.upload svg { color: var(--accent-text); }
 .upload strong { font-size: 13px; }
 .upload span { color: var(--tx3); font-size: 11px; }
 .upload input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
@@ -141,7 +141,7 @@
 .upload:has(input:disabled) { opacity: .6; cursor: wait; }
 .progress { width: 100%; accent-color: var(--accent); }
 .quote { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--accent-32); border-radius: 12px; background: var(--s1); font-size: 12px; }
-.quote strong { color: var(--accent); font-size: 16px; }
+.quote strong { color: var(--accent-text); font-size: 16px; }
 .quote small { color: var(--tx2); line-height: 1.5; }
 .accept { display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; cursor: pointer; }
 .accept input { margin-top: 3px; accent-color: var(--accent); flex-shrink: 0; }
@@ -155,7 +155,7 @@
 .preparation button { justify-self: start; }
 
 .selection > span {
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 11px;
 }
 

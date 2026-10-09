@@ -76,15 +76,18 @@ export async function finalizeCharacterEdit(video: Video, resultInput: string | 
     const result = typeof resultInput === "string" ? await readPublicVideo(resultInput) : resultInput;
     const metadata = mp4Metadata(result);
     const mismatch = checkEditResult(video.edit.source, metadata);
-    if (mismatch) return { status: "review", resultUrl, error: mismatch, edit: { ...video.edit, result: metadata } };
+    // A provider crop remains a review result. When its complete timeline is
+    // intact, we can still restore the real audio without changing a pixel.
+    const timelineMismatch = checkEditResult({ ...video.edit.source, width: metadata.width, height: metadata.height }, metadata);
+    if (timelineMismatch) return { status: "review", resultUrl, error: timelineMismatch, edit: { ...video.edit, result: metadata } };
     const original = await readPublicVideo(video.edit.sourceUrl);
     const sourceMetadata = mp4Metadata(original);
     if (checkEditResult(video.edit.source, sourceMetadata) || sourceMetadata.hasAudio !== video.edit.source.hasAudio) return { status: "review", resultUrl, error: "O arquivo original mudou; o áudio não foi substituído. Confira a referência." };
     const final = await preserveSourceAudio(result, original);
     const finalMetadata = mp4Metadata(final);
-    if (checkEditResult(video.edit.source, finalMetadata) || finalMetadata.hasAudio !== sourceMetadata.hasAudio) throw new Error("Validação da finalização falhou.");
-    const blob = await put(`edited-videos/${video.userId}/${video.id}.mp4`, final, { access: "public", contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: true });
-    return { status: "completed", resultUrl: blob.url, error: undefined, edit: { ...video.edit, result: finalMetadata, audioPreserved: true } };
+    if (checkEditResult({ ...video.edit.source, width: finalMetadata.width, height: finalMetadata.height }, finalMetadata) || finalMetadata.hasAudio !== sourceMetadata.hasAudio) throw new Error("Validação da finalização falhou.");
+    const blob = await put(`edited-videos/${video.userId}/${video.id}.mp4`, final, { access: "public", contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: true, abortSignal: AbortSignal.timeout(60_000) });
+    return { status: mismatch ? "review" : "completed", resultUrl: blob.url, error: mismatch ? `${mismatch} O áudio original foi preservado; o enquadramento alterado pelo provedor não foi esticado nem recortado novamente.` : undefined, edit: { ...video.edit, result: finalMetadata, audioPreserved: true } };
   } catch {
     return { status: "review", resultUrl, error: "O vídeo foi gerado, mas a conferência ou preservação do áudio não terminou. O arquivo recebido está disponível para revisão; nenhuma nova geração foi solicitada." };
   }

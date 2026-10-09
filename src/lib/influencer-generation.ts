@@ -26,7 +26,7 @@ export class InfluencerGenerationError extends Error {
 function credentials() {
   const key = process.env.HF_API_KEY?.trim();
   const origin = process.env.HF_API_BASE_URL?.trim().replace(/\/$/, "") ?? ORIGIN;
-  if (!key?.includes(":") || origin !== ORIGIN) throw new InfluencerGenerationError("A geração de influencers não está configurada no servidor.");
+  if (!key || !/^[^:\s]+:[^:\s]+$/.test(key) || origin !== ORIGIN) throw new InfluencerGenerationError("A geração de influencers não está configurada no servidor.");
   return key;
 }
 

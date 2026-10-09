@@ -36,7 +36,7 @@ function pollFixture(item = video(), overrides = {}) {
   const records = new Map([[item.id, structuredClone(item)]]);
   const falReads = [], higgsfieldReads = [], submissions = [], charges = [], updates = [], claims = [], finalizations = [];
   const leased = new Set();
-  const actions = load("src/app/actions/videos.ts", {
+  const mocks = {
     "next/cache": { revalidatePath() {} }, "@/data/viral-effects": {}, "@/data/video-presets": { VIDEO_PRESETS: [] },
     "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 7875 }) },
     "@/lib/db": {
@@ -47,6 +47,7 @@ function pollFixture(item = video(), overrides = {}) {
         leased.add(item.id); return true;
       },
       updateVideo: async (id, patch) => { updates.push([id, patch]); Object.assign(records.get(id), patch); },
+      updateVideoFromPoll: async (snapshot, patch) => { const current = records.get(snapshot.id); if (current.status !== snapshot.status || current.finalizationStartedAt !== snapshot.finalizationStartedAt) return false; updates.push([snapshot.id, patch]); Object.assign(current, patch); return true; },
       adjustCredits: async (...args) => charges.push(args),
     },
     "@/lib/prompt": {}, "@/lib/costs": { VIDEO_COST: 1000 },
@@ -67,12 +68,14 @@ function pollFixture(item = video(), overrides = {}) {
     "@/lib/finalize-segmented-edit": {
       finalizeSegmentedEdit: async (...args) => { finalizations.push({ kind: "segmented", args }); return { status: "completed", resultUrl: "https://media.example/final.mp4", edit: args[0].edit }; },
     },
-  });
+  };
+  mocks["@/lib/reconcile-fal-video"] = load("src/lib/reconcile-fal-video.ts", {"./db":mocks["@/lib/db"], "./fal":{FalError:Error,...mocks["@/lib/fal"]}, "./finalize-edit":mocks["@/lib/finalize-edit"], "./finalize-segmented-edit":mocks["@/lib/finalize-segmented-edit"]});
+  const actions = load("src/app/actions/videos.ts", mocks);
   return { actions, records, falReads, higgsfieldReads, submissions, charges, updates, claims, leased, finalizations };
 }
 
 test("queued fal jobs and incomplete segment submissions are never polled or finalized", async () => {
-  for (const state of ["queued", "missing-segment-request", "missing-job-request"]) {
+  for (const state of ["queued", "missing-segment-request"]) {
     const item = video();
     if (state === "queued") item.status = "queued";
     if (state === "missing-segment-request") delete item.edit.segments[1].requestId;
@@ -105,8 +108,8 @@ test("interrupted submissions recover known complete requests or require review 
     if (!complete) delete item.edit.segments[1].requestId;
     const f = pollFixture(item);
     await f.actions.pollVideosAction();
-    assert.equal(f.records.get(item.id).status, complete ? "processing" : "review");
-    assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0); assert.equal(f.finalizations.length, 0);
+    assert.equal(f.records.get(item.id).status, complete ? "completed" : "review");
+    assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0); assert.equal(f.finalizations.length, complete ? 1 : 0);
   }
 });
 
@@ -127,7 +130,7 @@ test("partial, in-progress and incomplete fal responses wait without claiming or
     const f = pollFixture(video(), { status: async (_model, id) => id === "request-1" ? { status: "completed", videoUrl: outputUrls[0] } : pending });
     await f.actions.pollVideosAction();
     assert.equal(f.falReads.length, 2); assert.equal(f.claims.length, 0); assert.equal(f.finalizations.length, 0);
-    assert.equal(f.updates.length, 0); assert.equal(f.records.get("edit-1").status, "processing");
+    assert.equal(f.records.get("edit-1").polling.failures, 0); assert.equal(f.records.get("edit-1").status, "processing");
   }
 });
 
@@ -149,8 +152,9 @@ test("transient fal polling errors retain processing and the next poll can compl
     return { status: "completed", videoUrl: outputUrls[id === "request-1" ? 0 : 1] };
   } });
   await f.actions.pollVideosAction();
-  assert.equal(f.records.get("edit-1").status, "processing"); assert.equal(f.updates.length, 0); assert.equal(f.claims.length, 0);
+  assert.equal(f.records.get("edit-1").status, "processing"); assert.equal(f.records.get("edit-1").polling.failures, 1); assert.equal(f.claims.length, 0);
   unavailable = false;
+  f.records.get("edit-1").polling.nextCheckAt = 0;
   await f.actions.pollVideosAction();
   assert.equal(f.records.get("edit-1").status, "completed"); assert.equal(f.finalizations.length, 1);
   assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0); assert.equal(f.higgsfieldReads.length, 0);

@@ -93,7 +93,7 @@
   },
   "constraints": {
     "must": [
-      "Preservar tema escuro e acento lima #d1fe17",
+      "Oferecer temas escuro e claro persistentes, preservando o acento lima #d1fe17 nos botões",
       "Player deve mostrar vídeo real e controles acessíveis",
       "Métricas observadas, sem estimar views a partir de curtidas"
     ],
@@ -104,6 +104,12 @@
       "scope": "Influencers / criador de personagem",
       "decision": "Seguir a referência visual Higgsfield fornecida pelo usuário: cards de mídia com fotos oficiais locais, três colunas, cantos arredondados, fundo branco e legenda escura; seleção em lima da marca. Usar amostras de cor e cards de texto quando o catálogo oficial não oferece fotografia. Manter tema escuro, Explorar e Meus Influencers, e apenas a galeria AI Influencers neste menu.",
       "source": "Direção explícita do usuário e revisão visual da implementação",
+      "date": "2026-10-09"
+    },
+    {
+      "scope": "Landing, temas e aprendizado",
+      "decision": "Apresentar exemplos reais do catálogo com autoria contextualizada, três planos de 30 dias e renovação manual via PIX. Manter a marca escura/lima e oferecer tema claro com texto verde de contraste. Guias escritos do Pro são conteúdo disponível; Criação Ilimitada no Max identifica aulas gravadas futuras, sem promessa de GPU grátis ou gerações infinitas.",
+      "source": "Pedido explícito do usuário para MVP e referências Higgsfield/Characters School",
       "date": "2026-10-09"
     }
   ],

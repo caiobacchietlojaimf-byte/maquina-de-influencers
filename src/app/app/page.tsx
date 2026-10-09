@@ -22,7 +22,7 @@ export default async function HomePage() {
       <div className="page-head">
         <div>
           <h1>
-            Fala, <span style={{ color: "var(--accent)" }}>{user.name.split(" ")[0]}</span>
+            Fala, <span style={{ color: "var(--accent-text)" }}>{user.name.split(" ")[0]}</span>
           </h1>
           <p className="sub">
             A esteira completa da máquina: minerar o viral, criar o influencer, gerar o vídeo e
@@ -33,9 +33,8 @@ export default async function HomePage() {
 
       {!configured ? (
         <div className="notice">
-          <b>Modo demonstração:</b> nenhuma chave da Higgsfield configurada. As gerações usam
-          resultados de exemplo. Defina <b>HF_API_KEY</b> (formato id:secret) e{" "}
-          <b>HF_API_BASE_URL</b> no .env.local para gerar de verdade.
+          <b>Criação de influencers indisponível:</b> o serviço de geração ainda precisa ser configurado.
+          Nenhum crédito será cobrado por essa indisponibilidade.
         </div>
       ) : null}
 

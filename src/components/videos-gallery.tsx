@@ -22,6 +22,8 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
   const [finalizationErrors, setFinalizationErrors] = useState<Record<string, string>>({});
   const activeFinalizations = useRef(new Map<string, AbortController>());
   const pollRevision = useRef(0);
+  const pollInFlight = useRef(false);
+  const [pollError, setPollError] = useState("");
   const hasPending = videos.some((v) => v.status === "processing" || v.status === "queued");
 
   useEffect(() => () => {
@@ -34,13 +36,17 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
     if (!hasPending) return;
     let disposed = false;
     const timer = setInterval(() => {
+      if (pollInFlight.current) return;
+      pollInFlight.current = true;
       const revision = pollRevision.current;
       pollVideosAction()
         .then(items => {
           if (disposed || revision !== pollRevision.current) return;
+          setPollError("");
           setVideos(current => items.map(item => activeFinalizations.current.has(item.id) ? current.find(video => video.id === item.id) ?? item : item));
         })
-        .catch(() => undefined);
+        .catch(() => { if (!disposed) setPollError("Não foi possível atualizar as gerações agora. Os pedidos foram preservados; a consulta será repetida sem gerar outro vídeo."); })
+        .finally(() => { pollInFlight.current = false; });
     }, 4000);
     return () => { disposed = true; clearInterval(timer); };
   }, [hasPending]);
@@ -96,6 +102,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
 
   return (
     <div>
+      {pollError && <p role="status" style={{ color: "var(--tx2)", marginBottom: 16 }}>{pollError}</p>}
       <div className="explore-bar">
         {FILTERS.map((f) => (
           <button key={f.id} type="button" className="chip" data-active={filter === f.id} onClick={() => setFilter(f.id)}>
@@ -158,10 +165,12 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 <button
                   type="button"
                   title="Excluir"
-                  disabled={finalizing.has(video.id) || Boolean(video.edit && (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)))}
+                  disabled={finalizing.has(video.id) || Boolean((video.edit || video.requestFingerprint) && (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)))}
                   onClick={async () => {
-                    await deleteVideoAction(video.id);
-                    setVideos((prev) => prev.filter((v) => v.id !== video.id));
+                    try {
+                      await deleteVideoAction(video.id);
+                      setVideos((prev) => prev.filter((v) => v.id !== video.id));
+                    } catch { setPollError("Não foi possível excluir este vídeo. Aguarde a confirmação do pedido e tente novamente."); }
                   }}
                 >
                   <Trash2 size={14} />
@@ -181,7 +190,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               <span>{editModelLabel(video.edit.model)}{video.edit.resolution !== "auto" ? ` · ${video.edit.resolution}` : ""}</span>
               {video.edit.result && <span>Resultado: {video.edit.result.width} × {video.edit.result.height}</span>}
               <span>Original: {video.edit.source.duration.toFixed(2)}s{video.edit.result ? ` · Resultado: ${video.edit.result.duration.toFixed(2)}s` : ""}</span>
-              {video.edit.audioPreserved && <span>Áudio original preservado · duração e proporção conferidas</span>}
+              {video.edit.audioPreserved && <span>{video.status === "review" ? "Áudio original preservado · confira o aviso da edição" : "Áudio original preservado · duração e proporção conferidas"}</span>}
               {video.error && <p role="status" style={{ color: "var(--danger)" }}>{video.error}</p>}
               {canFinalizeExistingEdit(video) && <>
                 <button type="button" className="btn btn-accent btn-sm" disabled={finalizing.has(video.id)} onClick={() => void finalize(video)}>

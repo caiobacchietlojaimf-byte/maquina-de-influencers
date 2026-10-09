@@ -29,6 +29,8 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const submission = useRef<{ fingerprint: string; key: string } | null>(null);
+  const submissionBusy = useRef(false);
 
   const list = useMemo(() => {
     const sorted = [...VIRAL_EFFECTS].sort((a, b) => b.views - a.views);
@@ -47,16 +49,22 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
   const prompt = active ? buildViralPrompt(active.name, active.description, extra) : "";
 
   const duplicate = async () => {
-    if (!active || !pickedInfluencer) return;
+    if (!active || !pickedInfluencer || submissionBusy.current) return;
+    submissionBusy.current = true;
+    const fingerprint = JSON.stringify([active.id, pickedInfluencer, extra.trim()]);
+    if (submission.current?.fingerprint !== fingerprint) submission.current = { fingerprint, key: crypto.randomUUID() };
     setSubmitting(true);
     setError(null);
     const result = await createViralVideoAction({
+      requestKey: submission.current.key,
       influencerId: pickedInfluencer,
       effectId: active.id,
       ...(extra.trim() ? { extraPrompt: extra.trim() } : {}),
     }).catch((caught: unknown) => ({ error: caught instanceof Error ? caught.message : String(caught) }));
     setSubmitting(false);
+    submissionBusy.current = false;
     if ("error" in result) {
+      if ("retryable" in result && result.retryable) submission.current = null;
       setError(result.error);
       return;
     }
@@ -95,11 +103,12 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
             <button type="button" className="modal-close" onClick={() => setActive(null)}>
               <X size={16} />
             </button>
-            <h2>Duplicar “{active.name}”</h2>
+            <h2>Aplicar efeito “{active.name}”</h2>
             <p className="modal-sub">
               <Flame size={12} style={{ display: "inline", verticalAlign: "-2px" }} />{" "}
               {formatViews(active.views)} de views na tendência · {active.platform}
             </p>
+            <p className="modal-sub">Gere um novo vídeo de 5 segundos com seu influencer e este efeito.</p>
 
             <div style={{ display: "grid", gap: 16, marginTop: 18 }}>
               <video
@@ -134,7 +143,7 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
                 ) : (
                   <p style={{ color: "var(--tx3)", fontSize: 13 }}>
                     Você ainda não tem influencer pronto.{" "}
-                    <Link href="/app/influencers" style={{ color: "var(--accent)" }}>
+                    <Link href="/app/influencers" style={{ color: "var(--accent-text)" }}>
                       Criar um agora →
                     </Link>
                   </p>
@@ -153,7 +162,7 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
               </div>
 
               <div className="field">
-                <label>Prompt de duplicação (gerado automaticamente)</label>
+                <label>Prompt do efeito (gerado automaticamente)</label>
                 <div
                   style={{
                     position: "relative",
@@ -170,7 +179,7 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
                   <button
                     type="button"
                     title="Copiar prompt"
-                    style={{ position: "absolute", top: 10, right: 10, color: copied ? "var(--accent)" : "var(--tx3)" }}
+                    style={{ position: "absolute", top: 10, right: 10, color: copied ? "var(--accent-text)" : "var(--tx3)" }}
                     onClick={() => {
                       navigator.clipboard.writeText(prompt).catch(() => undefined);
                       setCopied(true);
@@ -190,7 +199,7 @@ export function ViralGrid({ influencers }: { influencers: MiniInfluencer[] }) {
                 disabled={submitting || !pickedInfluencer}
                 onClick={duplicate}
               >
-                {submitting ? <span className="spinner" /> : <>Duplicar vídeo <span className="cost">✦ {VIDEO_COST}</span></>}
+                {submitting ? <span className="spinner" /> : <>Gerar com este efeito <span className="cost">✦ {VIDEO_COST}</span></>}
               </button>
             </div>
           </div>
@@ -235,7 +244,7 @@ function ViralCard({ effect, onDuplicate }: { effect: ViralEffect; onDuplicate: 
         <div className="foot">
           <button type="button" className="btn btn-accent btn-sm" style={{ flex: 1 }} onClick={onDuplicate}>
             <Flame size={14} />
-            Duplicar com meu influencer
+            Aplicar efeito
           </button>
         </div>
       </div>

@@ -22,7 +22,7 @@
 .name { font-size: 22px; font-weight: 600; margin: 12px 0 0; overflow-wrap: anywhere; }
 .nameForm { display: grid; gap: 12px; margin-top: 16px; }
 .formActions { display: flex; gap: 8px; flex-wrap: wrap; }
-.notice { color: var(--accent); font-size: 13px; margin: 8px 0 0; }
+.notice { color: var(--accent-text); font-size: 13px; margin: 8px 0 0; }
 .notice:empty { display: none; }
 .summary, .traits { display: grid; gap: 16px; margin: 0; }
 .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }

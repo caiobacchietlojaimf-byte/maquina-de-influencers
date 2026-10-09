@@ -5,7 +5,7 @@ export type EditEngine = "fal-kling-pro" | "fal-kling-standard" | "fal-wan" | "h
 export const EDIT_ENGINES = {
   "fal-kling-pro": { label: "fal.ai · Kling O3 Pro", model: "fal-ai/kling-video/o3/pro/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução, com referência do personagem. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
   "fal-kling-standard": { label: "fal.ai · Kling O3 Standard", model: "fal-ai/kling-video/o3/standard/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução com menor custo que Pro. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
-  "fal-wan": { label: "fal.ai · Wan 2.2 Replace", model: "fal-ai/wan/v2.2-14b/animate/replace", provider: "fal", resolutions: ["480p", "720p"], note: "Indicado para um único personagem visível. Não aceita escolher a pessoa por texto; pode trocar a pessoa errada em cenas com várias pessoas." },
+  "fal-wan": { label: "fal.ai · Wan 2.2 Replace", model: "fal-ai/wan/v2.2-14b/animate/replace", provider: "fal", resolutions: ["480p", "720p"], note: "Esta integração libera originais 16:9 e 9:16 e confere a proporção ao finalizar. O Wan pode recortar a cena e não escolhe a pessoa por texto. Para vídeos 4:3 ou quadrados, escolha Kling." },
   higgsfield: { label: "Higgsfield · Genjutsu Object Swap", model: CHARACTER_EDIT_MODEL, provider: "higgsfield", resolutions: ["480p", "720p", "1080p"], note: "Troca localizada por instrução. Usa o saldo da Higgsfield." },
 } as const;
 export function isEditEngine(value: unknown): value is EditEngine { return typeof value === "string" && Object.hasOwn(EDIT_ENGINES, value); }
@@ -40,6 +40,7 @@ export function validateProviderEdit(engine: EditEngine, media: VideoMetadata, r
   const invalid = validateEditSource(media);
   if (invalid) return invalid;
   if (engine === "fal-wan" && targetMode !== "main") return "Wan Replace não permite indicar uma pessoa. Escolha Kling para usar uma descrição.";
+  if (engine === "fal-wan" && ![16 / 9, 9 / 16].some(ratio => Math.abs((media.width / media.height) / ratio - 1) <= 0.02)) return "O Wan pode recortar este formato de vídeo. Esta integração aceita originais 16:9 ou 9:16 e confere o resultado ao finalizar; escolha Kling para editar este original.";
   if (engine.startsWith("fal-kling") && (Math.min(media.width, media.height) < 720 || Math.max(media.width, media.height) > 3840)) return "O Kling exige um original entre 720 e 3840 pixels por lado. Envie o vídeo nessa resolução.";
 }
 export function buildProviderEditInput(engine: EditEngine, sourceUrl: string, imageUrl: string, target: string, duration: number, resolution: EditResolution, seed: number): Record<string, unknown> {

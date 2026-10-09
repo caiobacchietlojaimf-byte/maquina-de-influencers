@@ -81,7 +81,7 @@ function fixture(overrides = {}) {
     "@/lib/video-reference": fixtureMedia, "@/lib/character-edit": edit, "@/lib/edit-quote": quotes,
     "@/lib/finalize-edit": { ensureVideoToolsAvailable: async () => {} },
     "@/lib/edit-continuity": { splitContinuousEditSource: async (...args) => { splitCalls.push(args); return parts; } },
-    "@/lib/fal": { isFalConfigured: () => overrides.falConfigured !== false, FalError, submitFalGeneration: async (...args) => {
+    "@/lib/fal": { isFalConfigured: () => overrides.falConfigured !== false, falVideoWebhookUrl: () => undefined, FalError, submitFalGeneration: async (...args) => {
       falSubmissions.push(args);
       if (overrides.falFailure && falSubmissions.length === (overrides.falFailureAt ?? 1)) throw new FalError(overrides.falFailure);
       return { requestId: `fal-request-${falSubmissions.length}` };
@@ -321,7 +321,7 @@ test("uncertain second fal submissions retain the first request for review and c
 });
 
 test("fal failures never fall back to Higgsfield and only a definite first-request refusal refunds internal credits", async () => {
-  for (const falFailure of [422, 503]) {
+  for (const falFailure of [422, 408, 503]) {
     const f = fixture({ falFailure });
     const prepared = await f.actions.prepareCharacterEditAction({ influencerId: "character", source: { kind: "preset", id: "preset" }, targetMode: "main", engine: "fal-wan", resolution: "720p" });
     assert.ok(prepared.quote, prepared.error);
@@ -414,4 +414,10 @@ test("overlap and a third segment are bound into the accepted quote without hidd
   assert.equal(first.id,repeat.id);
   assert.equal(f.falSubmissions.length,3);
   assert.equal(f.charges.length,1);
+});
+
+test('Wan preparation blocks the reported 4:3 crop before any snapshot, debit or paid API request',async()=>{
+  const f=fixture({metadata:{...metadata,width:1664,height:1248}});
+  const result=await f.actions.prepareCharacterEditAction({influencerId:'character',source:{kind:'preset',id:'preset'},targetMode:'main',engine:'fal-wan',resolution:'720p'});
+  assert.match(result.error,/Wan pode recortar/);assert.equal(f.snapshots.length,0);assert.equal(f.charges.length,0);assert.equal(f.falSubmissions.length,0);
 });

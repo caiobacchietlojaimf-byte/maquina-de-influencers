@@ -303,7 +303,7 @@ function MinedVideo({ viral, modal = false }: { viral: Viral; modal?: boolean })
         onPlay={() => { document.querySelectorAll("video").forEach((other) => { if (other !== video.current) other.pause(); }); }}
         aria-label={viral.title} style={{ display: "block", width: "100%", height: modal ? "auto" : "100%", maxHeight: modal ? 340 : undefined, objectFit: "contain" }} />
       {refreshing || message ? (
-        <div role="status" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 20, textAlign: "center", background: "rgba(0,0,0,.8)", fontSize: 13, zIndex: 2 }}>
+        <div role="status" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 20, textAlign: "center", background: "rgba(0,0,0,.8)", color: "#fff", fontSize: 13, zIndex: 2 }}>
           {refreshing ? <><span className="spinner" />Atualizando o vídeo…</> : <>
             <span>{message}</span>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => void renew()}><RefreshCw size={14} />Tentar novamente</button>

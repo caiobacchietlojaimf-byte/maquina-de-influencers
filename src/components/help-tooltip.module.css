@@ -15,7 +15,7 @@
 
 .trigger:hover,
 .trigger:focus-visible {
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: var(--accent-32);
   background: var(--accent-08);
 }

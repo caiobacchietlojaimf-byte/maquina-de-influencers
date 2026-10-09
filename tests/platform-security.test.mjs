@@ -12,7 +12,7 @@ function load(fetch, baseUrl = "https://api.higgsfield.ai") {
   const source = readFileSync(new URL("../src/lib/platform.ts", import.meta.url), "utf8");
   assert.match(source, /^import "server-only";/);
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require(id) { assert.equal(id, "server-only"); return {}; }, process: { env: { HF_API_KEY: fakeKey, HF_API_BASE_URL: baseUrl } }, fetch });
+  vm.runInNewContext(code, { module, exports: module.exports, require(id) { assert.equal(id, "server-only"); return {}; }, process: { env: { HF_API_KEY: fakeKey, HF_API_BASE_URL: baseUrl } }, fetch, AbortSignal });
   return module.exports;
 }
 
@@ -31,6 +31,7 @@ test("generation sends the credential only in a server-side authorization header
 test("credentials cannot be sent to an untrusted origin or URL containing credentials", async () => {
   for (const origin of ["https://example.com", "http://api.higgsfield.ai", "https://api.higgsfield.ai@evil.example", "https://api.higgsfield.ai.evil.example"]) {
     const api = load(() => { assert.fail("No request should be made"); }, origin);
+    assert.equal(api.isConfigured(), false);
     await assert.rejects(api.submitGeneration("model", {}), /Endereço da API/);
   }
 });

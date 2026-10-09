@@ -15,7 +15,7 @@ function load(file, mocks = {}) {
   const code = ts.transpileModule(readFileSync(new URL(`../${file}`, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
   }).outputText;
-  vm.runInNewContext(code, { module, exports: module.exports, require: id => id === "server-only" ? {} : id in mocks ? mocks[id] : require(id), Buffer, process, console });
+  vm.runInNewContext(code, { module, exports: module.exports, require: id => id === "server-only" ? {} : id in mocks ? mocks[id] : require(id), Buffer, process, console, AbortSignal });
   return module.exports;
 }
 const media = load("src/lib/video-reference.ts");
@@ -177,4 +177,20 @@ test('overlapping picture contexts become a full-length final video with the exa
     assert.deepEqual(decodedAudio(output),decodedAudio(originalPath));
     assert.equal(f.reads.filter(url=>url==='https://media.example/original.mp4').length,1);
   } finally {rmSync(directory,{recursive:true,force:true});}
+});
+
+test('a provider crop remains review while complete original audio and all generated picture packets are preserved',async()=>{
+  const directory=mkdtempSync(path.join(tmpdir(),'mi-crop-audio-'));
+  try{
+    const sourcePath=path.join(directory,'original.mp4'),resultPath=path.join(directory,'cropped.mp4');
+    ff(['-f','lavfi','-i','testsrc2=size=96x72:rate=24:duration=4','-f','lavfi','-i','sine=frequency=880:sample_rate=48000:duration=4.02','-c:v','libx264','-preset','ultrafast','-threads','1','-c:a','aac','-y',sourcePath]);
+    ff(['-f','lavfi','-i','testsrc2=size=128x72:rate=24:duration=4','-c:v','libx264','-preset','ultrafast','-threads','1','-an','-y',resultPath]);
+    const source=readFileSync(sourcePath),result=readFileSync(resultPath),f=finalizers(source,[result]);
+    const finalized=await f.finalizeCharacterEdit({id:'crop',userId:'owner',edit:{source:media.mp4Metadata(source),sourceUrl:'https://media.example/original.mp4'}},f.urls[0]);
+    assert.equal(finalized.status,'review');assert.match(finalized.error,/proporção/);assert.equal(finalized.edit.audioPreserved,true);assert.equal(f.stores.length,1);
+    const outputPath=path.join(directory,'final.mp4');writeFileSync(outputPath,f.stores[0].bytes);
+    assert.deepEqual(audioPackets(outputPath),audioPackets(sourcePath));
+    assert.deepEqual(ff(['-i',outputPath,'-map','0:v:0','-c','copy','-f','data','pipe:1']),ff(['-i',resultPath,'-map','0:v:0','-c','copy','-f','data','pipe:1']));
+    assert.equal(finalized.edit.result.width,128);assert.equal(finalized.edit.result.height,72);assert.equal(finalized.edit.result.frameCount,96);
+  }finally{rmSync(directory,{recursive:true,force:true});}
 });

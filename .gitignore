@@ -5,6 +5,8 @@ out
 .env.local
 .env*.local
 data/db.json
+data/commerce.json
+supabase/.temp
 data/uploads
 data/.secret
 *.log

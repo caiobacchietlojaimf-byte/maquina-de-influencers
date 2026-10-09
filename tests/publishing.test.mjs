@@ -24,7 +24,7 @@ function loadTs(file, mocks = {}, globals = {}) {
       module,
       exports: module.exports,
       require: (id) =>
-        id === "server-only" ? {} : id in mocks ? mocks[id] : require(id),
+        id === "server-only" ? {} : id in mocks ? mocks[id] : id === "./db" ? {} : id === "./social-token" ? { openSocialToken: value => value, socialTokenConfigured: () => false } : require(id),
       process: { env: {} },
       URLSearchParams,
       AbortSignal,
@@ -76,7 +76,7 @@ test("Instagram waits for FINISHED before calling media_publish", async () => {
   );
   assert.equal(
     (
-      await api.instagramFinishContainer(
+      await api.instagramContainerStatus(
         { igUserId: "account", accessToken: "test" },
         "container",
       )
@@ -89,7 +89,6 @@ test("Instagram waits for FINISHED before calling media_publish", async () => {
 
 test("Instagram publishes processed media and returns the actual permalink", async () => {
   const responses = [
-    { status_code: "FINISHED" },
     { id: "media" },
     { permalink: "https://www.instagram.com/reel/real/" },
   ];
@@ -104,13 +103,13 @@ test("Instagram publishes processed media and returns the actual permalink", asy
       },
     },
   );
-  const result = await api.instagramFinishContainer(
+  const result = await api.instagramPublishContainer(
     { igUserId: "account", accessToken: "test" },
     "container",
   );
   assert.equal(result.status, "posted");
   assert.equal(result.postedUrl, "https://www.instagram.com/reel/real/");
-  assert.ok(calls[1].endsWith("/media_publish"));
+  assert.ok(calls[0].endsWith("/media_publish"));
 });
 
 test("TikTok upload is pending until the provider confirms PUBLISH_COMPLETE", async () => {
@@ -142,40 +141,37 @@ test("TikTok upload is pending until the provider confirms PUBLISH_COMPLETE", as
 function publisherFixture(post, account, claimed = true) {
   const changes = [];
   let sends = 0;
+  account = { id: "account", providerUserId: "profile", ...account };
+  post = { accountId: "account", accountUserId: "profile", ...post };
   const api = loadTs("src/lib/publisher.ts", {
     "./db": {
       listPendingPosts: async () => [],
       listDuePosts: async () => [post],
-      claimScheduledPost: async () => claimed,
+      claimPostWork: async () => claimed ? { ...post, status: "posting", leaseId: "lease" } : undefined,
       getPostOwnerAccount: async () => account,
-      getVideoById: async () => ({
-        status: "completed",
-        resultUrl: "https://example.com/video.mp4",
-      }),
-      updatePost: async (_id, value) => changes.push(value),
+      getVideo: async () => ({ status: "completed", resultUrl: "https://example.com/video.mp4" }),
+      savePostWork: async (current, value) => { changes.push(value); return { ...current, ...value }; },
     },
     "./social": {
-      tiktokPublish: async () => {
-        sends++;
-        return "provider-id";
-      },
-      instagramCreateContainer: async () => {
-        sends++;
-        return "container";
-      },
+      freshSocialAccount: async a => a,
+      SocialApiError: class extends Error {},
+      validateTikTokOptions() {}, validateTikTokMediaUrl() {},
+      tiktokCreatorInfo: async () => ({}),
+      tiktokPublish: async () => { sends++; return "provider-id"; },
+      instagramCreateContainer: async () => { sends++; return "container"; },
     },
   });
   return { api, changes, sends: () => sends };
 }
 
-test("a scheduled demo stays a simulation even after a real account is connected", async () => {
+test("a scheduled demo never becomes a real post after account connection", async () => {
   const fixture = publisherFixture(
     { id: "post", mode: "demo", platform: "tiktok" },
     { status: "connected" },
   );
   await fixture.api.publisherTick();
   assert.equal(fixture.sends(), 0);
-  assert.equal(fixture.changes[0].mode, "demo");
+  assert.equal(fixture.changes[0].status, "failed");
   assert.equal(fixture.changes[0].postedUrl, undefined);
 });
 
@@ -196,8 +192,8 @@ test("an accepted TikTok upload is saved as processing with provider ID", async 
   );
   await fixture.api.publisherTick();
   assert.equal(fixture.sends(), 1);
-  assert.equal(fixture.changes[0].status, "posting");
-  assert.equal(fixture.changes[0].providerId, "provider-id");
+  assert.ok(fixture.changes[0].submissionStartedAt);
+  assert.equal(fixture.changes[1].providerId, "provider-id");
 });
 
 test("a job already claimed by another worker is not sent again", async () => {
@@ -234,21 +230,23 @@ function actionFixture(overrides = {}) {
   const api = loadTs("src/app/actions/posts.ts", {
     "next/cache": { revalidatePath() {} },
     "next/server": { after() {} },
+    "next/headers": {},
+    "@/lib/social-oauth-state": {},
     "@/lib/auth": { requireUser: async () => ({ id: "user", name: "User" }) },
     "@/lib/db": db,
     "@/lib/publisher": {
       publisherTick: async () =>
         assert.fail("No publishing while preparing draft"),
     },
-    "@/lib/social": {},
+    "@/lib/social": { instagramOAuthConfigured: () => false },
     "@/lib/publish-caption": caption,
   });
   return { api, connections: () => connections, created: () => created };
 }
 
-test("incomplete Instagram credentials do not silently create a demo account", async () => {
+test("unconfigured Instagram OAuth does not create a demo account", async () => {
   const fixture = actionFixture();
-  const result = await fixture.api.connectInstagramAction({ igUserId: "123" });
+  const result = await fixture.api.connectInstagramAction();
   assert.ok(result.error);
   assert.equal(fixture.connections(), 0);
 });
@@ -256,6 +254,7 @@ test("incomplete Instagram credentials do not silently create a demo account", a
 test("past schedules are rejected instead of published immediately", async () => {
   const fixture = actionFixture();
   const result = await fixture.api.schedulePostAction({
+    requestKey: "request-123456789012345",
     videoId: "video",
     platform: "instagram",
     caption: "A scene",
@@ -271,6 +270,7 @@ test("drafts persist without a social connection and do not invoke publishing", 
       assert.fail("Draft must not require an account"),
   });
   const result = await fixture.api.savePostDraftAction({
+    requestKey: "request-123456789012345",
     videoId: "video",
     platform: "instagram",
     caption: "Rascunho",
@@ -283,12 +283,14 @@ test("a draft owned by a different user cannot be edited or scheduled", async ()
   const fixture = actionFixture({ listPosts: async () => [] });
   const saved = await fixture.api.savePostDraftAction({
     id: "other-user-draft",
+    requestKey: "request-123456789012345",
     videoId: "video",
     platform: "instagram",
     caption: "Rascunho",
   });
   const scheduled = await fixture.api.schedulePostAction({
     draftId: "other-user-draft",
+    requestKey: "request-123456789012345",
     videoId: "video",
     platform: "instagram",
     caption: "Rascunho",
@@ -301,6 +303,7 @@ test("a draft owned by a different user cannot be edited or scheduled", async ()
 test("caption length is validated on the server before creating a post", async () => {
   const fixture = actionFixture();
   const result = await fixture.api.schedulePostAction({
+    requestKey: "request-123456789012345",
     videoId: "video",
     platform: "instagram",
     caption: "x".repeat(2201),
@@ -321,7 +324,7 @@ test("Instagram rejects an errored container without attempting to publish", asy
       },
     },
   );
-  const result = await api.instagramFinishContainer(
+  const result = await api.instagramContainerStatus(
     { igUserId: "account", accessToken: "test" },
     "container",
   );

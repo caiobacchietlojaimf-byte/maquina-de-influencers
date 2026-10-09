@@ -51,7 +51,7 @@ test("older upload clients cannot trigger the former paid Kling path", async () 
   const reference = { kind: "upload", id: pathname, name: "My clip", duration: 10, videoUrl: "https://store.public.blob.vercel-storage.com/clip.mp4" };
   const actions = load("src/app/actions/videos.ts", {
     "next/cache": { revalidatePath() {} }, "@/data/motion-presets": { getMotionPreset: () => null }, "@/data/viral-effects": {}, "@/data/video-presets": {}, "@/lib/prompt": {}, "@/lib/costs": { VIDEO_COST: 1000 },
-    "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 5000 }) }, "@/lib/uploaded-reference": signed, "@/lib/finalize-edit": {}, "@/lib/fal": {}, "@/lib/finalize-segmented-edit": {},
+    "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 5000 }) }, "@/lib/uploaded-reference": signed, "@/lib/finalize-edit": {}, "@/lib/fal": {}, "@/lib/finalize-segmented-edit": {}, "@/lib/reconcile-fal-video": {},
     "@/lib/db": { getInfluencer: async () => ({ id: "chosen", imageUrl: "https://example.com/influencer.jpg" }), adjustCredits: async (...args) => charges.push(args), createVideo: async () => ({ id: "job" }), updateVideo: async () => {} },
     "@/lib/platform": { isConfigured: () => true, submitGeneration: async (...args) => { submits.push(args); return { requestId: "request" }; } },
   });

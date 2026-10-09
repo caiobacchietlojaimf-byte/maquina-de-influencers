@@ -5,7 +5,7 @@ import {
   listSocialAccounts,
   listVideos,
 } from "@/lib/db";
-import { tiktokOAuthConfigured } from "@/lib/social";
+import { tiktokOAuthConfigured, instagramOAuthConfigured } from "@/lib/social";
 import { PublishCenter } from "@/components/publish-center";
 
 export const metadata = { title: "Publicar" };
@@ -26,7 +26,7 @@ export default async function PublicarPage({
     listInfluencers(user.id),
   ]);
   const completed = videosAll.filter(
-    (v) => v.status === "completed" && v.resultUrl,
+    (v) => v.status === "completed" && !v.deletedAt && v.resultUrl,
   );
 
   return (
@@ -34,7 +34,7 @@ export default async function PublicarPage({
       <div className="page-head">
         <div>
           <h1>
-            Publicar <span style={{ color: "var(--accent)" }}>& Agendar</span>
+            Publicar <span style={{ color: "var(--accent-text)" }}>& Agendar</span>
           </h1>
           <p className="sub">
             Prepare seus Reels e TikToks com os personagens de IA: vídeo,
@@ -62,6 +62,7 @@ export default async function PublicarPage({
           )?.name,
         }))}
         tiktokOAuth={tiktokOAuthConfigured()}
+        instagramOAuth={instagramOAuthConfigured()}
         backgroundPublishing={
           !process.env.VERCEL ||
           process.env.PUBLICATION_CRON_CONFIGURED === "true"

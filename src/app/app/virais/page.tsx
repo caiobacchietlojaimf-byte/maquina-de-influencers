@@ -22,7 +22,7 @@ export default async function ViraisPage() {
       <div className="page-head">
         <div>
           <h1>
-            Vídeos <span style={{ color: "var(--accent)" }}>Virais</span>
+            Vídeos <span style={{ color: "var(--accent-text)" }}>Virais</span>
           </h1>
           <p className="sub">
             Explore os personagens de IA do Instagram e TikTok. Assista aos vídeos disponíveis, encontre referências e crie uma nova cena com seu influencer.

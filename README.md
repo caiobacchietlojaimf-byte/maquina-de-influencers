@@ -49,8 +49,11 @@ Copie `.env.example` para `.env.local`:
 | `HF_API_KEY` (`id:secret`) + `HF_API_BASE_URL` | Geração real (Higgsfield Platform API) |
 | `BLOB_READ_WRITE_TOKEN` | Armazenamento das fotos de identidade e estilo antes da geração |
 | `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` | Publicação real no TikTok (Content Posting API via OAuth; callback em `/api/oauth/tiktok/callback`) |
-| `PUBLIC_BASE_URL` | URL pública do app (necessária para o OAuth do TikTok) |
-| Instagram | Sem .env: cole o IG User ID + access token do Graph API (escopo `instagram_content_publish`) na página Publicar |
+| `INSTAGRAM_APP_ID` + `INSTAGRAM_APP_SECRET` | Credenciais próprias do produto Instagram Login; callback em `/api/oauth/instagram/callback` |
+| `SOCIAL_TOKEN_SECRET` | Chave AES-256 de 32 bytes (base64 ou 64hex) estável para cifrar tokens sociais no banco |
+| `PUBLIC_BASE_URL` | Origem HTTPS pública e fixa usada nos callbacks OAuth |
+| `TIKTOK_VERIFIED_MEDIA_PREFIXES` | Prefixos HTTPS do armazenamento verificados no painel TikTok, separados por vírgula |
+| `CRON_SECRET` + `PUBLICATION_CRON_CONFIGURED` | Autenticação do cron e confirmação de que o agendador foi ativado no ambiente |
 
 ### Mapeamento de geração (mesma API do open-higgsfield)
 
@@ -82,13 +85,49 @@ Copie `.env.example` para `.env.local`:
 
 ### Publicação
 
-- Fila processada pelo agendador do servidor (60s) e pelo polling da página.
-- TikTok: `POST /v2/post/publish/video/init/` com `PULL_FROM_URL` (o TikTok
-  baixa o vídeo da URL de resultado da geração). Publicação entra como
-  `SELF_ONLY` (padrão de app em sandbox).
-- Instagram: container `REELS` → poll de processamento → `media_publish`.
-- Conta sem credenciais = modo demo: a publicação é simulada e marcada com uma
-  URL fictícia.
+- Instagram Login solicita apenas `instagram_business_basic` e
+  `instagram_business_content_publish`. Exige conta Criador/Empresa; o ID
+  do produto Instagram é diferente do ID do aplicativo Facebook. A conexão
+  usa nonce assinado, cookie httpOnly de dez minutos e a sessão autenticada.
+- Tokens e refresh tokens ficam cifrados com AES-256-GCM, vinculados ao usuário
+  e à rede. São renovados no servidor quando necessário; autorizações vencidas
+  ou revogadas exigem reconexão. Tokens antigos em texto puro exigem reconexão.
+- Instagram: cria container `REELS`, espera `FINISHED` e chama `media_publish`.
+  TikTok: consulta `creator_info`, usa visibilidade/interações escolhidas pelo
+  usuário, confirma os limites de duração e envia via `PULL_FROM_URL` com o
+  rótulo de conteúdo gerado com IA e as divulgações comerciais selecionadas.
+- A fila usa leases e comparação de revisão no banco. Cada ação tem chave de
+  idempotência; cancelar preserva o registro dessa chave. Antes de um envio há
+  um checkpoint persistente. Se uma resposta se perde, o sistema consulta o
+  pedido conhecido ou exige conferência manual; nunca repete um envio incerto.
+- `vercel.json` agenda `/api/cron/publish` a cada minuto com `CRON_SECRET`.
+  Esse intervalo depende do plano Vercel. Defina `PUBLICATION_CRON_CONFIGURED=true`
+  apenas depois de confirmar a ativação do cron; sem ele, o processamento
+  depende da página aberta (ou do processo local). Rascunhos nunca são enviados.
+- Sem credenciais, a conexão fica indisponível. Nenhuma conta ou publicação
+  fictícia é criada. Registros demo anteriores não viram publicações reais.
+
+#### Ativação externa necessária
+
+1. Instagram: configurar o callback exato no produto Instagram Login e as duas
+   permissões acima. Adicionar/autorizar a conta profissional de teste enquanto
+   o app estiver em desenvolvimento. Para contas externas, concluir App Review
+   e publicar o aplicativo conforme os requisitos mostrados pela Meta.
+2. TikTok: configurar Login Kit/Content Posting API e o callback, verificar a
+   propriedade dos prefixos dos vídeos e concluir a auditoria de Direct Post.
+   Sem auditoria, o TikTok limita envios a contas privadas com `SELF_ONLY`.
+   Ferramentas exclusivas para contas internas não atendem o uso amplo exigido
+   pela auditoria. A configuração não garante aprovação da plataforma.
+3. Configurar os segredos somente no servidor, ativar o cron e executar um
+   teste de publicação apenas com autorização explícita do proprietário.
+
+Fontes: [Meta, Instagram Login](https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/),
+[coleção oficial Meta](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api),
+[TikTok, Direct Post](https://developers.tiktok.com/docs/en/content-posting-api-reference-direct-post),
+[TikTok, requisitos de interface](https://developers.tiktok.com/docs/en/content-sharing-guidelines).
+O fluxo editorial segue o modo de poster próprio da
+[skill instagram-marketing](https://github.com/sergebulaev/instagram-skills/blob/main/SKILL.md):
+preparar, revisar e só então enviar a mídia autorizada.
 
 ## Arquitetura
 

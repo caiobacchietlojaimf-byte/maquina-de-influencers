@@ -27,11 +27,13 @@ import {
   deletePostAction,
   disconnectAccountAction,
   getAccountsAction,
+  getTikTokCreatorAction,
   pollPostsAction,
   savePostDraftAction,
   schedulePostAction,
 } from "@/app/actions/posts";
 import type { Post, SocialPlatform } from "@/lib/db";
+import type { TikTokCreator } from "@/lib/social";
 import {
   buildCaption,
   CAPTION_GOALS,
@@ -92,6 +94,7 @@ export function PublishCenter({
   initialPosts,
   videos,
   tiktokOAuth,
+  instagramOAuth,
   preselectVideoId,
   flash,
   backgroundPublishing = false,
@@ -100,6 +103,7 @@ export function PublishCenter({
   initialPosts: Post[];
   videos: MiniVideo[];
   tiktokOAuth: boolean;
+  instagramOAuth: boolean;
   preselectVideoId: string | null;
   flash: string | null;
   backgroundPublishing?: boolean;
@@ -111,8 +115,6 @@ export function PublishCenter({
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<QueueFilter>("all");
   const [igModal, setIgModal] = useState(false);
-  const [igUserId, setIgUserId] = useState("");
-  const [igToken, setIgToken] = useState("");
   const [igError, setIgError] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(Boolean(preselectVideoId));
   const [draftId, setDraftId] = useState<string | undefined>();
@@ -130,6 +132,17 @@ export function PublishCenter({
   const [composerError, setComposerError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState(false);
   const [fullPreview, setFullPreview] = useState(false);
+  const requestKey = useRef<string | undefined>(undefined);
+  const [creator, setCreator] = useState<TikTokCreator | null>(null);
+  const [creatorError, setCreatorError] = useState<string | null>(null);
+  const [privacy, setPrivacy] = useState("");
+  const [allowComment, setAllowComment] = useState(false);
+  const [allowDuet, setAllowDuet] = useState(false);
+  const [allowStitch, setAllowStitch] = useState(false);
+  const [commercial, setCommercial] = useState(false);
+  const [ownBrand, setOwnBrand] = useState(false);
+  const [paidBrand, setPaidBrand] = useState(false);
+  const [tiktokConsent, setTiktokConsent] = useState(false);
   const hasPending = posts.some(
     (post) => post.status === "scheduled" || post.status === "posting",
   );
@@ -138,6 +151,7 @@ export function PublishCenter({
     (account) => account.platform === platform,
   );
   const review = inspectCaption(caption);
+  const tiktokReady = Boolean(creator && privacy && tiktokConsent && (!commercial || ownBrand || paidBrand) && !(commercial && paidBrand && privacy === "SELF_ONLY"));
   const shownPosts = posts.filter(
     (post) =>
       filter === "all" ||
@@ -152,6 +166,18 @@ export function PublishCenter({
   useEffect(() => {
     setPosts(initialPosts);
   }, [initialPosts]);
+  useEffect(() => {
+    if (!composerOpen || platform !== "tiktok" || pickedAccount?.status !== "connected") return;
+    let active = true;
+    setCreator(null); setCreatorError(null); setPrivacy(""); setTiktokConsent(false);
+    setAllowComment(false); setAllowDuet(false); setAllowStitch(false);
+    getTikTokCreatorAction().then((result) => {
+      if (!active) return;
+      if ("error" in result) setCreatorError(result.error);
+      else setCreator(result.creator);
+    }).catch(() => { if (active) setCreatorError("Não foi possível consultar as opções do TikTok. Feche e abra a publicação para tentar novamente."); });
+    return () => { active = false; };
+  }, [composerOpen, platform, pickedAccount?.status, pickedAccount?.connectedAt]);
   useEffect(() => {
     if (!hasPending) return;
     let active = true;
@@ -185,35 +211,23 @@ export function PublishCenter({
         window.location.href = result.redirect;
         return;
       }
-      await refreshAccounts();
-      setNotice(
-        "Demonstração do TikTok ativada. As simulações não são enviadas para a rede.",
-      );
+      setNotice(result.error ?? "Não foi possível iniciar a conexão.");
     } catch (caught) {
       setNotice(errorMessage(caught));
     } finally {
       setBusy(false);
     }
   };
-  const connectInstagram = async (demo: boolean) => {
+  const connectInstagram = async () => {
     setBusy(true);
     setIgError(null);
     try {
-      const result = await connectInstagramAction(
-        demo ? { demo: true } : { igUserId, accessToken: igToken },
-      );
+      const result = await connectInstagramAction();
       if (result.error) {
         setIgError(result.error);
         return;
       }
-      await refreshAccounts();
-      setIgModal(false);
-      setIgToken("");
-      setNotice(
-        demo
-          ? "Demonstração do Instagram ativada. Nenhum vídeo será enviado à rede."
-          : "Instagram conectado. Revise seu vídeo e sua legenda antes de publicar.",
-      );
+      if (result.redirect) window.location.href = result.redirect;
     } catch (caught) {
       setIgError(errorMessage(caught));
     } finally {
@@ -234,6 +248,8 @@ export function PublishCenter({
     }
   };
   const newPost = () => {
+    requestKey.current = undefined;
+    setCommercial(false); setOwnBrand(false); setPaidBrand(false); setTiktokConsent(false);
     setDraftId(undefined);
     setCaption("");
     setTopic("");
@@ -245,6 +261,8 @@ export function PublishCenter({
     setComposerOpen(true);
   };
   const editPost = (post: Post) => {
+    requestKey.current = undefined;
+    setCommercial(false); setOwnBrand(false); setPaidBrand(false); setTiktokConsent(false);
     setDraftId(post.status === "draft" ? post.id : undefined);
     setVideoId(post.videoId);
     setPlatform(post.platform);
@@ -286,6 +304,7 @@ export function PublishCenter({
   };
   const schedule = async () => {
     setComposerError(null);
+    if (platform === "tiktok" && !tiktokReady) { setComposerError("Confira as opções do TikTok e aceite os termos antes de enviar."); return; }
     const scheduledAt =
       timing === "later" && when ? parsePublishDate(when) : undefined;
     if (
@@ -300,11 +319,13 @@ export function PublishCenter({
     setBusy(true);
     try {
       const result = await schedulePostAction({
+        requestKey: requestKey.current ??= crypto.randomUUID(),
         videoId,
         platform,
         caption,
         draftId,
         scheduledAt,
+        ...(platform === "tiktok" ? { tiktok: { privacyLevel: privacy, allowComment, allowDuet, allowStitch, brandOrganic: commercial && ownBrand, brandedContent: commercial && paidBrand, consentAt: Date.now() } } : {}),
       });
       if ("error" in result) {
         setComposerError(result.error);
@@ -313,11 +334,10 @@ export function PublishCenter({
       setComposerOpen(false);
       setCaption("");
       setDraftId(undefined);
+      requestKey.current = undefined;
       setFilter("scheduled");
       setNotice(
-        pickedAccount?.status === "demo"
-          ? "Simulação criada. Nenhum conteúdo será publicado na rede."
-          : timing === "later"
+        timing === "later"
             ? "Publicação adicionada à fila para o horário escolhido."
             : "Vídeo enviado para processamento. O status será confirmado pela rede.",
       );
@@ -386,7 +406,7 @@ export function PublishCenter({
             account={accounts.find(
               (account) => account.platform === "instagram",
             )}
-            hint="Conecte uma conta profissional para publicar Reels."
+            hint={instagramOAuth ? "Conecte sua conta profissional pelo Instagram." : "Conexão oficial aguardando configuração da Meta."}
             onConnect={() => {
               setIgError(null);
               setIgModal(true);
@@ -401,12 +421,12 @@ export function PublishCenter({
             hint={
               tiktokOAuth
                 ? "Conecte sua conta pelo TikTok."
-                : "Demonstração disponível. Publicação real ainda não configurada."
+                : "Conexão oficial aguardando configuração do TikTok."
             }
             onConnect={connectTiktok}
             onDisconnect={() => disconnect("tiktok")}
             busy={busy}
-            demoOnly={!tiktokOAuth}
+            unavailable={!tiktokOAuth}
           />
         </div>
       </section>
@@ -518,7 +538,7 @@ export function PublishCenter({
                     ) : null}
                   </div>
                   <div className={`q-actions ${styles.queueActions}`}>
-                    {post.status === "draft" || post.status === "failed" ? (
+                    {post.status === "draft" || (post.status === "failed" && !post.publicationUncertain) ? (
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
@@ -664,10 +684,32 @@ export function PublishCenter({
                     : pickedAccount.status === "demo"
                       ? "Modo demonstração: nenhuma publicação será enviada para a rede."
                       : platform === "tiktok"
-                        ? `@${pickedAccount.username} · Os envios desta integração ficam privados (somente você).`
+                        ? `Publicar em ${creator?.nickname ?? pickedAccount.username}`
                         : `Publicar em @${pickedAccount.username}`}
                 </p>
               </div>
+              {platform === "tiktok" && pickedAccount?.status === "connected" ? (
+                <fieldset className="field" style={{ border: 0, padding: 0 }}>
+                  <legend>Opções do TikTok</legend>
+                  {creatorError ? <p className={styles.error}>{creatorError}</p> : !creator ? <p className={styles.help}>Consultando as opções atuais da conta…</p> : <>
+                    <p className={styles.help}>{creator.nickname} · @{creator.username} · Vídeos até {creator.maxDuration}s. Aplicativos ainda não auditados pelo TikTok aceitam somente contas privadas e visibilidade Somente eu.</p>
+                    <label htmlFor="tt-privacy">Quem pode assistir?</label>
+                    <select id="tt-privacy" className="input" value={privacy} onChange={(e) => setPrivacy(e.target.value)}>
+                      <option value="">Escolha a visibilidade</option>
+                      {creator.privacyOptions.map((option) => <option key={option} value={option} disabled={commercial && paidBrand && option === "SELF_ONLY"}>{({ PUBLIC_TO_EVERYONE: "Todos", MUTUAL_FOLLOW_FRIENDS: "Amigos", FOLLOWER_OF_CREATOR: "Seguidores", SELF_ONLY: "Somente eu" } as Record<string, string>)[option] ?? option}</option>)}
+                    </select>
+                    {([["Permitir comentários", allowComment, setAllowComment, creator.commentDisabled], ["Permitir Dueto", allowDuet, setAllowDuet, creator.duetDisabled], ["Permitir Costura", allowStitch, setAllowStitch, creator.stitchDisabled]] as const).map(([label, checked, setter, disabled]) => <label key={label} style={{ opacity: disabled ? 0.55 : 1 }}><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => setter(e.target.checked)} /> {label}{disabled ? " (desativado na conta)" : ""}</label>)}
+                    <label><input type="checkbox" checked={commercial} onChange={(e) => setCommercial(e.target.checked)} /> Este vídeo promove uma marca, produto ou serviço</label>
+                    {commercial ? <>
+                      <label><input type="checkbox" checked={ownBrand} onChange={(e) => setOwnBrand(e.target.checked)} /> Minha marca</label>
+                      <label><input type="checkbox" checked={paidBrand} disabled={privacy === "SELF_ONLY"} onChange={(e) => setPaidBrand(e.target.checked)} /> Parceria paga com outra marca</label>
+                      <p className={styles.help}>{paidBrand ? "Seu vídeo será identificado como Parceria paga." : ownBrand ? "Seu vídeo será identificado como Conteúdo promocional." : "Indique sua marca, outra marca ou ambas para continuar."} {privacy === "SELF_ONLY" ? "Parceria paga exige visibilidade pública ou para amigos." : ""}</p>
+                    </> : null}
+                    <p className={styles.help}>O vídeo será identificado no TikTok como conteúdo gerado com IA.</p>
+                    <label><input type="checkbox" checked={tiktokConsent} onChange={(e) => setTiktokConsent(e.target.checked)} /> Ao publicar, concordo com a <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Confirmação de Uso de Música do TikTok</a>{commercial && paidBrand ? <> e a <a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer">Política de Conteúdo de Marca</a></> : null}.</label>
+                  </>}
+                </fieldset>
+              ) : null}
               <details className={styles.assistant}>
                 <summary>
                   <WandSparkles size={16} />
@@ -897,17 +939,15 @@ export function PublishCenter({
                 busy ||
                 !pickedVideo ||
                 !pickedAccount ||
+                pickedAccount.status !== "connected" ||
+                (platform === "tiktok" && !tiktokReady) ||
                 review.length > CAPTION_LIMIT ||
                 !caption.trim()
               }
               onClick={schedule}
             >
               {busy ? <span className="spinner" /> : <Send size={15} />}
-              {pickedAccount?.status === "demo"
-                ? timing === "later"
-                  ? "Agendar simulação"
-                  : "Simular publicação"
-                : timing === "later"
+              {timing === "later"
                   ? "Agendar publicação"
                   : "Publicar agora"}
             </button>
@@ -925,63 +965,13 @@ export function PublishCenter({
             Use sua conta profissional (Criador ou Empresa) para publicar Reels.
           </p>
           <div className={styles.editor}>
-            <div className="field">
-              <label htmlFor="ig-user">ID da conta do Instagram</label>
-              <input
-                id="ig-user"
-                className="input"
-                placeholder="1784..."
-                value={igUserId}
-                onChange={(event) => setIgUserId(event.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="ig-token">Token de acesso</label>
-              <input
-                id="ig-token"
-                className="input"
-                type="password"
-                autoComplete="off"
-                placeholder="Token da Meta"
-                value={igToken}
-                onChange={(event) => setIgToken(event.target.value)}
-              />
-              <p className={styles.help}>
-                Use um token válido com permissão de publicação.{" "}
-                <a
-                  href="https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/content-publishing/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Como obter as credenciais ↗
-                </a>
-              </p>
-            </div>
-            {igError ? (
-              <div className="auth-error" role="alert">
-                {igError}
-              </div>
-            ) : null}
-            <button
-              type="button"
-              className="btn btn-accent"
-              disabled={busy || !igUserId.trim() || !igToken.trim()}
-              onClick={() => connectInstagram(false)}
-            >
-              {busy ? <span className="spinner" /> : "Conectar conta real"}
+            <p className={styles.help}>A autorização acontece no Instagram. Você permite acesso ao perfil profissional e a publicação de Reels. Nenhuma senha ou token precisa ser colado aqui.</p>
+            {!instagramOAuth ? <p className={styles.error}>A conexão oficial ainda depende da configuração do aplicativo na Meta. Os rascunhos continuam disponíveis.</p> : null}
+            {igError ? <div className="auth-error" role="alert">{igError}</div> : null}
+            <button type="button" className="btn btn-accent" disabled={busy || !instagramOAuth} onClick={connectInstagram}>
+              {busy ? <span className="spinner" /> : "Continuar no Instagram"}
             </button>
-            <button
-              type="button"
-              className="btn btn-ghost"
-              disabled={busy}
-              onClick={() => connectInstagram(true)}
-            >
-              Experimentar em demonstração
-            </button>
-            <p className={styles.help}>
-              A demonstração permite testar a fila sem enviar posts ao
-              Instagram.
-            </p>
+            <p className={styles.help}>Contas pessoais precisam ser convertidas em Criador ou Empresa. Durante o desenvolvimento do aplicativo, a Meta limita o acesso às contas autorizadas para testes.</p>
           </div>
         </PublishDialog>
       ) : null}
@@ -997,7 +987,7 @@ function AccountCard({
   onConnect,
   onDisconnect,
   busy,
-  demoOnly = false,
+  unavailable = false,
 }: {
   icon: ReactNode;
   name: string;
@@ -1006,7 +996,7 @@ function AccountCard({
   onConnect: () => void;
   onDisconnect: () => void;
   busy: boolean;
-  demoOnly?: boolean;
+  unavailable?: boolean;
 }) {
   return (
     <div
@@ -1040,9 +1030,9 @@ function AccountCard({
           type="button"
           className="btn btn-accent btn-sm"
           onClick={onConnect}
-          disabled={busy}
+          disabled={busy || unavailable}
         >
-          {demoOnly ? "Testar demo" : "Conectar"}
+          {unavailable ? "Em configuração" : "Conectar"}
         </button>
       )}
     </div>

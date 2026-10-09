@@ -33,13 +33,13 @@ export type GenerationStatus = {
 };
 
 export function isConfigured(): boolean {
-  return Boolean(process.env.HF_API_KEY?.includes(":") && process.env.HF_API_BASE_URL);
+  try { credentials(); return true; } catch { return false; }
 }
 
 function credentials(): { apiKey: string; baseUrl: string } {
   const apiKey = process.env.HF_API_KEY?.trim();
   const baseUrl = process.env.HF_API_BASE_URL?.trim()?.replace(/\/$/, "");
-  if (!apiKey || !apiKey.includes(":")) {
+  if (!apiKey || !/^[^:\s]+:[^:\s]+$/.test(apiKey)) {
     throw new Error("HF_API_KEY ausente ou inválida (formato id:secret) no .env.local");
   }
   if (!baseUrl) throw new Error("HF_API_BASE_URL ausente no .env.local");
@@ -60,6 +60,7 @@ async function send(method: "GET" | "POST", pathName: string, body?: Record<stri
     ...(body ? { body: JSON.stringify(body) } : {}),
     cache: "no-store",
     redirect: "error",
+    signal: AbortSignal.timeout(30_000),
   }).catch(() => {
     // Network errors can include request details; expose only a safe message.
     throw new PlatformError(502, { detail: "Não foi possível conectar à plataforma de geração. Tente novamente." });

@@ -3,9 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import { readSessionToken, SESSION_COOKIE } from "@/lib/auth";
 import { upsertSocialAccount } from "@/lib/db";
 import { publicBaseUrl, tiktokExchangeCode } from "@/lib/social";
+import { oauthCookieName, oauthCookieOptions, verifyOAuthState } from "@/lib/social-oauth-state";
 
-/* Callback do OAuth do TikTok (Content Posting API). O `state` carrega o id
-   do usuário que iniciou o fluxo; a sessão do cookie precisa bater com ele. */
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -14,9 +16,14 @@ export async function GET(request: NextRequest) {
   const back = `${publicBaseUrl()}/app/publicar`;
 
   const sessionUserId = readSessionToken(request.cookies.get(SESSION_COOKIE)?.value);
-  if (!code || !state || !sessionUserId || sessionUserId !== state) {
-    return NextResponse.redirect(`${back}?erro=oauth`);
-  }
+  const respond = (query: string) => {
+    const response = NextResponse.redirect(`${back}?${query}`);
+    response.cookies.set(oauthCookieName("tiktok"), "", { ...oauthCookieOptions, maxAge: 0 });
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
+  };
+  if (!code || code.length > 4096 || !sessionUserId || !verifyOAuthState(state, request.cookies.get(oauthCookieName("tiktok"))?.value, sessionUserId, "tiktok")) return respond("erro=oauth");
 
   try {
     const token = await tiktokExchangeCode(code);
@@ -24,13 +31,10 @@ export async function GET(request: NextRequest) {
       userId: sessionUserId,
       platform: "tiktok",
       status: "connected",
-      username: token.openId || "tiktok",
-      accessToken: token.accessToken,
-      refreshToken: token.refreshToken,
-      expiresAt: token.expiresAt,
+      ...token,
     });
-    return NextResponse.redirect(`${back}?conectado=tiktok`);
+    return respond("conectado=tiktok");
   } catch {
-    return NextResponse.redirect(`${back}?erro=oauth`);
+    return respond("erro=oauth");
   }
 }

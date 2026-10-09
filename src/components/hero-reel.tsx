@@ -19,11 +19,12 @@ export function HeroReel({
   useEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const video = entry.target as HTMLVideoElement;
-          if (entry.isIntersecting) {
+          if (entry.isIntersecting && !motion.matches) {
             video.play().catch(() => undefined);
           } else {
             video.pause();

@@ -24,6 +24,26 @@ function load(fetch, env = {}) {
 }
 function plain(value) { return JSON.parse(JSON.stringify(value)); }
 
+test("fal callbacks use the configured server origin and are encoded outside the model payload", async () => {
+  const id = "11111111-1111-4111-8111-111111111111";
+  let calls = 0;
+  const api = load(async (value, options) => {
+    calls++;
+    const url = new URL(value);
+    assert.equal(url.origin, "https://queue.fal.run");
+    assert.equal(url.pathname, `/${wan}`);
+    assert.equal(url.searchParams.get("fal_webhook"), `https://app.example/api/fal/webhook/${id}`);
+    assert.deepEqual(JSON.parse(options.body), { seed: 42 });
+    return Response.json({ request_id: "existing-contract" });
+  }, { PUBLIC_BASE_URL: "https://app.example/some/path" });
+  await api.submitFalGeneration(wan, { seed: 42 }, api.falVideoWebhookUrl(id));
+  assert.equal(calls, 1);
+  assert.equal(api.falVideoWebhookUrl("../escape"), undefined);
+  for (const base of ["http://app.example", "https://user:pass@app.example", "https://app.example:444", "https://localhost"]) {
+    assert.equal(load(() => assert.fail("must not call provider"), { PUBLIC_BASE_URL: base }).falVideoWebhookUrl(id), undefined);
+  }
+});
+
 test("fal submits only allowlisted edits with server authorization and redirect protection", async () => {
   for (const model of [wan, kling, klingPro]) {
     const api = load(async (url, options) => {

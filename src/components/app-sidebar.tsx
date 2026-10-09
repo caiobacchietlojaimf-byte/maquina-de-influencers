@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Clapperboard, Flame, Home, LogOut, Menu, Send, Users, Wand2 } from "lucide-react";
+import { BookOpen, Clapperboard, CreditCard, Flame, Home, Infinity, LogOut, Menu, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
 
 import { LogoMark } from "./logo";
+import { ThemeToggle } from "./theme-toggle";
 
 const ITEMS = [
   { href: "/app", label: "Início", icon: Home, exact: true },
@@ -14,6 +15,9 @@ const ITEMS = [
   { href: "/app/criar-videos", label: "Criar Vídeos", icon: Wand2, badge: "Novo" },
   { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
   { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },
+  { href: "/app/modulos", label: "Módulos", icon: BookOpen, badge: "Pro" },
+  { href: "/app/criacao-ilimitada", label: "Criação Ilimitada", icon: Infinity, badge: "Max" },
+  { href: "/app/planos", label: "Meu plano", icon: CreditCard },
 ] as const;
 
 const STORAGE_KEY = "mi-sidebar-collapsed";
@@ -23,11 +27,13 @@ export function AppSidebar({
   email,
   credits,
   logout,
+  isAdmin = false,
 }: {
   name: string;
   email: string;
   credits: number;
   logout: () => Promise<void>;
+  isAdmin?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -70,7 +76,7 @@ export function AppSidebar({
   return (
     <aside className="app-sidebar" data-collapsed={collapsed}>
       <div className="sidebar-top">
-        <button type="button" className="burger" onClick={toggle} title={collapsed ? "Expandir menu" : "Recolher menu"}>
+        <button type="button" className="burger" onClick={toggle} title={collapsed ? "Expandir menu" : "Recolher menu"} aria-label={collapsed ? "Expandir menu" : "Recolher menu"} aria-expanded={!collapsed}>
           <Menu size={19} />
         </button>
         <Link href="/app" className="brand" data-hide={collapsed}>
@@ -79,7 +85,7 @@ export function AppSidebar({
         </Link>
       </div>
 
-      <nav>
+      <nav aria-label="Menu principal">
         {ITEMS.map((item) => {
           const active =
             "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -103,9 +109,11 @@ export function AppSidebar({
             </Link>
           );
         })}
+        {isAdmin ? <Link href="/app/admin" className="nav-item" data-active={pathname.startsWith("/app/admin")} aria-label="Administração" title={collapsed ? "Administração" : undefined} onClick={() => { if (window.innerWidth < 760) setCollapsed(true); }}><ShieldCheck size={18} /><span data-hide={collapsed}>Administração</span></Link> : null}
       </nav>
 
       <div className="sidebar-footer">
+        <ThemeToggle compact={collapsed} />
         <div className="credit-pill" title={`${credits.toLocaleString("pt-BR")} créditos`}>
           <span data-hide={collapsed}>Créditos</span>
           <b>{collapsed ? "✦" : credits.toLocaleString("pt-BR")}</b>

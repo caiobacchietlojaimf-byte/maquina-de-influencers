@@ -1,111 +1,88 @@
 import "server-only";
+import { claimPostWork, savePostWork, getPostOwnerAccount, getVideo, listDuePosts, listPendingPosts, type Post } from "./db";
+import { freshSocialAccount, instagramCreateContainer, instagramContainerStatus, instagramPublishContainer, tiktokPublish, tiktokPostStatus, tiktokCreatorInfo, validateTikTokOptions, validateTikTokMediaUrl, SocialApiError } from "./social";
 
-import {
-  claimScheduledPost,
-  getPostOwnerAccount,
-  getVideoById,
-  listDuePosts,
-  listPendingPosts,
-  updatePost,
-  type Post,
-} from "./db";
-import {
-  instagramCreateContainer,
-  instagramFinishContainer,
-  tiktokPublish,
-  tiktokPostStatus,
-} from "./social";
-
-// The server loop, page polling and authenticated cron share one queue.
-// A database claim prevents two workers from starting the same upload.
+const UNCERTAIN = "O envio não foi confirmado. Confira a conta na rede antes de criar outra publicação; este envio não será repetido automaticamente.";
 let running = false;
-
-export async function publisherTick(): Promise<void> {
+/** Leases/CAS are shared across workers; running only reduces redundant local queries. */
+export async function publisherTick() {
   if (running) return;
   running = true;
   const deadline = Date.now() + 25_000;
   try {
-    const pending = await listPendingPosts();
-    for (const post of pending.slice(0, 20)) {
-      if (Date.now() > deadline) return;
-      await refreshPost(post).catch(async () => {
-        await updatePost(post.id, {
-          error:
-            "A consulta à rede está indisponível. Tentaremos confirmar novamente.",
-        });
-      });
+    const [pending, due] = await Promise.all([listPendingPosts(), listDuePosts(Date.now())]);
+    const queue = [...pending, ...due].sort((a, b) => (a.nextAttemptAt ?? a.scheduledAt) - (b.nextAttemptAt ?? b.scheduledAt));
+    for (const candidate of queue.slice(0, 30)) {
+      if (Date.now() > deadline) break;
+      const claimed = await claimPostWork(candidate, Date.now());
+      if (claimed) await processPost(claimed).catch(() => undefined);
     }
-    const due = await listDuePosts(Date.now());
-    for (const post of due.slice(0, 10)) {
-      if (Date.now() > deadline) return;
-      await startPost(post).catch(() => undefined);
-    }
-  } finally {
-    running = false;
-  }
+  } finally { running = false; }
 }
-
-async function startPost(post: Post): Promise<void> {
-  if (!(await claimScheduledPost(post))) return;
+async function processPost(initial: Post): Promise<void> {
+  let post = initial;
   try {
-    const account = await getPostOwnerAccount(post);
-    if (!account) throw new Error("Conecte a conta dessa rede em Publicar.");
-    const video = await getVideoById(post.videoId);
-    if (video?.status !== "completed" || !video.resultUrl)
-      throw new Error("O vídeo da publicação não está pronto.");
-    const demo =
-      post.mode === "demo" || (!post.mode && account.status === "demo");
-    if (demo) {
-      await updatePost(post.id, {
-        mode: "demo",
-        status: "posted",
-        postedAt: Date.now(),
-        postedUrl: undefined,
-        error: undefined,
-      });
+    if (post.mode === "demo") {
+      await savePostWork(post, { status: "failed", error: "Este registro era uma demonstração. Prepare uma nova publicação com uma conta real." });
       return;
     }
-    if (account.status !== "connected")
-      throw new Error(
-        "A conta real foi desconectada. Reconecte antes de publicar.",
-      );
-    if (account.expiresAt && account.expiresAt <= Date.now())
-      throw new Error("A autorização expirou. Reconecte a conta.");
-    const input = { videoUrl: video.resultUrl, caption: post.caption };
-    const providerId =
-      post.platform === "tiktok"
-        ? await tiktokPublish(account, input)
-        : await instagramCreateContainer(account, input);
-    // An accepted upload is not a publication; a later tick confirms it.
-    await updatePost(post.id, {
-      status: "posting",
-      mode: "live",
-      providerId,
-      error: undefined,
-    });
+    const stored = await getPostOwnerAccount(post);
+    if (!stored || stored.status !== "connected" || !post.accountId || post.accountId !== stored.id || post.accountUserId !== (stored.providerUserId ?? stored.igUserId)) throw new Error("A conta de destino mudou ou foi desconectada. Revise a publicação.");
+    const account = await freshSocialAccount(stored);
+    if (!post.providerId) {
+      // A crash/timeout after the persisted boundary may have reached the provider.
+      if (post.submissionStartedAt) {
+        await savePostWork(post, { status: "failed", publicationUncertain: true, error: UNCERTAIN });
+        return;
+      }
+      const video = await getVideo(post.userId, post.videoId);
+      if (video?.status !== "completed" || video.deletedAt || !video.resultUrl) throw new Error("O vídeo da publicação não está pronto ou foi removido.");
+      if (post.videoUrl && video.resultUrl !== post.videoUrl) throw new Error("O arquivo do vídeo mudou. Revise a prévia e prepare uma nova publicação.");
+      if (post.platform === "tiktok") {
+        validateTikTokMediaUrl(video.resultUrl);
+        const creator = await tiktokCreatorInfo(account);
+        validateTikTokOptions(post.tiktok, creator, post.videoDuration ?? video.edit?.result?.duration ?? 0);
+      }
+      const checkpoint = await savePostWork(post, { submissionStartedAt: Date.now(), attempts: (post.attempts ?? 0) + 1 }, false);
+      if (!checkpoint) return;
+      post = checkpoint;
+      const providerId = post.platform === "tiktok"
+        ? await tiktokPublish(account, { videoUrl: video.resultUrl, caption: post.caption, options: post.tiktok! })
+        : await instagramCreateContainer(account, { videoUrl: video.resultUrl, caption: post.caption });
+      await savePostWork(post, { providerId, mode: "live", nextAttemptAt: Date.now() + 60_000, error: undefined });
+      return;
+    }
+    let result = post.platform === "tiktok" ? await tiktokPostStatus(account, post.providerId) : await instagramContainerStatus(account, post.providerId);
+    if (result.status === "ready") {
+      if (post.publishStartedAt) {
+        // The same container is polled after an ambiguous media_publish. Never send twice.
+        if (Date.now() - post.publishStartedAt > 15 * 60_000) {
+          await savePostWork(post, { status: "failed", publicationUncertain: true, error: UNCERTAIN });
+          return;
+        }
+        result = { status: "pending" };
+      } else {
+        const checkpoint = await savePostWork(post, { publishStartedAt: Date.now() }, false);
+        if (!checkpoint) return;
+        post = checkpoint;
+        result = await instagramPublishContainer(account, post.providerId!);
+      }
+    }
+    if (result.status === "pending") {
+      const stale = Date.now() - (post.submissionStartedAt ?? post.createdAt) > 24 * 60 * 60_000;
+      await savePostWork(post, stale ? { status: "failed", publicationUncertain: true, error: UNCERTAIN } : { nextAttemptAt: Date.now() + 60_000, error: post.publishStartedAt ? "Aguardando confirmação da publicação pela rede." : undefined });
+      return;
+    }
+    await savePostWork(post, { status: result.status === "posted" ? "posted" : "failed", postedAt: result.status === "posted" ? Date.now() : undefined, postedUrl: result.postedUrl, error: result.error, publicationUncertain: false });
   } catch (caught) {
-    await updatePost(post.id, {
-      status: "failed",
-      error:
-        caught instanceof Error ? caught.message : "Falha ao enviar o vídeo.",
-    });
+    const message = caught instanceof Error ? caught.message : "Não foi possível consultar a rede.";
+    if (post.providerId && (caught instanceof SocialApiError && (caught.retryable || caught.uncertain))) {
+      await savePostWork(post, { nextAttemptAt: Date.now() + 120_000, error: "A consulta à rede está indisponível. Tentaremos confirmar novamente." });
+    } else if (!post.submissionStartedAt && caught instanceof SocialApiError && caught.retryable && (post.attempts ?? 0) < 3) {
+      await savePostWork(post, { status: "scheduled", attempts: (post.attempts ?? 0) + 1, nextAttemptAt: Date.now() + 120_000, error: message });
+    } else {
+      const uncertain = Boolean(post.providerId) || (caught instanceof SocialApiError ? caught.uncertain : Boolean(post.submissionStartedAt)) || Boolean(post.publishStartedAt);
+      await savePostWork(post, { status: "failed", publicationUncertain: uncertain, error: uncertain ? UNCERTAIN : message });
+    }
   }
-}
-
-async function refreshPost(post: Post): Promise<void> {
-  if (!post.providerId || post.mode === "demo") return;
-  const account = await getPostOwnerAccount(post);
-  if (!account || account.status !== "connected") return;
-  // Transient status errors remain pending; retrying does not duplicate uploads.
-  const result =
-    post.platform === "tiktok"
-      ? await tiktokPostStatus(account, post.providerId)
-      : await instagramFinishContainer(account, post.providerId);
-  if (result.status === "pending") return;
-  await updatePost(post.id, {
-    status: result.status === "posted" ? "posted" : "failed",
-    postedAt: result.status === "posted" ? Date.now() : undefined,
-    postedUrl: result.postedUrl,
-    error: result.error,
-  });
 }
