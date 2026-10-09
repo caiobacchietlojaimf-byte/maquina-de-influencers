@@ -34,6 +34,7 @@ import {
 } from "@/app/actions/posts";
 import type { Post, SocialPlatform } from "@/lib/db";
 import type { TikTokCreator } from "@/lib/social";
+import { displayDateTime } from "@/lib/display-date";
 import {
   buildCaption,
   CAPTION_GOALS,
@@ -75,13 +76,7 @@ const FILTERS = [
 ] as const;
 type QueueFilter = (typeof FILTERS)[number]["id"];
 const formatDate = (timestamp: number) =>
-  new Date(timestamp).toLocaleString("pt-BR", {
-    timeZone: "America/Sao_Paulo",
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  displayDateTime(timestamp, "short");
 const errorMessage = (caught: unknown) =>
   caught instanceof Error
     ? caught.message

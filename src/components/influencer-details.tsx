@@ -7,6 +7,7 @@ import { renameInfluencerAction } from "@/app/actions/influencers";
 import { CHARACTER_TYPES } from "@/data/character-types";
 import { TRAIT_GROUPS } from "@/data/traits";
 import type { Influencer } from "@/lib/db";
+import { displayDateTime } from "@/lib/display-date";
 import styles from "./influencer-details.module.css";
 
 const STATUS = { queued: "Na fila", processing: "Gerando", completed: "Pronto", failed: "Falhou" };
@@ -92,7 +93,7 @@ export function InfluencerDetails({ influencer, onClose, onRename }: {
             </form> : <p className={styles.name}>{influencer.name}</p>}
             <p className={styles.notice} role="status">{notice}</p>
           </div>
-          <dl className={styles.summary}><div><dt>Tipo de personagem</dt><dd>{tier}</dd></div><div><dt>Status</dt><dd>{STATUS[influencer.status]}</dd></div><div><dt>Criado em</dt><dd>{new Date(influencer.createdAt).toLocaleString("pt-BR", { dateStyle: "long", timeStyle: "short", timeZone: "America/Sao_Paulo" })}</dd></div></dl>
+          <dl className={styles.summary}><div><dt>Tipo de personagem</dt><dd>{tier}</dd></div><div><dt>Status</dt><dd>{STATUS[influencer.status]}</dd></div><div><dt>Criado em</dt><dd>{displayDateTime(influencer.createdAt, "long")}</dd></div></dl>
           {influencer.error ? <p className="auth-error">{influencer.error}</p> : null}
           {influencer.status === "completed" && influencer.imageUrl ? <Link className="btn btn-accent" href={`/app/criar-videos?influencer=${encodeURIComponent(influencer.id)}`}><Sparkles size={17} />Criar vídeo com este influencer</Link> : null}
           <div className={styles.section}><h3>Características</h3>{traits.length ? <dl className={styles.traits}>{traits.map((trait) => <div key={trait.id}><dt>{trait.label}</dt><dd>{trait.values}</dd></div>)}</dl> : <p className={styles.muted}>Nenhuma característica foi selecionada na criação.</p>}</div>

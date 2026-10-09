@@ -7,6 +7,7 @@ import { Check, Copy, LoaderCircle, Mail, RotateCcw } from "lucide-react";
 import { PLAN_CATALOG, getPlan, type PlanId } from "@/lib/plans";
 import { createCheckoutAction, refreshPaymentAction } from "@/app/actions/billing";
 import type { Order } from "@/lib/commerce";
+import { displayDate } from "@/lib/display-date";
 import styles from "./commerce.module.css";
 
 const statusLabel: Record<Order["status"], string> = {
@@ -226,7 +227,7 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
       <h2>Meus pedidos</h2>
       {!history.length ? <p className={styles.muted}>Seus pagamentos aparecerão aqui.</p> : <div className={styles.tableScroll}><table>
         <thead><tr><th>Plano</th><th>Valor</th><th>Status</th><th>Data</th><th><span className="sr-only">Ações</span></th></tr></thead>
-        <tbody>{history.map(order => <tr key={order.id}><td>{getPlan(order.planId)?.name}</td><td>{money(order.amountCents / 100)}</td><td>{statusLabel[order.status]}</td><td>{new Date(order.createdAt).toLocaleDateString("pt-BR")}</td><td>
+        <tbody>{history.map(order => <tr key={order.id}><td>{getPlan(order.planId)?.name}</td><td>{money(order.amountCents / 100)}</td><td>{statusLabel[order.status]}</td><td>{displayDate(order.createdAt)}</td><td>
           {unresolved(order) ? <button type="button" className="btn btn-ghost" disabled={refreshingId !== null || pending || uncertain} onClick={() => { void check(order); }}>{refreshingId === order.id ? "Conferindo…" : "Consultar"}</button> : <button type="button" className="btn btn-ghost" disabled={refreshingId !== null || pending || uncertain} onClick={() => { setSelectedOrderId(order.id); setError(null); setCopied(false); requestAnimationFrame(() => orderHeading.current?.focus()); }}>Ver pedido</button>}
         </td></tr>)}</tbody>
       </table></div>}

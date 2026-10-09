@@ -15,6 +15,7 @@ function load(file, mocks = {}, globals = {}) {
   return module.exports;
 }
 const plans = load("src/lib/plans.ts");
+const displayDates = load("src/lib/display-date.ts");
 const order = (status = "pending", values = {}) => ({ id: "order-1", userId: "owner", planId: "pro", amountCents: 19700, credits: 3500, status, createdAt: 100, updatedAt: 100, ...values });
 const children = node => Array.isArray(node) ? node.flatMap(children) : node && typeof node === "object" ? [node, ...children(node.props?.children)] : [];
 const text = node => Array.isArray(node) ? node.map(text).join("") : node && typeof node === "object" ? text(node.props?.children) : node === false || node == null ? "" : String(node);
@@ -53,6 +54,7 @@ function fixture(initial = {}, actions = {}) {
     "next/navigation": { useRouter: () => ({ refresh: () => { refreshes++; } }) },
     "next/link": "a",
     "@/lib/plans": plans,
+    "@/lib/display-date": displayDates,
     "./commerce.module.css": {},
     "@/app/actions/billing": {
       createCheckoutAction: async (_, payload) => { submissions.push(payload); return actions.create?.(payload) ?? { order: order() }; },

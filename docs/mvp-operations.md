@@ -42,7 +42,7 @@ App Meta: `2156021122019663`; produto Instagram Login: `2216110872297651`. O ID 
 - Usar somente `instagram_business_basic` e `instagram_business_content_publish` para o fluxo atual. Não adicionar permissões de mensagens, anúncios ou WhatsApp por conveniência.
 - Conectar conta profissional autorizada/testadora e validar conteúdo com autorização antes de publicar para clientes.
 - Concluir requisitos de publicação e App Review para acesso externo. O app estava **não publicado**. Não foi enviado para análise nem foram aceitos termos em nome do proprietário.
-- URLs preparadas: `/privacidade`, `/termos`, `/exclusao-de-dados`. Ícone: `/app-icon-1024.png` (1024×1024). Conferir dados do operador/suporte antes do lançamento público.
+- URLs `/privacidade`, `/termos`, `/exclusao-de-dados`, ícone `/app-icon-1024.png` (1024×1024) e categoria “Utilitários e produtividade” foram salvos no cadastro básico da Meta e conferidos após recarregar a página. O aviso de dados básicos faltantes desapareceu. Conferir dados do operador/suporte antes do lançamento público.
 
 TikTok também depende de credenciais/aprovação próprias, creator_info, domínio de mídia verificado e confirmação das opções de privacidade. Não é apresentado como conectado quando faltam requisitos.
 
@@ -52,10 +52,11 @@ Novas requisições fal recebem callback assinado Ed25519, validado por chave of
 
 O Wan de Seaside Couple Recast (`cfb6901d-cd77-4866-83ba-ad8759ed565f`) havia concluído no provedor. O arquivo existente foi recuperado, mas o provedor mudou 4:3 para 16:9 e cortou a imagem. Mantido em revisão. Formatos 4:3/quadrado são bloqueados antes de enviar nova geração Wan; preferir outro modelo que aceite o original. A validação final continua necessária nos formatos permitidos.
 
-Finalizar o vídeo existente reaproveita os outputs pagos e recoloca o áudio original, sem nova IA. Não esticar nem recortar silenciosamente para fingir que o enquadramento foi preservado.
+O vídeo existente foi finalizado em produção, reaproveitando o output pago e recolocando o áudio original, sem nova IA: `audioPreserved=true`, arquivo no Blob, 28,75 segundos e saldo preservado. Continua em revisão pelo corte do enquadramento feito pelo provedor. Não esticar nem recortar silenciosamente para fingir que o enquadramento foi preservado.
 
 ## Banco e validação
 
 Migração: `supabase/migrations/20261009080356_commerce_and_security.sql`. Novas tabelas com RLS habilitada, sem acesso `anon`/`authenticated`; RPCs financeiras e de rate limit restritas ao servidor/service_role. Aplicada ao projeto existente pela Management API com credencial local protegida. `scripts/verify-commerce-db.sql` testa pagamento duplicado, ordem de notificações, estorno, limites e privilégios dentro de transação com rollback; não deixa fixtures.
 
-Validação: TypeScript, suíte Node, build Next, auditoria de dependências e navegador local isolado. QA local usa contas fictícias e não tem chaves de provedores/gateway. Manter os testes simulados distintos de validação real externa.
+Validação: 269 testes Node (267 aprovados, zero falhas, dois ignorados), TypeScript e build Next aprovados; 63 vídeos com áudio e 148 imagens do catálogo validados. Auditoria pnpm sem vulnerabilidades conhecidas. Banco validado com rollback e RLS restrita. Navegador local isolado: login, plano selecionado, temas, painel e configuração com auditoria. Produção: páginas públicas HTTP 200, administração anônima redireciona para login, cron sem segredo recebe 401 e recuperação de áudio Wan conferida. QA local usa contas fictícias e não tem chaves de provedores/gateway. Manter os testes simulados distintos de validação real externa.
+

@@ -44,6 +44,7 @@ import {
   retryInfluencerAction,
 } from "@/app/actions/influencers";
 import { SHEET_COST } from "@/lib/costs";
+import { displayDate } from "@/lib/display-date";
 import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
 import { HeroReel } from "./hero-reel";
@@ -680,10 +681,7 @@ function InfluencerCard({
     }
   }
 
-  const date = new Date(influencer.createdAt).toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-  });
+  const date = displayDate(influencer.createdAt, "short");
 
   return (
     <div className={`gen-card ${detailStyles.card}`}>

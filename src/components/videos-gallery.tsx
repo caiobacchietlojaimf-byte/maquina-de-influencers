@@ -8,6 +8,7 @@ import { deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
 import type { Video } from "@/lib/db";
 import { editModelLabel } from "@/lib/character-edit";
 import { canFinalizeExistingEdit, finalizeEditClient } from "@/lib/finalize-edit-client";
+import { displayDate } from "@/lib/display-date";
 
 const FILTERS = [
   { id: "all", label: "Todos" },
@@ -183,7 +184,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 {video.presetName ?? "Vídeo"}
               </b>
               <span>
-                {new Date(video.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                {displayDate(video.createdAt, "short")}
               </span>
             </div>
             {video.edit && <div style={{ padding: "0 14px 14px", display: "grid", gap: 8, fontSize: 12 }}>

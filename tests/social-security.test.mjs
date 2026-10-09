@@ -210,7 +210,7 @@ test("Instagram callback rejects a forged state before token exchange and clears
 
 test("cron accepts only the exact configured bearer secret", async () => {
   let ticks = 0;
-  const api = loader({ env: { CRON_SECRET: "cron-private-test" }, mocks: { "@/lib/publisher": { publisherTick: async () => ticks++ } } })("src/app/api/cron/publish/route.ts");
+  const api = loader({ env: { CRON_SECRET: "cron-private-test" }, mocks: { "@/lib/publisher": { publisherTick: async () => ticks++ }, "@/lib/publication-cron-health": { startPublicationCronRun: async () => ({ id: "test", startedAt: 1 }), finishPublicationCronRun: async () => undefined } } })("src/app/api/cron/publish/route.ts");
   for (const value of [undefined, "cron-private-test", "Bearer wrong", "Bearer cron-private-testx"]) {
     const response = await api.GET(new Request("https://app.example/api/cron/publish", { headers: value ? { authorization: value } : {} }));
     assert.equal(response.status, 401);

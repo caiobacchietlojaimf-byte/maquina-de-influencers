@@ -6,6 +6,9 @@ out
 .env*.local
 data/db.json
 data/commerce.json
+data/publication-cron-health.json
+data/publication-cron-health.json.*.tmp
+artifacts/mvp/
 supabase/.temp
 data/uploads
 data/.secret
