@@ -86,9 +86,12 @@ function fixture(overrides = {}) {
     "@vercel/blob": {
       put: async (path, stream, options) => {
         const upload = { path, options, bytes: undefined }; uploads.push(upload);
-        assert.equal(typeof stream.pipe, "function", "ZIP must stream to storage instead of buffering the complete archive");
+        assert.equal(typeof stream.getReader, "function", "ZIP must stream to storage with byte-based backpressure");
         const chunks = [];
-        for await (const chunk of stream) chunks.push(chunk);
+        for await (const chunk of stream) {
+          assert.ok(chunk.byteLength <= 65_536, "ZIP media must use bounded chunks rather than entire video buffers");
+          chunks.push(chunk);
+        }
         upload.bytes = Buffer.concat(chunks);
         overrides.afterUpload?.();
         if (overrides.uploadFailure) throw new Error("private-upload-detail?token=private-token");

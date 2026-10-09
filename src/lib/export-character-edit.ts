@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import { ZipFile } from "yazl";
 import { put, del } from "@vercel/blob";
 import { requireUser } from "@/lib/auth";
@@ -75,18 +75,38 @@ export async function exportCharacterEdit(input: PrepareEditInput, options: Prep
     const filename = `genjutsu-${slug}.zip`;
     const archive = new ZipFile();
     const output = archive.outputStream as Readable;
-    archive.on("error", error => output.destroy(error));
+    const activeEntries = new Set<Readable>();
+    archive.on("error", error => {
+      for (const entry of activeEntries) entry.destroy();
+      output.destroy(error);
+    });
     // Keep a listener installed even if an upload exits before consuming the stream.
     output.on("error", () => {});
-    const cancelArchive = () => output.destroy();
+    const cancelArchive = () => {
+      for (const entry of activeEntries) entry.destroy();
+      output.destroy();
+    };
     options.signal?.addEventListener("abort", cancelArchive, { once: true });
     try {
-      for (const entry of entries) archive.addBuffer(entry.bytes, entry.name, { compress: false });
+      for (const entry of entries) archive.addReadStreamLazy(entry.name, { compress: false, size: entry.bytes.length }, callback => {
+        // MP4s can exceed 90 MB. Yield views in small chunks instead of handing
+        // the multipart uploader one enormous buffer to copy and queue.
+        const stream = Readable.from((function* () {
+          for (let offset = 0; offset < entry.bytes.length; offset += 65_536) {
+            options.signal?.throwIfAborted();
+            yield entry.bytes.subarray(offset, offset + 65_536);
+          }
+        })(), { objectMode: false, highWaterMark: 65_536 });
+        activeEntries.add(stream);
+        stream.once("close", () => activeEntries.delete(stream));
+        callback(null, stream);
+      });
       archive.end();
       progress("upload", "Disponibilizando o pacote ZIP para download…");
       // Stream ZIP → multipart storage, not a buffered API response. The browser
       // downloads directly from storage, outside the function's time/body limits.
-      const blob = await put(`exports/${randomUUID()}/${filename}`, output, {
+      const uploadStream = Readable.toWeb(output, { strategy: { highWaterMark: 65_536, size: chunk => chunk.byteLength } }) as ReadableStream<Uint8Array>;
+      const blob = await put(`exports/${randomUUID()}/${filename}`, uploadStream, {
         access: "public", contentType: "application/zip", addRandomSuffix: false,
         allowOverwrite: false, multipart: true, abortSignal: options.signal,
       });
@@ -97,7 +117,7 @@ export async function exportCharacterEdit(input: PrepareEditInput, options: Prep
       return { url: blob.downloadUrl, filename };
     } finally {
       options.signal?.removeEventListener("abort", cancelArchive);
-      output.destroy();
+      cancelArchive();
     }
   } catch {
     console.error("[export-edit]", { stage, cancelled: options.signal?.aborted === true });
