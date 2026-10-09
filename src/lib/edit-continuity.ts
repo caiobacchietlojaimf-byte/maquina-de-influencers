@@ -124,29 +124,29 @@ function frameRanges(timeline: PictureTimeline, plan: EditSegment[]): FrameRange
   return ranges;
 }
 
-/** Seek only to a real sync sample. The half-second context can end between keyframes. */
-function copyRanges(timeline: PictureTimeline, plan: EditSegment[]): FrameRange[] | undefined {
-  const { times, keyframes } = timeline, count = times.length - 1;
-  if (!keyframes.includes(0)) return;
-  const starts = [0];
-  for (let index = 1; index < plan.length; index++) {
-    const candidates = keyframes.filter(frame => frame > starts[index - 1]
-      && times[frame] - times[starts[index - 1]] >= 2.5
-      && times[frame] - times[starts[index - 1]] <= 14.8
-      && (index !== plan.length - 1 || times[count] - times[frame] <= 15));
-    candidates.sort((a, b) => Math.abs(times[a] - plan[index].start) - Math.abs(times[b] - plan[index].start));
-    if (!candidates.length) return;
-    starts.push(candidates[0]);
+/** Players and providers honour the edit list, not the sample table. A stream
+ * copy cut from a B-frame source kept every sample but exposed only 1.04s of a
+ * 6.04s range, which Kling then rejected as too short. */
+function visibleVideoDuration(bytes: Buffer): number | undefined {
+  const child = (parent: Box, type: string) => mp4Boxes(bytes, parent.start, parent.end).find(box => box.type === type);
+  const moov = mp4Boxes(bytes, 0, bytes.length).find(box => box.type === "moov");
+  const mvhd = moov && child(moov, "mvhd");
+  if (!moov || !mvhd) return;
+  const movieScale = bytes.readUInt32BE(mvhd.start + (bytes[mvhd.start] === 1 ? 20 : 12));
+  for (const track of mp4Boxes(bytes, moov.start, moov.end).filter(box => box.type === "trak")) {
+    const mdia = child(track, "mdia"), handler = mdia && child(mdia, "hdlr");
+    if (!handler || bytes.toString("ascii", handler.start + 8, handler.start + 12) !== "vide") continue;
+    const edts = child(track, "edts"), elst = edts && child(edts, "elst");
+    if (!elst || !movieScale) return;
+    const wide = bytes[elst.start] === 1, entries = bytes.readUInt32BE(elst.start + 4);
+    let visible = 0;
+    for (let index = 0; index < entries; index++) {
+      const position = elst.start + 8 + index * (wide ? 20 : 12);
+      const mediaTime = wide ? Number(bytes.readBigInt64BE(position + 8)) : bytes.readInt32BE(position + 4);
+      if (mediaTime !== -1) visible += wide ? Number(bytes.readBigUInt64BE(position)) : bytes.readUInt32BE(position);
+    }
+    return visible / movieScale;
   }
-  const ranges = starts.map((first, index) => {
-    const target = index === starts.length - 1 ? times[count] : times[starts[index + 1]] + OVERLAP;
-    let end = times.reduce((best, time, frame) => Math.abs(time - target) < Math.abs(times[best] - target) ? frame : best, 0);
-    while (end > first && times[end] - times[first] > 15) end--;
-    return { first, end, start: times[first], duration: times[end] - times[first] };
-  });
-  if (ranges.some((range, index) => range.duration < 3 || range.duration > 15 || (index > 0
-    && (times[ranges[index - 1].end] - range.start < 0.2 || times[ranges[index - 1].end] - range.start > 1)))) return;
-  return ranges;
 }
 
 /** Older FFmpeg writes a zero-length final sample with an explicit encoder timebase.
@@ -210,14 +210,17 @@ export async function splitContinuousEditSource(bytes: Buffer, duration: number,
   const plan = planContinuousSegments(pictures);
   if (plan.length === 1 && source.duration <= MAX_DURATION) return [{ start: 0, duration: source.duration, bytes }];
   const timeline = pictureTimeline(bytes, source);
-  const copyPlan = plan.length > 1 ? copyRanges(timeline, plan) : undefined;
-  const ranges = copyPlan ?? frameRanges(timeline, plan);
+  const ranges = frameRanges(timeline, plan);
   const verify = (result: Buffer, range: FrameRange) => {
     const actual = mp4Metadata(result), actualPictures = actual.videoDuration ?? actual.duration;
     const tolerance = Math.max(0.002, timeline.tick * 2);
     if (actual.duration < 3 || actual.duration > MAX_DURATION || actual.width !== source.width || actual.height !== source.height || actual.hasAudio
       || actual.frameCount !== range.end - range.first || Math.abs(actualPictures - range.duration) > tolerance) {
       throw new Error("Um trecho não preservou os quadros, o tempo ou as dimensões do original. Nenhuma geração foi iniciada.");
+    }
+    const visible = visibleVideoDuration(result);
+    if (visible !== undefined && Math.abs(visible - actualPictures) > Math.max(0.1, tolerance)) {
+      throw new Error("Um trecho ficou com parte dos quadros oculta no arquivo. Nenhuma geração foi iniciada.");
     }
     const actualTimeline = pictureTimeline(result, actual);
     if (actualTimeline.times.some((time, index) => Math.abs(time - (timeline.times[range.first + index] - range.start)) > tolerance)) {
@@ -241,15 +244,7 @@ export async function splitContinuousEditSource(bytes: Buffer, duration: number,
         await transcode(["-threads", "1", "-i", input, "-map", "0:v:0", "-an", "-c:v", "copy", "-map_metadata", "-1", "-movflags", "+faststart", "-y", output], options.signal, true);
         result = await readFile(/* turbopackIgnore: true */ output, { signal: options.signal });
       } else {
-        if (copyPlan) {
-          try {
-            await transcode(["-threads", "1", "-ss", range.start.toFixed(9), "-i", input, "-map", "0:v:0", "-an", "-c:v", "copy", "-frames:v", String(range.end - range.first), "-map_metadata", "-1", "-movflags", "+faststart", "-y", output], options.signal, true);
-            const copied = await readFile(/* turbopackIgnore: true */ output, { signal: options.signal });
-            verify(copied, range);
-            result = copied;
-          } catch { options.signal?.throwIfAborted(); }
-        }
-        if (!result) {
+        {
           const finalFrameDuration = timeline.times[range.end] - timeline.times[range.end - 1];
           await transcode(["-threads", "1", "-i", input, "-filter_threads", "1", "-map", "0:v:0", "-vf", `trim=start_frame=${range.first}:end_frame=${range.end},setpts=PTS-STARTPTS`, "-an", ...encoding, "-preset", source.width * source.height > 1920 * 1080 ? "ultrafast" : "veryfast", "-r", String(1 / finalFrameDuration), "-map_metadata", "-1", "-movflags", "+faststart", "-y", output], options.signal);
           result = repairFinalSample(await readFile(/* turbopackIgnore: true */ output, { signal: options.signal }), range.duration, finalFrameDuration);
@@ -261,5 +256,43 @@ export async function splitContinuousEditSource(bytes: Buffer, duration: number,
       await rm(output, { force: true });
     }
     return prepared;
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}
+
+/** Up to this many seconds of pictures, a single 15s job is better than a seam. */
+export const SINGLE_JOB_SOURCE_LIMIT = 18;
+
+/** Keep the first 15s (whole frames) with matching audio, so the clip becomes
+ * the new original: one provider job, no assembly cut, audio restored as usual. */
+export async function trimToSingleJob(bytes: Buffer, options: SplitEditOptions = {}): Promise<Buffer> {
+  options.signal?.throwIfAborted();
+  const source = mp4Metadata(bytes);
+  const timeline = pictureTimeline(bytes, source);
+  let end = timeline.times.length - 1;
+  while (end > 0 && timeline.times[end] > MAX_DURATION + 1e-9) end--;
+  const seconds = timeline.times[end];
+  if (seconds < 3) throw new Error("Não foi possível manter 15 segundos completos deste vídeo. Nenhuma geração foi iniciada.");
+  const finalFrameDuration = timeline.times[end] - timeline.times[end - 1];
+  const directory = await mkdtemp(path.join(tmpdir(), "mi-edit-single-"));
+  try {
+    const input = path.join(directory, "original.mp4"), output = path.join(directory, "single.mp4");
+    await writeFile(input, bytes, { signal: options.signal });
+    options.onProgress?.(0, 1);
+    // Audio ends a hair before the pictures so AAC padding never pushes the container past 15s.
+    const audio = source.hasAudio
+      ? ["-map", "0:a:0", "-af", `atrim=end=${Math.max(0, seconds - 0.03).toFixed(6)},asetpts=PTS-STARTPTS`, "-c:a", "aac", "-b:a", "192k"]
+      : ["-an"];
+    await transcode(["-threads", "1", "-i", input, "-filter_threads", "1", "-map", "0:v:0", "-vf", `trim=end_frame=${end},setpts=PTS-STARTPTS`, ...audio,
+      ...encoding, "-preset", source.width * source.height > 1920 * 1080 ? "ultrafast" : "veryfast", "-r", String(1 / finalFrameDuration),
+      "-map_metadata", "-1", "-movflags", "+faststart", "-y", output], options.signal);
+    const result = repairFinalSample(await readFile(/* turbopackIgnore: true */ output, { signal: options.signal }), seconds, finalFrameDuration);
+    const actual = mp4Metadata(result), pictures = actual.videoDuration ?? actual.duration;
+    const visible = visibleVideoDuration(result);
+    if (actual.duration > MAX_DURATION + 0.01 || actual.frameCount !== end || Math.abs(pictures - seconds) > Math.max(0.002, timeline.tick * 2)
+      || actual.width !== source.width || actual.height !== source.height || (visible !== undefined && Math.abs(visible - pictures) > 0.1)) {
+      throw new Error("O vídeo de 15 segundos não preservou os quadros ou as dimensões do original. Nenhuma geração foi iniciada.");
+    }
+    options.onProgress?.(1, 1);
+    return result;
   } finally { await rm(directory, { recursive: true, force: true }); }
 }

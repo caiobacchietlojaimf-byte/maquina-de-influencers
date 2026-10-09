@@ -14,7 +14,7 @@ import { signEditQuote } from "@/lib/edit-quote";
 import { isConfigured } from "@/lib/platform";
 import { isFalConfigured } from "@/lib/fal";
 import { ensureVideoToolsAvailable } from "@/lib/finalize-edit";
-import { splitContinuousEditSource } from "@/lib/edit-continuity";
+import { SINGLE_JOB_SOURCE_LIMIT, splitContinuousEditSource, trimToSingleJob } from "@/lib/edit-continuity";
 import { CREDIT_PRICING_VERSION, usdToCredits } from "@/lib/credit-pricing";
 import { EDIT_IDENTITY_VERSION, prepareCharacterIdentity } from "@/lib/prepare-character-identity";
 import { capturePublicationReference } from "@/lib/publication-context";
@@ -58,12 +58,21 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
     const sourceReference = source.kind === "upload" ? { kind: "upload" as const } : source;
     const sourceSnapshot = await capturePublicationReference(sourceReference);
     progress("download", "Baixando o vídeo original…");
-    const bytes = await readPublicVideo(publicMediaUrl(url), undefined, options.signal);
+    let bytes = await readPublicVideo(publicMediaUrl(url), undefined, options.signal);
     progress("inspect", "Conferindo duração, resolução e compatibilidade…");
-    const metadata = mp4Metadata(bytes);
+    let metadata = mp4Metadata(bytes);
     const invalid = validateProviderEdit(engine, metadata, input.resolution, targetMode);
     if (invalid) return { error: invalid };
     await ensureVideoToolsAvailable();
+    // Slightly-over-15s clips would need a 3s+ second job and a visible seam.
+    // One clean 15s job is preferred; the shortened clip becomes the original.
+    const originalDuration = metadata.duration;
+    const trimmed = engine.startsWith("fal-kling") && metadata.duration > 15 && (metadata.videoDuration ?? metadata.duration) <= SINGLE_JOB_SOURCE_LIMIT;
+    if (trimmed) {
+      progress("segments", "Ajustando para um único vídeo de 15 segundos, sem emendas…");
+      bytes = await trimToSingleJob(bytes, { signal: options.signal });
+      metadata = mp4Metadata(bytes);
+    }
     const id = randomUUID();
     progress("identity", "Preparando a identidade e a roupa do influencer…");
     const identity = await prepareCharacterIdentity(inf, metadata, engine, id, options.signal);
@@ -86,6 +95,7 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
     for (const part of segments) buildProviderEditInput(engine, part.sourceUrl, inf.imageUrl, target, part.source.duration, input.resolution, 0, { identity, continuous: segments.length > 1 });
     const cost = estimateProviderEdit(engine, metadata, input.resolution, segments.map(s => s.source.duration));
     if (engine.startsWith("fal-kling") && segments.length > 1) cost.costDetail += " Inclui o intervalo compartilhado entre os trechos para melhorar a continuidade.";
+    if (trimmed) cost.costDetail += ` O original tinha ${originalDuration.toFixed(1).replace(".", ",")}s; usamos os primeiros ${metadata.duration.toFixed(1).replace(".", ",")}s em um único vídeo, sem emendas.`;
     const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, identityVersion: EDIT_IDENTITY_VERSION, identity, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, ...(engine.startsWith("fal-kling") ? { assembly: "overlap-v1" as const } : {}), seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, creditCost: usdToCredits(cost.estimatedUsd), creditPricingVersion: CREDIT_PRICING_VERSION, expiresAt: Date.now() + 15 * 60000 };
     progress("ready", "Original conferido. Preparação concluída.");
     return { quote: { token: signEditQuote({ ...receipt, sourceReference, sourceSnapshot }), name, sourceUrl, metadata, resolution: receipt.resolution, engine, segmentCount: segments.length, costDetail: cost.costDetail, estimatedUsd: receipt.estimatedUsd, creditCost: receipt.creditCost, expiresAt: receipt.expiresAt } };
