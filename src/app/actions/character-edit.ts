@@ -10,6 +10,7 @@ import { CREDIT_PRICING_VERSION, usdToCredits } from "@/lib/credit-pricing";
 import { isFalConfigured, submitFalGeneration, FalError, falVideoWebhookUrl } from "@/lib/fal";
 
 import { prepareCharacterEdit } from "@/lib/prepare-character-edit";
+import { EDIT_IDENTITY_VERSION } from "@/lib/prepare-character-identity";
 
 export async function prepareCharacterEditAction(input: Parameters<typeof prepareCharacterEdit>[0]): Promise<{ quote: EditQuote } | { error: string }> {
   return prepareCharacterEdit(input, { signal: AbortSignal.timeout(190000) });
@@ -22,6 +23,7 @@ export async function generateCharacterEditAction(input: { quoteToken: string; a
     const receipt = readEditQuote(input.quoteToken, user.id);
     const existing = await getVideo(user.id, receipt.id);
     if (existing) return { id: existing.id };
+    if (receipt.identityVersion !== EDIT_IDENTITY_VERSION || !receipt.identity) return { error: "A preparação do personagem foi aprimorada. Prepare a troca novamente; nenhum crédito foi consumido." };
     if (receipt.creditPricingVersion !== CREDIT_PRICING_VERSION || !Number.isSafeInteger(receipt.creditCost) || receipt.creditCost !== usdToCredits(receipt.estimatedUsd)) return { error: "O preço dos créditos mudou. Prepare a troca novamente para conferir o novo valor." };
     const creditCost = receipt.creditCost!;
     const engine = receipt.engine ?? "higgsfield";
@@ -33,23 +35,24 @@ export async function generateCharacterEditAction(input: { quoteToken: string; a
     const source = await inspectPublicVideo(receipt.sourceUrl);
     if (validateProviderEdit(engine, source, receipt.resolution, receipt.target === MAIN_CHARACTER_TARGET ? "main" : "manual") || Math.abs(source.duration - receipt.metadata.duration) > 0.05 || source.width !== receipt.metadata.width || source.height !== receipt.metadata.height || source.frameCount !== receipt.metadata.frameCount) return { error: "O vídeo original mudou. Prepare a troca novamente." };
     if (user.credits < creditCost) return { error: `Créditos insuficientes (precisa de ${creditCost}).` };
-    const prompt = buildCharacterEditPrompt(receipt.target, source.duration);
     const segments = receipt.segments ?? [{ sourceUrl: receipt.sourceUrl, start: 0, source }];
     // Inspect every immutable segment BEFORE a paid submission or credit debit.
     if (engine.startsWith("fal-kling") || segments.length > 1) for (const part of segments) {
       const actual = await inspectPublicVideo(part.sourceUrl);
       if (actual.duration < 3 || actual.duration > 15 || Math.abs(actual.duration - part.source.duration) > 0.05 || actual.width !== part.source.width || actual.height !== part.source.height) return { error: "Um trecho mudou. Prepare a troca novamente." };
     }
-    const video: Video = { id: receipt.id, userId: user.id, influencerId: inf.id, kind: "viral", presetName: receipt.name, prompt, status: "queued", createdAt: Date.now(), creditCost, creditPricingVersion: CREDIT_PRICING_VERSION, edit: { model: config.model, provider: config.provider, sourceUrl: receipt.sourceUrl, imageUrl: inf.imageUrl, target: receipt.target, source, resolution: receipt.resolution, estimatedUsd: receipt.estimatedUsd, segments, seed: receipt.seed, ...(receipt.assembly ? { assembly: receipt.assembly } : {}) } };
+    // Validate every complete payload, including identity and prompt limits, before charging.
+    const payloads = segments.map(part => buildProviderEditInput(engine, part.sourceUrl, inf.imageUrl!, receipt.target, part.source.duration, receipt.resolution, receipt.seed ?? 0, {
+      identity: receipt.identity, continuous: receipt.assembly === "overlap-v1" && segments.length > 1,
+    }));
+    const prompt = typeof payloads[0]?.prompt === "string" ? payloads[0].prompt : buildCharacterEditPrompt(receipt.target, source.duration);
+    const video: Video = { id: receipt.id, userId: user.id, influencerId: inf.id, kind: "viral", presetName: receipt.name, prompt, status: "queued", createdAt: Date.now(), creditCost, creditPricingVersion: CREDIT_PRICING_VERSION, edit: { model: config.model, provider: config.provider, sourceUrl: receipt.sourceUrl, imageUrl: inf.imageUrl, identityVersion: receipt.identityVersion, identity: receipt.identity, target: receipt.target, source, resolution: receipt.resolution, estimatedUsd: receipt.estimatedUsd, segments, seed: receipt.seed, ...(receipt.assembly ? { assembly: receipt.assembly } : {}) } };
     if (!await createVideoOnce(video)) return { id: video.id };
     if (!await reserveVideoCredits(user.id, creditCost)) { await updateVideo(video.id, { status: "failed", error: "Não foi possível reservar os créditos. Nenhuma chamada paga foi feita." }); return { error: "Créditos indisponíveis. Prepare novamente." }; }
     let providerRequestId: string | undefined;
     try {
-      for (const part of video.edit!.segments!) {
-        const payload = buildProviderEditInput(engine, part.sourceUrl, inf.imageUrl, receipt.target, part.source.duration, receipt.resolution, receipt.seed ?? 0);
-        if (receipt.assembly === "overlap-v1" && segments.length > 1 && typeof payload.prompt === "string") {
-          payload.prompt += "\nThis video is an overlapping excerpt of a longer continuous take. Keep the source person's exact screen position, body scale and distance from the camera throughout, especially at the first and last frames. Continue the existing action without introducing an entrance, a new pose, a framing reset or an ending. Keep the same face, hair, clothing fit, accessories and colors throughout the excerpt.";
-        }
+      for (const [index, part] of video.edit!.segments!.entries()) {
+        const payload = payloads[index];
         const queued = config.provider === "fal" ? await submitFalGeneration(config.model, payload, falVideoWebhookUrl(video.id)) : await submitGeneration(config.model, payload);
         providerRequestId = queued.requestId;
         part.requestId = queued.requestId;

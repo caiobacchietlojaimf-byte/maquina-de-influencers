@@ -38,7 +38,8 @@ test("legacy and orphan records stay accessible, deleted records and different o
 });
 
 test("video preparation freezes the selected outfit ID and image in its signed quote", async () => {
-  const ownedReads = [], receipts = [];
+  const ownedReads = [], receipts = [], preparedIdentities = [];
+  const identity = { strategy: "sheet-panels", appearanceUrl: "https://store.public.blob.vercel-storage.com/outfit-body.png", frontalUrl: "https://store.public.blob.vercel-storage.com/outfit-face.png" };
   const prepare = load("src/lib/prepare-character-edit.ts", {
     "@vercel/blob": { put: async () => ({ url: "https://store.public.blob.vercel-storage.com/original.mp4" }) },
     "@/lib/auth": { requireUser: async () => ({ id: "owner" }) },
@@ -47,10 +48,16 @@ test("video preparation freezes the selected outfit ID and image in its signed q
     "@/data/motion-presets": { getMotionPreset: () => ({ name: "Original video", drivingVideo: "https://video.example/original.mp4" }) },
     "@/lib/video-media": { publicMediaUrl: url => url, readPublicVideo: async () => Buffer.from("source video") },
     "@/lib/video-reference": { mp4Metadata: () => ({ duration: 10, width: 720, height: 1280, hasAudio: true }) },
-    "@/lib/character-edit": { EDIT_ENGINES: { "fal-kling-pro": { provider: "fal" } }, MAIN_CHARACTER_TARGET: "main character", isEditEngine: () => true, validateProviderEdit: () => null, estimateProviderEdit: () => ({ estimatedUsd: 1 }) },
+    "@/lib/character-edit": { EDIT_ENGINES: { "fal-kling-pro": { provider: "fal" } }, MAIN_CHARACTER_TARGET: "main character", isEditEngine: () => true, normalizeCharacterEditTarget: target => target, buildProviderEditInput: () => ({}), validateProviderEdit: () => null, estimateProviderEdit: () => ({ estimatedUsd: 1 }) },
     "@/lib/edit-quote": { signEditQuote: receipt => { receipts.push(receipt); return "signed"; } },
     "@/lib/platform": {}, "@/lib/fal": { isFalConfigured: () => true },
     "@/lib/finalize-edit": { ensureVideoToolsAvailable: async () => {} }, "@/lib/edit-continuity": {},
+    "@/lib/prepare-character-identity": { EDIT_IDENTITY_VERSION: "identity-v1", prepareCharacterIdentity: async (selected, metadata, engine, preparationId, signal) => {
+      preparedIdentities.push({ selected, metadata, engine, preparationId, signal });
+      assert.equal(selected, outfit);
+      assert.equal(selected.imageUrl, outfit.imageUrl);
+      return identity;
+    } },
     "@/lib/credit-pricing": { usdToCredits: usd => usd * 10, CREDIT_PRICING_VERSION: "test" },
   }).prepareCharacterEdit;
   const input = { influencerId: "outfit", engine: "fal-kling-pro", resolution: "auto", targetMode: "main", source: { kind: "preset", id: "preset" } };
@@ -59,6 +66,10 @@ test("video preparation freezes the selected outfit ID and image in its signed q
   assert.equal(receipts[0].influencerId, outfit.id);
   assert.equal(receipts[0].imageUrl, outfit.imageUrl);
   assert.notEqual(receipts[0].imageUrl, original.imageUrl);
+  assert.equal(preparedIdentities.length, 1);
+  assert.equal(preparedIdentities[0].selected.id, outfit.id);
+  assert.equal(preparedIdentities[0].engine, "fal-kling-pro");
+  assert.equal(receipts[0].identity, identity);
   assert.ok("error" in await prepare({ ...input, influencerId: "someone-elses-outfit" }));
   assert.equal(receipts.length, 1);
 });

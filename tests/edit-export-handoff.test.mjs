@@ -36,7 +36,7 @@ const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const normalize = value => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 const image = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jL1kAAAAASUVORK5CYII=", "base64");
 
-function fixture({ engine = "higgsfield", short = false, audio = true, multiple = false } = {}) {
+function fixture({ engine = "higgsfield", short = false, audio = true, multiple = false, identity } = {}) {
   const duration = short ? 8.076 : 29.076;
   const metadata = { duration, videoDuration: short ? 8 : 29, width: 2160, height: 3840, hasAudio: audio, frameCount: short ? 240 : 870, ...(audio ? { audioDuration: short ? 8.056 : 29.056 } : {}) };
   const original = Buffer.from(`Unmodified source video ${engine} ${duration} ${audio}`);
@@ -52,7 +52,7 @@ function fixture({ engine = "higgsfield", short = false, audio = true, multiple 
   const input = {
     name: "Supercar Interior Swap", influencerName: "Influencer 1", engine,
     resolution: engine.startsWith("fal-kling") ? "auto" : "720p",
-    target: "the seated driver wearing a dark shirt", metadata, image, original, segments,
+    target: "the seated driver wearing a dark shirt", metadata, image, original, segments, ...(identity ? { identity } : {}),
   };
   const entries = buildEditExportEntries(input);
   const files = new Map(entries.map(entry => [entry.name, entry.bytes]));
@@ -169,4 +169,114 @@ test("audio instructions preserve original audio when present and do not request
   assert.match(audibleGuide, /audio.*original|original.*audio/);
   assert.match(silentGuide, /sem audio|nao.*(audio|trilha)|silencio/);
   assert.equal(silent.config.original.metadata.hasAudio, false);
+});
+
+
+function identityFixture(frontal = true) {
+  // Distinct synthetic PNG payloads test byte/hash association without generating media.
+  return {
+    strategy: frontal ? "sheet-panels" : "single-image",
+    ...(frontal ? { frontal: Buffer.concat([image, Buffer.from("frontal-reference")]) } : {}),
+    appearance: Buffer.concat([image, Buffer.from("selected-outfit")]),
+    wan: Buffer.concat([image, Buffer.from("aspect-fitted-selected-outfit")]),
+  };
+}
+
+function localAssetPaths(value) {
+  if (!value || typeof value !== "object") return [];
+  const paths = [];
+  for (const [key, entry] of Object.entries(value)) {
+    if ((key === "file" || key.endsWith("_url")) && typeof entry === "string") paths.push(entry);
+    else if (key.endsWith("_urls") && Array.isArray(entry)) paths.push(...entry);
+    else if (entry && typeof entry === "object") paths.push(...localAssetPaths(entry));
+  }
+  return paths;
+}
+
+test("Kling exports the selected version as one element with frontal face and appearance files and canonical prompts", () => {
+  const identity = identityFixture();
+  for (const engine of ["fal-kling-pro", "fal-kling-standard"]) {
+    const f = fixture({ engine, identity, multiple: true });
+    assert.equal(f.files.get("referencias/rosto.png"), identity.frontal);
+    assert.equal(f.files.get("referencias/personagem.png"), identity.appearance);
+    assert.equal(f.files.has("referencias/personagem-wan.png"), false);
+    assert.equal(f.files.has("influencer.png"), false);
+    assert.equal(f.config.identity.strategy, "sheet-panels");
+    assert.equal(f.config.identity.sourceImageSha256, sha256(image));
+    assert.equal(f.config.identity.frontal.sha256, sha256(identity.frontal));
+    assert.equal(f.config.identity.appearance.sha256, sha256(identity.appearance));
+    for (const part of f.config.segments) {
+      const expected = edit.buildProviderEditInput(engine, part.file, "referencias/personagem.png", f.input.target, part.metadata.duration, f.input.resolution, 0, {
+        identity: { strategy: "sheet-panels", appearanceUrl: "referencias/personagem.png", frontalUrl: "referencias/rosto.png" }, continuous: true,
+      });
+      assert.deepEqual(part.input, JSON.parse(JSON.stringify(expected)));
+      assert.match(part.input.prompt, /@Element1/);
+      assert.doesNotMatch(part.input.prompt, /@Image1/);
+      assert.equal(part.input.elements.length, 1);
+      assert.equal(part.input.elements[0].frontal_image_url, "referencias/rosto.png");
+      assert.deepEqual(part.input.elements[0].reference_image_urls, ["referencias/personagem.png"]);
+      assert.equal(part.input.prompt, f.text(part.promptFile));
+    }
+    assert.equal(f.text("prompts/universal.txt").trimEnd(), edit.buildCharacterEditPrompt(f.input.target, f.input.metadata.duration, "the frontal reference referencias/rosto.png", { appearanceLabel: "the appearance reference referencias/personagem.png" }));
+    const guide = normalize(f.text("COMECE-AQUI.txt") + f.text("LEIA-ME.txt"));
+    assert.match(guide, /@element1/);
+    assert.match(guide, /anexe as duas imagens reais/);
+    assert.match(guide, /mesma versao/);
+    assert.equal(f.config.executionPolicy.allowModelFallback, false);
+    assert.equal(f.config.executionPolicy.allowApiBilling, false);
+    for (const asset of localAssetPaths(f.config)) assert.ok(f.files.has(asset), `Missing element or identity file: ${asset}`);
+    for (const reference of f.config.identity.references) assert.equal(reference.sha256, sha256(f.files.get(reference.file)));
+    assert.doesNotMatch(JSON.stringify(f.config), /https?:\/\//);
+  }
+});
+
+test("single-image identity keeps Kling Image1 fallback and never invents a frontal element", () => {
+  const identity = identityFixture(false);
+  const f = fixture({ engine: "fal-kling-pro", identity, short: true });
+  const settings = f.config.segments[0].input;
+  assert.equal(f.files.get("referencias/personagem.png"), identity.appearance);
+  assert.equal(f.files.has("referencias/rosto.png"), false);
+  assert.equal(f.files.has("referencias/personagem-wan.png"), false);
+  assert.equal(settings.elements, undefined);
+  assert.deepEqual(settings.image_urls, ["referencias/personagem.png"]);
+  assert.match(settings.prompt, /@Image1/);
+  assert.doesNotMatch(settings.prompt, /@Element1/);
+  assert.doesNotMatch(f.text("COMECE-AQUI.txt"), /@Element1/);
+});
+
+test("Higgsfield receives face and appearance while Wan exports only its single fitted image without a prompt", () => {
+  const identity = identityFixture();
+  const higgs = fixture({ engine: "higgsfield", identity });
+  const hf = higgs.config.segments[0].input;
+  assert.deepEqual(hf.image_urls, ["referencias/rosto.png", "referencias/personagem.png"]);
+  assert.equal(higgs.files.get("referencias/personagem.png"), identity.appearance);
+  assert.equal(higgs.files.get("referencias/rosto.png"), identity.frontal);
+  assert.equal(higgs.files.has("referencias/personagem-wan.png"), false);
+  const wan = fixture({ engine: "fal-wan", identity });
+  const settings = wan.config.segments[0].input;
+  assert.equal(settings.image_url, "referencias/personagem-wan.png");
+  assert.equal(wan.files.get(settings.image_url), identity.wan);
+  assert.equal(settings.prompt, undefined);
+  assert.equal(settings.elements, undefined);
+  assert.equal(settings.image_urls, undefined);
+  assert.equal(wan.files.has("referencias/rosto.png"), false);
+  assert.equal(wan.files.has("referencias/personagem.png"), false);
+  assert.equal(wan.config.identity.wan.sha256, sha256(identity.wan));
+  for (const f of [higgs, wan]) for (const asset of localAssetPaths(f.config)) assert.ok(f.files.has(asset), `Missing identity file: ${asset}`);
+});
+
+test("facial review is explicit across turns and segment joins without claiming automatic identity validation", () => {
+  const f = fixture({ engine: "fal-kling-pro", identity: identityFixture(), multiple: true });
+  assert.equal(f.config.validation.requiresFacialReview, true);
+  assert.equal(f.config.validation.automaticFacialValidation, false);
+  const checklist = normalize(f.text("CONFERIR-RESULTADO.txt"));
+  for (const word of ["olhos", "nariz", "boca", "maxilar", "cabelo", "barba", "bigode", "oclusoes", "cabeca", "juncao"]) assert.ok(checklist.includes(word), `Missing facial review: ${word}`);
+  assert.match(checklist, /nao realiza validacao facial automatica/);
+  assert.match(checklist, /nao consuma novos creditos/);
+});
+
+test("malformed prepared identity cannot silently export different references", () => {
+  assert.throws(() => fixture({ identity: { ...identityFixture(), strategy: "invented" } }), /identidade/);
+  assert.throws(() => fixture({ engine: "higgsfield", identity: { ...identityFixture(), frontal: Buffer.from("not an image") } }), /PNG|JPEG|WebP/);
+  assert.throws(() => fixture({ engine: "fal-wan", identity: { ...identityFixture(), wan: Buffer.from("not an image") } }), /PNG|JPEG|WebP/);
 });

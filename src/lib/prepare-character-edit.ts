@@ -9,13 +9,14 @@ import { isAiCharacterVideo } from "@/lib/ai-discovery";
 import { readUploadedReference } from "@/lib/uploaded-reference";
 import { publicMediaUrl, readPublicVideo } from "@/lib/video-media";
 import { mp4Metadata } from "@/lib/video-reference";
-import { EDIT_ENGINES, MAIN_CHARACTER_TARGET, validateProviderEdit, estimateProviderEdit, isEditEngine, type EditEngine, type EditResolution, type EditTargetMode, type EditSource, type EditQuote } from "@/lib/character-edit";
+import { EDIT_ENGINES, MAIN_CHARACTER_TARGET, normalizeCharacterEditTarget, buildProviderEditInput, validateProviderEdit, estimateProviderEdit, isEditEngine, type EditEngine, type EditResolution, type EditTargetMode, type EditSource, type EditQuote } from "@/lib/character-edit";
 import { signEditQuote } from "@/lib/edit-quote";
 import { isConfigured } from "@/lib/platform";
 import { isFalConfigured } from "@/lib/fal";
 import { ensureVideoToolsAvailable } from "@/lib/finalize-edit";
 import { splitContinuousEditSource } from "@/lib/edit-continuity";
 import { CREDIT_PRICING_VERSION, usdToCredits } from "@/lib/credit-pricing";
+import { EDIT_IDENTITY_VERSION, prepareCharacterIdentity } from "@/lib/prepare-character-identity";
 export type PrepareOptions = { signal?: AbortSignal; onProgress?: (event: { type: "progress"; stage: string; message: string }) => void };
 
 export async function prepareCharacterEdit(input: { influencerId: string; source: EditSource; target?: string; targetMode?: EditTargetMode; resolution: EditResolution; engine?: EditEngine }, options: PrepareOptions = {}): Promise<{ quote: EditQuote } | { error: string }> {
@@ -33,7 +34,7 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
     const targetMode = input.targetMode ?? "manual";
     if (targetMode !== "main" && targetMode !== "manual") return { error: "Seleção de personagem inválida." };
     if (targetMode === "manual" && (typeof input.target !== "string" || input.target.trim().length < 8 || input.target.length > 500)) return { error: "Descreva quem será substituído (8 a 500 caracteres), incluindo roupa e posição no vídeo." };
-    const target = targetMode === "main" ? MAIN_CHARACTER_TARGET : input.target!.trim();
+    const target = normalizeCharacterEditTarget(targetMode === "main" ? MAIN_CHARACTER_TARGET : input.target!);
     progress("reference", "Conferindo o influencer e a referência…");
     const inf = await getInfluencer(user.id, input.influencerId);
     options.signal?.throwIfAborted();
@@ -60,6 +61,8 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
     if (invalid) return { error: invalid };
     await ensureVideoToolsAvailable();
     const id = randomUUID();
+    progress("identity", "Preparando a identidade e a roupa do influencer…");
+    const identity = await prepareCharacterIdentity(inf, metadata, engine, id, options.signal);
     // Freeze the ORIGINAL bytes: social/CDN links can expire while generation is queued.
     progress("snapshot", "Salvando o original para preservar imagem e áudio…");
     const snapshot = await put(`edit-sources/${user.id}/${id}.mp4`, bytes, { access: "public", contentType: "video/mp4", addRandomSuffix: false, allowOverwrite: false, abortSignal: options.signal });
@@ -76,9 +79,10 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
         segments.push({ sourceUrl: stored.url, start: part.start, source: mp4Metadata(part.bytes) });
       }
     } else segments.push({ sourceUrl, start: 0, source: metadata });
+    for (const part of segments) buildProviderEditInput(engine, part.sourceUrl, inf.imageUrl, target, part.source.duration, input.resolution, 0, { identity, continuous: segments.length > 1 });
     const cost = estimateProviderEdit(engine, metadata, input.resolution, segments.map(s => s.source.duration));
     if (engine.startsWith("fal-kling") && segments.length > 1) cost.costDetail += " Inclui o intervalo compartilhado entre os trechos para melhorar a continuidade.";
-    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, ...(engine.startsWith("fal-kling") ? { assembly: "overlap-v1" as const } : {}), seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, creditCost: usdToCredits(cost.estimatedUsd), creditPricingVersion: CREDIT_PRICING_VERSION, expiresAt: Date.now() + 15 * 60000 };
+    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, identityVersion: EDIT_IDENTITY_VERSION, identity, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, ...(engine.startsWith("fal-kling") ? { assembly: "overlap-v1" as const } : {}), seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, creditCost: usdToCredits(cost.estimatedUsd), creditPricingVersion: CREDIT_PRICING_VERSION, expiresAt: Date.now() + 15 * 60000 };
     progress("ready", "Original conferido. Preparação concluída.");
     return { quote: { token: signEditQuote(receipt), name, sourceUrl, metadata, resolution: receipt.resolution, engine, segmentCount: segments.length, costDetail: cost.costDetail, estimatedUsd: receipt.estimatedUsd, creditCost: receipt.creditCost, expiresAt: receipt.expiresAt } };
   } catch (error) {

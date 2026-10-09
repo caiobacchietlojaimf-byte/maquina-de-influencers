@@ -1,6 +1,6 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { EditResolution, EditEngine } from "./character-edit";
+import type { EditResolution, EditEngine, EditIdentityReferences } from "./character-edit";
 import type { VideoMetadata } from "./video-reference";
 export type EditReceipt = {
   id: string; userId: string; influencerId: string; imageUrl: string; sourceUrl: string;
@@ -8,6 +8,7 @@ export type EditReceipt = {
   estimatedUsd: number; expiresAt: number;
   creditCost?: number; creditPricingVersion?: string;
   engine?: EditEngine; seed?: number;
+  identityVersion?: string; identity?: EditIdentityReferences;
   assembly?: "overlap-v1";
   segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata }>;
 };

@@ -70,8 +70,9 @@ const sourceUrl = "https://media.example/original.mp4", imageUrl = "https://imag
 const blobUrl = "https://assets.public.blob.vercel-storage.com/exports/test/genjutsu-supercar.zip";
 
 function fixture(overrides = {}) {
-  const downloads = [], uploads = [], deletes = [], ownerReads = [], splits = [];
+  const downloads = [], uploads = [], deletes = [], ownerReads = [], splits = [], identityReads = [];
   const selectedImageUrl = overrides.imageUrl ?? imageUrl;
+  const identity = { strategy: overrides.singleImage ? "single-image" : "sheet-panels", appearance: png, wan: Buffer.concat([png, Buffer.from("fitted-image")]), ...(overrides.singleImage ? {} : { frontal: Buffer.concat([png, Buffer.from("frontal-image")]) }) };
   const parts = [
     { bytes: Buffer.from("encoded first segment"), start: 0 },
     { bytes: Buffer.from("encoded second segment"), start: 8.5 },
@@ -125,11 +126,18 @@ function fixture(overrides = {}) {
       if (url === sourceUrl) { overrides.afterDownload?.(); return original; }
       return png;
     } },
+    "@/lib/prepare-character-identity": { readCharacterIdentity: async (influencer, metadata, signal) => {
+      identityReads.push({ influencer, metadata, signal });
+      assert.equal(influencer.imageUrl, selectedImageUrl, "Identity preparation must use the selected saved version");
+      downloads.push({ url: influencer.imageUrl, limit: 25 * 1024 * 1024, signal });
+      if (overrides.identityFailure) throw new Error("private-image-preparation-error");
+      return { image: png, identity };
+    } },
     "@/lib/video-reference": fixtureMedia, "@/lib/character-edit": edit,
     "@/lib/edit-segments": { splitEditSource: async (...args) => { splits.push(args); return parts; } },
     "@/lib/edit-export-package": packageBuilder, "@/lib/edit-export-input": inputValidation,
   });
-  return { ...worker, downloads, uploads, deletes, ownerReads, splits, parts };
+  return { ...worker, downloads, uploads, deletes, ownerReads, splits, parts, identityReads, identity };
 }
 
 test("export preserves original bytes and creates a complete usable ZIP with zero balance and no provider credentials", async () => {
@@ -150,12 +158,17 @@ test("export preserves original bytes and creates a complete usable ZIP with zer
   assert.ok(f.uploads[0].path.startsWith("exports/"));
   const files = unzip(f.uploads[0].bytes);
   assert.deepEqual(files.get("original.mp4"), original);
-  assert.deepEqual(files.get("influencer.png"), png);
+  assert.deepEqual(files.get("referencias/personagem.png"), png);
+  assert.deepEqual(files.get("referencias/rosto.png"), f.identity.frontal);
+  assert.equal(f.identityReads.length, 1);
+  assert.equal(f.identityReads[0].signal, signal);
+  assert.equal(f.identityReads[0].influencer.id, "character");
+  assert.deepEqual(f.identityReads[0].metadata, originalMetadata);
   for (const file of ["LEIA-ME.txt", "config.json", "prompts/universal.txt", "prompts/trecho-01.txt", "prompts/trecho-02.txt", "trechos/01.mp4", "trechos/02.mp4"]) assert.ok(files.has(file), `Missing export file: ${file}`);
   assert.deepEqual(files.get("trechos/01.mp4"), f.parts[0].bytes);
   assert.deepEqual(files.get("trechos/02.mp4"), f.parts[1].bytes);
   assert.match(files.get("LEIA-ME.txt").toString(), /original\.mp4/);
-  assert.match(files.get("prompts/universal.txt").toString(), /Preserve the entire 17\.157-second source timeline/);
+  assert.match(files.get("prompts/universal.txt").toString(), /Preserve the entire 17\.157-second (?:source )?timeline/);
   const config = JSON.parse(files.get("config.json").toString());
   assert.ok(JSON.stringify(config).includes("fal-kling-pro"));
   for (const [name, bytes] of files) if (/\.(txt|json)$/.test(name)) {
@@ -173,6 +186,9 @@ test("all reference kinds resolve on the backend and Wan exports an unsplit orig
     assert.equal(f.downloads[1].limit, 25 * 1024 * 1024);
     const files = unzip(f.uploads[0].bytes);
     assert.deepEqual(files.get("original.mp4"), original);
+    assert.deepEqual(files.get("referencias/personagem-wan.png"), f.identity.wan);
+    assert.equal(files.has("referencias/personagem.png"), false);
+    assert.equal(files.has("referencias/rosto.png"), false);
     assert.equal([...files.keys()].some(name => name.startsWith("trechos/")), false);
     assert.ok(!files.get("config.json").toString().includes("owned-upload-token"));
   }
@@ -185,7 +201,14 @@ test("export packages the selected saved outfit instead of falling back to the o
   assert.equal(result.error, undefined);
   assert.deepEqual(f.ownerReads, [["owner", "saved-outfit"]]);
   assert.deepEqual(f.downloads.map(call => call.url), [sourceUrl, outfitUrl]);
-  assert.deepEqual(unzip(f.uploads[0].bytes).get("influencer.png"), png);
+  const files = unzip(f.uploads[0].bytes);
+  assert.deepEqual(files.get("referencias/personagem.png"), png);
+  assert.deepEqual(files.get("referencias/rosto.png"), f.identity.frontal);
+  assert.equal(f.identityReads[0].influencer.id, "saved-outfit");
+  assert.equal(f.identityReads[0].influencer.imageUrl, outfitUrl);
+  const settings = JSON.parse(files.get("config.json").toString()).segments[0].input;
+  assert.equal(settings.elements[0].frontal_image_url, "referencias/rosto.png");
+  assert.deepEqual(settings.elements[0].reference_image_urls, ["referencias/personagem.png"]);
 });
 
 test("foreign influencers, expired uploads, non-AI discoveries and raw URLs cannot start a download or create a ZIP", async () => {
@@ -236,4 +259,27 @@ test("archive filename is safe and upload failures never expose storage error de
   assert.equal(result.url, undefined);
   assert.ok(f.uploads[0].path.endsWith("/troca-personagem-meu-video-teste-exemplo.zip"));
   unzip(f.uploads[0].bytes);
+});
+
+
+test("identity preparation failure cannot package stale or original-version images", async () => {
+  const f = fixture({ identityFailure: true });
+  const result = await f.exportCharacterEdit(input);
+  assert.ok(result.error);
+  assert.doesNotMatch(result.error, /private-image/);
+  assert.equal(f.identityReads.length, 1);
+  assert.equal(f.splits.length, 0);
+  assert.equal(f.uploads.length, 0);
+});
+
+test("single-image export does not fabricate an element from an absent face reference", async () => {
+  const f = fixture({ singleImage: true });
+  const result = await f.exportCharacterEdit(input);
+  assert.equal(result.error, undefined);
+  const files = unzip(f.uploads[0].bytes);
+  assert.equal(files.has("referencias/rosto.png"), false);
+  const settings = JSON.parse(files.get("config.json").toString()).segments[0].input;
+  assert.equal(settings.elements, undefined);
+  assert.deepEqual(settings.image_urls, ["referencias/personagem.png"]);
+  assert.match(settings.prompt, /@Image1/);
 });

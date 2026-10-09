@@ -18,6 +18,8 @@ const media = load("src/lib/video-reference.ts"), edit = load("src/lib/character
 const original = readFileSync(new URL("../public/reel-videos/Dd_qcXdgsdb.mp4", import.meta.url));
 const metadata = media.mp4Metadata(original);
 const receipt = { id: "edit-1", userId: "owner", influencerId: "character", imageUrl: "https://images.example/character.jpg", sourceUrl: "https://media.example/original.mp4", name: "Original", target: "homem de casaco roxo no centro", metadata, resolution: "720p", estimatedUsd: edit.estimateEditUsd(metadata.duration, "720p"), creditCost: 123, creditPricingVersion: pricing.CREDIT_PRICING_VERSION, expiresAt: Date.now() + 600000 };
+receipt.identityVersion = "identity-v1";
+receipt.identity = { strategy: "single-image", appearanceUrl: receipt.imageUrl };
 
 test("the actual 17-second source meets Object Swap requirements and cost rounds input seconds up", () => {
   assert.ok(metadata.duration > 17 && metadata.duration < 18);
@@ -99,6 +101,12 @@ function fixture(overrides = {}) {
     } },
     "@/lib/platform": { isConfigured: () => true, PlatformError, submitGeneration: async (...args) => { submissions.push(args); if (overrides.failure) throw new PlatformError(overrides.failure); return { requestId: "provider-request" }; } },
     "@/lib/credit-pricing": pricing,
+    "@/lib/prepare-character-identity": { EDIT_IDENTITY_VERSION: "identity-v1", prepareCharacterIdentity: async (influencer, _metadata, _engine, _id, signal) => {
+      signal?.throwIfAborted();
+      if (overrides.identityFailure) throw new Error("Não foi possível preparar a identidade.");
+      assert.equal(influencer.imageUrl, receipt.imageUrl);
+      return overrides.identity ?? receipt.identity;
+    } },
   };
   const preparation = load("src/lib/prepare-character-edit.ts", mocks);
   const actions = load("src/app/actions/character-edit.ts", { ...mocks, "@/lib/prepare-character-edit": preparation });
@@ -469,4 +477,44 @@ test('Wan preparation blocks the reported 4:3 crop before any snapshot, debit or
   const f=fixture({metadata:{...metadata,width:1664,height:1248}});
   const result=await f.actions.prepareCharacterEditAction({influencerId:'character',source:{kind:'preset',id:'preset'},targetMode:'main',engine:'fal-wan',resolution:'720p'});
   assert.match(result.error,/Wan pode recortar/);assert.equal(f.snapshots.length,0);assert.equal(f.charges.length,0);assert.equal(f.falSubmissions.length,0);
+});
+
+test('prepared identity is signed, stored, and shared by every paid Kling segment', async () => {
+  const identity = {strategy:'sheet-panels',frontalUrl:'https://assets.example/selected-frontal.png',appearanceUrl:'https://assets.example/selected-outfit.png'};
+  const f=fixture({identity});
+  const prepared=await f.actions.prepareCharacterEditAction({influencerId:'character',source:{kind:'preset',id:'preset'},targetMode:'main',engine:'fal-kling-pro',resolution:'auto'});
+  assert.ok(prepared.quote,prepared.error);
+  const frozen=quotes.readEditQuote(prepared.quote.token,'owner');
+  assert.deepEqual(JSON.parse(JSON.stringify(frozen.identity)),identity);
+  assert.equal(frozen.identityVersion,'identity-v1');
+  const [payload,signature]=prepared.quote.token.split('.');
+  const forged=JSON.parse(Buffer.from(payload,'base64url').toString());forged.identity.frontalUrl='https://attacker.example/wrong-face.png';
+  assert.throws(()=>quotes.readEditQuote(Buffer.from(JSON.stringify(forged)).toString('base64url')+'.'+signature,'owner'));
+  assert.equal(f.charges.length,0);
+  const result=await f.actions.generateCharacterEditAction({quoteToken:prepared.quote.token,acceptedEstimate:true});
+  assert.ok(result.id,result.error);
+  assert.equal(f.falSubmissions.length,2);
+  for(const [,input] of f.falSubmissions){
+    assert.deepEqual(JSON.parse(JSON.stringify(input.elements)),[{frontal_image_url:identity.frontalUrl,reference_image_urls:[identity.appearanceUrl]}]);
+    assert.equal(input.image_urls,undefined);assert.match(input.prompt,/@Element1/);assert.ok(input.prompt.length<=2500);
+  }
+  assert.deepEqual(JSON.parse(JSON.stringify(f.rows.get(result.id).edit.identity)),identity);
+  assert.equal(f.charges.length,1);
+});
+
+test('legacy identity quotes and failed identity preparation never debit credits or call a paid model', async()=>{
+  for (const change of [{identityVersion:undefined},{identityVersion:'old'},{identity:undefined}]){
+    const f=fixture();
+    const result=await f.actions.generateCharacterEditAction({quoteToken:quotes.signEditQuote({...receipt,...change}),acceptedEstimate:true});
+    assert.match(result.error,/Prepare a troca novamente/);assert.equal(f.rows.size,0);assert.equal(f.charges.length,0);assert.equal(f.submissions.length,0);
+  }
+  const f=fixture({identityFailure:true});
+  const result=await f.actions.prepareCharacterEditAction({influencerId:'character',source:{kind:'preset',id:'preset'},targetMode:'main',engine:'fal-kling-pro',resolution:'auto'});
+  assert.ok(result.error);assert.equal(f.snapshots.length,0);assert.equal(f.charges.length,0);assert.equal(f.falSubmissions.length,0);
+});
+
+test('an invalid complete prompt is rejected before creating a video, reserving credits or submitting any segment',async()=>{
+  const f=fixture();
+  const result=await f.actions.generateCharacterEditAction({quoteToken:quotes.signEditQuote({...receipt,target:'x'.repeat(501)}),acceptedEstimate:true});
+  assert.ok(result.error);assert.equal(f.rows.size,0);assert.equal(f.charges.length,0);assert.equal(f.submissions.length,0);
 });

@@ -15,6 +15,7 @@ import { MAIN_CHARACTER_TARGET, validateProviderEdit } from "@/lib/character-edi
 import { splitEditSource } from "@/lib/edit-segments";
 import { buildEditExportEntries } from "@/lib/edit-export-package";
 import { isEditExportInput } from "@/lib/edit-export-input";
+import { readCharacterIdentity } from "@/lib/prepare-character-identity";
 import type { PrepareEditInput } from "./prepare-edit-client";
 import type { PrepareOptions } from "./prepare-character-edit";
 
@@ -58,8 +59,8 @@ export async function exportCharacterEdit(input: PrepareEditInput, options: Prep
     const metadata = mp4Metadata(original);
     const invalid = validateProviderEdit(input.engine, metadata, input.resolution, input.targetMode);
     if (invalid) return { error: invalid };
-    progress("image", "Separando a foto do influencer…");
-    const image = await readPublicVideo(publicMediaUrl(influencer.imageUrl), 25 * 1024 * 1024, options.signal);
+    progress("image", "Separando o rosto e a roupa do influencer…");
+    const { image, identity } = await readCharacterIdentity(influencer, metadata, options.signal);
     let segments = [{ start: 0, bytes: original }];
     if (input.engine.startsWith("fal-kling") && metadata.duration > 15) {
       progress("segments", "Preparando os trechos sem perder a duração do original…");
@@ -67,7 +68,7 @@ export async function exportCharacterEdit(input: PrepareEditInput, options: Prep
     }
     progress("package", "Organizando arquivos, prompts e guia de uso…");
     const entries = buildEditExportEntries({
-      name, influencerName: influencer.name, original, image, metadata, segments,
+      name, influencerName: influencer.name, original, image, identity, metadata, segments,
       engine: input.engine, resolution: input.resolution,
       target: input.targetMode === "main" ? MAIN_CHARACTER_TARGET : input.target!.trim(),
     });

@@ -6,6 +6,7 @@ import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { VideoMetadata } from "./video-reference";
 import type { PlanGrant, PlanId } from "./plans";
+import type { EditIdentityReferences } from "./character-edit";
 
 /* Camada de dados com dois drivers e a MESMA API assíncrona:
    - Supabase (Postgres) quando SUPABASE_URL + SUPABASE_KEY + MI_DB_SECRET
@@ -91,6 +92,7 @@ export type Video = {
   edit?: {
     model: string; sourceUrl: string; imageUrl: string; target: string;
     provider?: "fal" | "higgsfield"; seed?: number;
+    identityVersion?: string; identity?: EditIdentityReferences;
     assembly?: "overlap-v1";
     segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata; requestId?: string; resultUrl?: string }>;
     source: VideoMetadata;

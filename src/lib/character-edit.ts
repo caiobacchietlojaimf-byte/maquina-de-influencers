@@ -14,6 +14,17 @@ export function editModelLabel(model: string): string { return Object.values(EDI
 export const EDIT_PRICE_DATE = "08/10/2026";
 export type EditResolution = "480p" | "720p" | "1080p" | "auto";
 export type EditTargetMode = "main" | "manual";
+export type EditIdentityReferences = {
+  strategy: "sheet-panels" | "single-image";
+  frontalUrl?: string;
+  appearanceUrl: string;
+  wanUrl?: string;
+};
+export type EditProviderInputOptions = { identity?: EditIdentityReferences; continuous?: boolean };
+export type EditPromptOptions = { appearanceLabel?: string; continuous?: boolean };
+export const MAX_EDIT_TARGET_LENGTH = 500;
+// Kling O3 edit's official schema limits the entire prompt, including continuity.
+export const MAX_CHARACTER_EDIT_PROMPT_LENGTH = 2500;
 export const MAIN_CHARACTER_TARGET = "Identify the main character of the source video: the person who is the sustained focus of the camera and action across the clip. Select exactly one person and track that same identity throughout; do not switch to bystanders, supporting performers or someone briefly crossing the foreground.";
 // Official undiscounted input-second rates. Never assume account promotions.
 // https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground
@@ -43,11 +54,26 @@ export function validateProviderEdit(engine: EditEngine, media: VideoMetadata, r
   if (engine === "fal-wan" && ![16 / 9, 9 / 16].some(ratio => Math.abs((media.width / media.height) / ratio - 1) <= 0.02)) return "O Wan pode recortar este formato de vídeo. Esta integração aceita originais 16:9 ou 9:16 e confere o resultado ao finalizar; escolha Kling para editar este original.";
   if (engine.startsWith("fal-kling") && (Math.min(media.width, media.height) < 720 || Math.max(media.width, media.height) > 3840)) return "O Kling exige um original entre 720 e 3840 pixels por lado. Envie o vídeo nessa resolução.";
 }
-export function buildProviderEditInput(engine: EditEngine, sourceUrl: string, imageUrl: string, target: string, duration: number, resolution: EditResolution, seed: number): Record<string, unknown> {
-  if (engine === "fal-wan") return { video_url: sourceUrl, image_url: imageUrl, resolution, seed, guidance_scale: 1, num_inference_steps: 20, use_turbo: false, video_quality: "maximum", video_write_mode: "balanced", enable_safety_checker: true, enable_output_safety_checker: true };
-  const prompt = buildCharacterEditPrompt(target, duration);
-  if (engine === "higgsfield") return { prompt, video_url: sourceUrl, image_urls: [imageUrl], resolution };
-  return { prompt: `Edit @Video1. Use @Image1 as the replacement character identity and outfit only.\n${prompt}`, video_url: sourceUrl, image_urls: [imageUrl], keep_audio: true };
+export function buildProviderEditInput(engine: EditEngine, sourceUrl: string, imageUrl: string, target: string, duration: number, resolution: EditResolution, seed: number, options: EditProviderInputOptions = {}): Record<string, unknown> {
+  const normalizedTarget = normalizeCharacterEditTarget(target);
+  const appearanceUrl = options.identity?.appearanceUrl || imageUrl;
+  const frontalUrl = options.identity?.strategy === "sheet-panels" ? options.identity.frontalUrl : undefined;
+  // Wan has one image input and no prompt/element input. A prepared single view
+  // avoids asking its center crop to choose between two reference-sheet panels.
+  if (engine === "fal-wan") return { video_url: sourceUrl, image_url: options.identity?.wanUrl || appearanceUrl, resolution, seed, guidance_scale: 1, num_inference_steps: 20, use_turbo: false, video_quality: "maximum", video_write_mode: "balanced", enable_safety_checker: true, enable_output_safety_checker: true };
+  if (engine === "higgsfield") {
+    const prompt = buildCharacterEditPrompt(normalizedTarget, duration, "reference image 1", { appearanceLabel: frontalUrl ? "reference image 2" : "reference image 1", continuous: options.continuous });
+    return { prompt, video_url: sourceUrl, image_urls: frontalUrl ? [frontalUrl, appearanceUrl] : [appearanceUrl], resolution };
+  }
+  // Official Kling O3 edit contract: @Element1 identifies a character using a
+  // frontal image plus 1–3 additional views; @Image1 is the single-image fallback.
+  // https://fal.ai/models/fal-ai/kling-video/o3/pro/video-to-video/edit/api
+  const referenceLabel = frontalUrl ? "@Element1" : "@Image1";
+  const prompt = checkCharacterEditPromptLength(`Edit @Video1.\n${buildCharacterEditPrompt(normalizedTarget, duration, referenceLabel, { continuous: options.continuous })}`);
+  return {
+    prompt, video_url: sourceUrl, keep_audio: true,
+    ...(frontalUrl ? { elements: [{ frontal_image_url: frontalUrl, reference_image_urls: [appearanceUrl] }] } : { image_urls: [appearanceUrl] }),
+  };
 }
 export function estimateEditUsd(duration: number, resolution: EditResolution): number {
   if (resolution === "auto") throw new Error("Escolha a resolução da Higgsfield.");
@@ -59,14 +85,33 @@ export function validateEditSource(media: VideoMetadata): string | undefined {
   if (!Number.isFinite(media.duration) || media.duration < 4 || media.duration > 30) return "A troca de personagem aceita vídeos de 4 a 30 segundos. Envie um recorte; o sistema não corta o vídeo automaticamente.";
   if (!Number.isFinite(media.width * media.height) || media.width * media.height < 409600) return "O vídeo precisa ter pelo menos 409.600 pixels por quadro (por exemplo, 480 × 854). Envie o original em maior resolução.";
 }
-export function buildCharacterEditPrompt(target: string, duration: number): string {
-  return [
-    "Perform a localized character replacement in the SOURCE VIDEO. The source video is the authoritative scene and timeline, not a loose motion reference.",
-    `Target exactly ONE source character using these selection instructions: ${JSON.stringify(target)}. Track that same person throughout every shot, including occlusions. Do not replace any other person.`,
-    "Replace only that person's identity, body appearance and outfit with the character in reference image 1. Use the image ONLY for the replacement character, never its background, pose, camera or framing. Blend the replacement into the source lighting, shadows, perspective and occlusions.",
-    `Preserve the entire ${duration.toFixed(3)}-second source timeline, original aspect ratio, frame composition, cuts, camera movement, gestures, expressions, choreography and timing. Do not shorten, loop, slow down, summarize or insert shots.`,
-    "Keep all untargeted people, animals, objects, products, logos, captions, subtitles, background, lighting and interactions unchanged. Do not invent musicians, props, people, scenery or actions. Preserve the source audio. Return the edited video, not a still image.",
-  ].join("\n");
+export function normalizeCharacterEditTarget(target: string): string {
+  if (typeof target !== "string" || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u.test(target)) {
+    throw new Error("A descrição da pessoa contém caracteres inválidos. Escreva uma descrição simples.");
+  }
+  const normalized = target.normalize("NFC").replace(/\s+/gu, " ").trim();
+  if (!normalized || normalized.length > MAX_EDIT_TARGET_LENGTH) throw new Error(`Descreva a pessoa em até ${MAX_EDIT_TARGET_LENGTH} caracteres.`);
+  return normalized;
+}
+function checkCharacterEditPromptLength(prompt: string): string {
+  if (prompt.length > MAX_CHARACTER_EDIT_PROMPT_LENGTH) throw new Error("As instruções excedem o limite do modelo. Encurte a descrição da pessoa e prepare novamente.");
+  return prompt;
+}
+/** Shared by provider payloads and exports; references never define a new scene. */
+export function buildCharacterEditPrompt(target: string, duration: number, referenceLabel = "reference image 1", options: EditPromptOptions = {}): string {
+  const normalizedTarget = normalizeCharacterEditTarget(target);
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error("A duração do vídeo é inválida. Prepare novamente.");
+  const appearanceLabel = options.appearanceLabel ?? referenceLabel;
+  return checkCharacterEditPromptLength([
+    "Perform a localized character replacement in the SOURCE VIDEO, the authoritative scene and timeline.",
+    `Target exactly ONE person: ${JSON.stringify(normalizedTarget)}. Track that same person throughout. Do not replace any other person.`,
+    `Use ${referenceLabel} as the exact facial identity: facial proportions, eye shape/color, nose, mouth, jaw, hairline, skin tone and defining facial hair. Never blend with or retain the source actor's facial identity.`,
+    `Use ${appearanceLabel} for the same character's body proportions, clothing, fit, colors and accessories. Never copy reference backgrounds, poses or framing.`,
+    "Transfer source expressions, gaze and mouth motion without transferring source facial geometry. Maintain identity through head turns, profiles, blur and occlusions; no face morphing, flicker or substitutions.",
+    `Preserve the entire ${duration.toFixed(3)}-second timeline, aspect ratio, composition, cuts, camera motion, gestures, choreography and timing. Match source lighting, perspective and shadows. Do not shorten, loop, retime or insert shots.`,
+    "Keep all other people, animals, objects, products, logos, captions, subtitles and backgrounds unchanged. Preserve the source audio. Return the edited video, not a still image.",
+    ...(options.continuous ? ["This is a temporally ordered excerpt of the same source video. Preserve any existing cuts. Keep exact screen position, body scale, distance, identity and outfit at both ends. Continue the action without a new entrance, pose, framing reset or ending."] : []),
+  ].join("\n"));
 }
 export function checkEditResult(source: VideoMetadata, result: VideoMetadata): string | undefined {
   if (Math.abs(source.duration - result.duration) > 0.25) return `Duração divergente: original ${source.duration.toFixed(2)}s; resultado ${result.duration.toFixed(2)}s. O resultado precisa de revisão.`;
