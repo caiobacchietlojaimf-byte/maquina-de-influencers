@@ -178,12 +178,23 @@ export type TikTokPostOptions = {
 
 export type PostStatus = "draft" | "scheduled" | "posting" | "posted" | "failed";
 
+export type PublishedCaptionDraft = {
+  caption: string;
+  /** The last published caption known when this editorial revision was saved. */
+  baseCaption: string;
+  updatedAt: number;
+};
+
 export type Post = {
   id: string;
   userId: string;
   videoId: string;
   platform: SocialPlatform;
   caption: string;
+  /** Editorial only: saving this field never changes the published caption. */
+  captionDraft?: PublishedCaptionDraft;
+  /** Set only after a fresh, ownership-verified Instagram read. */
+  captionSyncedAt?: number;
   scheduledAt: number;
   status: PostStatus;
   postedUrl?: string;
@@ -1171,6 +1182,97 @@ export async function deleteSocialAccount(
 }
 
 /* ================= publicações ================= */
+
+function editablePublishedPost(post: Post | undefined, userId: string): post is Post {
+  return Boolean(post && post.userId === userId && !post.deletedAt && post.platform === "instagram" && post.status === "posted" && post.mode === "live");
+}
+
+/** An owned, visible live post, never a publishing container or a demo. */
+export async function getPublishedPost(userId: string, id: string): Promise<Post | undefined> {
+  const sb = remote();
+  let post: Post | undefined;
+  if (sb) {
+    const { data, error } = await sb.from("mi_posts").select("data").eq("id", id).eq("user_id", userId).eq("status", "posted").is("data->>deletedAt", null).maybeSingle();
+    if (error) fail("buscar publicação concluída", error);
+    post = data ? rowData<Post>(data) : undefined;
+  } else post = load().posts.find(item => item.id === id && item.userId === userId);
+  return editablePublishedPost(post, userId) ? structuredClone(post) : undefined;
+}
+
+function captionRevision(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(value));
+}
+function captionText(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.length <= max && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value);
+}
+
+/** One revision domain with deletion and publisher transitions; no stale JSON replacement. */
+async function savePublishedPostRevision(current: Post, patch: Pick<Partial<Post>, "caption" | "captionDraft" | "captionSyncedAt" | "publishedMediaId" | "postedUrl">): Promise<Post | undefined> {
+  const next: Post = { ...current, ...patch, revision: randomUUID() };
+  const sb = remote();
+  if (sb) {
+    let query = sb.from("mi_posts").update({ data: next }).eq("id", current.id).eq("user_id", current.userId)
+      .eq("status", "posted").eq("data->>status", "posted").eq("data->>platform", "instagram").eq("data->>mode", "live").is("data->>deletedAt", null);
+    query = current.revision ? query.eq("data->>revision", current.revision) : query.is("data->>revision", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("salvar revisão da publicação", error);
+    return data?.length ? next : undefined;
+  }
+  return mutate(db => {
+    const index = db.posts.findIndex(post => post.id === current.id && editablePublishedPost(post, current.userId) && post.revision === current.revision);
+    if (index < 0) return undefined;
+    db.posts[index] = next;
+    return next;
+  });
+}
+
+/** Drafts remain available offline. This operation cannot publish or replace Post.caption. */
+export async function savePublishedCaptionDraft(userId: string, id: string, baseRevision: string | null, caption: string): Promise<Post | undefined> {
+  if (!captionRevision(baseRevision) || !captionText(caption, 2200)) return;
+  const current = await getPublishedPost(userId, id);
+  if (!current || (current.revision ?? null) !== baseRevision) return;
+  return savePublishedPostRevision(current, { captionDraft: { caption, baseCaption: current.caption, updatedAt: Date.now() } });
+}
+
+export type VerifiedPublishedCaption = {
+  caption: string;
+  publishedMediaId: string;
+  permalink?: string;
+  accountId: string;
+  accountUserId: string;
+  connectedAt: number;
+  checkedAt: number;
+};
+
+/** Internal persistence for a fresh, verified provider response; never accepts a client draft. */
+export async function syncPublishedCaption(userId: string, id: string, baseRevision: string | null, verified: VerifiedPublishedCaption): Promise<Post | undefined> {
+  if (!captionRevision(baseRevision) || !verified || !captionText(verified.caption, 10_000) || !/^\d{1,40}$/.test(verified.publishedMediaId)
+    || !/^\d{1,40}$/.test(verified.accountUserId) || !Number.isFinite(verified.checkedAt) || verified.checkedAt <= 0
+    || verified.checkedAt > Date.now() + 30_000 || verified.checkedAt < Date.now() - 60_000) return;
+  const current = await getPublishedPost(userId, id);
+  if (!current || (current.revision ?? null) !== baseRevision || current.accountId !== verified.accountId || current.accountUserId !== verified.accountUserId
+    || (current.publishedMediaId && current.publishedMediaId !== verified.publishedMediaId)) return;
+  const account = await getSocialAccount(userId, "instagram");
+  if (!account || account.userId !== userId || account.id !== verified.accountId || account.platform !== "instagram"
+    || account.status !== "connected" || account.oauthProvider !== "instagram" || account.connectedAt !== verified.connectedAt
+    || (account.providerUserId ?? account.igUserId) !== verified.accountUserId || (account.igUserId && account.igUserId !== verified.accountUserId)
+    || !account.scopes?.includes("instagram_business_basic")) return;
+  let permalink: string | undefined;
+  if (verified.permalink !== undefined) {
+    try {
+      const url = new URL(verified.permalink);
+      if (verified.permalink.length > 1024 || url.protocol !== "https:" || !["instagram.com", "www.instagram.com"].includes(url.hostname)
+        || url.username || url.password || url.port || !/^\/(?:p|reel|tv)\/[A-Za-z0-9_-]+\/?$/.test(url.pathname)) return;
+      url.search = ""; url.hash = ""; permalink = url.href;
+    } catch { return; }
+  }
+  return savePublishedPostRevision(current, {
+    caption: verified.caption, captionSyncedAt: verified.checkedAt, publishedMediaId: verified.publishedMediaId,
+    ...(permalink ? { postedUrl: permalink } : {}),
+    // A differing local draft survives synchronization, including changes made on Instagram.
+    ...(current.captionDraft?.caption === verified.caption ? { captionDraft: undefined } : {}),
+  });
+}
 
 export async function listPosts(userId: string): Promise<Post[]> {
   const sb = remote();

@@ -22,6 +22,24 @@ const postPending = new Map<string, Promise<InstagramPostInsights>>();
 type PerformancePost = InstagramPerformance["posts"][number];
 type ObjectValue = Record<string, unknown>;
 
+export type InstagramPublishedCaption = {
+  postId: string;
+  checkedAt: number;
+} & ({
+  status: "ready";
+  /** The exact current API value. An empty caption is valid; an omitted field is not. */
+  caption: string;
+  publishedMediaId: string;
+  permalink?: string;
+  accountId: string;
+  accountUserId: string;
+  connectedAt: number;
+} | {
+  status: "disconnected" | "unavailable";
+  message: string;
+});
+const captionPending = new Map<string, Promise<InstagramPublishedCaption>>();
+
 class GraphReadError extends Error {
   constructor(readonly code?: number, readonly status?: number) { super("Instagram read unavailable"); }
 }
@@ -356,4 +374,68 @@ export async function getInstagramPostInsights(userId: string, postId: string): 
     postCache.set(key, { until: Date.now() + (result.status === "ready" ? 120_000 : 30_000), result });
     return structuredClone(result);
   } finally { if (postPending.get(key) === work) postPending.delete(key); }
+}
+
+function captionUnavailable(postId: string, message: string, status: "unavailable" | "disconnected" = "unavailable"): InstagramPublishedCaption {
+  return { status, postId, checkedAt: Date.now(), message };
+}
+
+/**
+ * Fetches the current caption; never claims that a saved local draft updated Instagram.
+ * The official media update operation only documents comment_enabled, not caption:
+ * https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/#updating
+ */
+export async function getInstagramPublishedCaption(userId: string, postId: string): Promise<InstagramPublishedCaption> {
+  if (typeof postId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(postId)) return captionUnavailable("", "Selecione uma publicação válida.");
+  let post: Post | undefined, stored: SocialAccount | undefined;
+  try {
+    post = (await listPosts(userId)).find(item => item.id === postId && item.userId === userId);
+    if (!post || post.deletedAt || post.platform !== "instagram" || post.status !== "posted" || post.mode !== "live") return captionUnavailable(postId, "Selecione uma publicação concluída no Instagram da sua conta.");
+    stored = await getSocialAccount(userId, "instagram");
+    if (!stored || stored.userId !== userId || stored.platform !== "instagram" || stored.status !== "connected") return captionUnavailable(postId, "Conecte a conta do Instagram usada nesta publicação para conferir a legenda.", "disconnected");
+    if (stored.oauthProvider !== "instagram" || !boundPost(post, userId, stored)) return captionUnavailable(postId, "Esta publicação pertence a outra conexão do Instagram. Reconecte a conta usada ao publicar.");
+  } catch { return captionUnavailable(postId, "Não foi possível consultar a publicação agora. Sua versão salva foi preservada."); }
+  const selected = post, account = stored;
+  const key = JSON.stringify([userId, account.id, accountIdentity(account), account.connectedAt, [...account.scopes ?? []].sort(), postId, selected.publishedMediaId ?? null, selected.postedUrl ?? null]);
+  const inflight = captionPending.get(key);
+  if (inflight) return structuredClone(await inflight);
+  if (captionPending.size >= MAX_CACHE) return captionUnavailable(postId, "As consultas estão ocupadas agora. Tente novamente em instantes.");
+  const work = (async (): Promise<InstagramPublishedCaption> => {
+    try {
+      const fresh = await freshSocialAccount(account);
+      if (!sameConnection(fresh, account) || !fresh.scopes?.includes(BASIC)) throw new GraphReadError();
+      const accountId = accountIdentity(fresh)!;
+      const bearer = openSocialToken(fresh.accessToken, `${userId}:instagram`);
+      const signal = AbortSignal.timeout(10_000);
+      const me = await graphRead("me", { fields: "user_id,username" }, bearer, signal);
+      if (String(me.user_id ?? "") !== accountId) throw new GraphReadError();
+      let media: ObjectValue | undefined;
+      if (selected.publishedMediaId) {
+        if (!numericId(selected.publishedMediaId)) throw new GraphReadError();
+        try {
+          const direct = await graphRead(selected.publishedMediaId, { fields: `${POST_FIELDS},caption` }, bearer, signal);
+          if (boundMedia(direct, accountId, selected.publishedMediaId) && typeof direct.caption === "string") media = direct;
+        } catch (error) {
+          if (!(error instanceof GraphReadError) || (error.code !== 100 && error.status !== 404)) throw error;
+        }
+      }
+      if (!media) media = await accountMedia(selected, accountId, bearer, signal);
+      if (!media || typeof media.caption !== "string" || media.caption.length > 10_000) return captionUnavailable(postId, "O Instagram não disponibilizou a legenda atual desta publicação. Sua versão salva foi preservada.");
+      const latestAccount = await getSocialAccount(userId, "instagram");
+      const latestPost = (await listPosts(userId)).find(item => item.id === postId && item.userId === userId);
+      if (!latestAccount || !sameConnection(latestAccount, account) || !boundPost(latestPost, userId, latestAccount)
+        || latestPost.publishedMediaId !== selected.publishedMediaId || latestPost.postedUrl !== selected.postedUrl) {
+        return captionUnavailable(postId, "A publicação ou a conta mudou durante a consulta. Abra os detalhes novamente.");
+      }
+      const permalink = safePermalink(media.permalink);
+      return {
+        status: "ready", postId, checkedAt: Date.now(), caption: media.caption, publishedMediaId: media.id as string,
+        ...(permalink ? { permalink } : {}), accountId: account.id, accountUserId: accountId, connectedAt: account.connectedAt,
+      };
+    } catch { return captionUnavailable(postId, "Não foi possível conferir a legenda no Instagram agora. Sua versão salva foi preservada."); }
+  })();
+  captionPending.set(key, work);
+  // Only overlap is deduplicated: another explicit check always performs a new GET.
+  try { return structuredClone(await work); }
+  finally { if (captionPending.get(key) === work) captionPending.delete(key); }
 }

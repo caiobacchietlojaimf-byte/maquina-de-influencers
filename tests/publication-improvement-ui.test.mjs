@@ -24,7 +24,7 @@ function walk(element, predicate) {
 }
 
 /** Run the actual editor handlers/effects with local hooks and deferred actions; no network or publication. */
-function editor() {
+function editor(overrides = {}) {
   let cursor = 0;
   let tree;
   let timerId = 0;
@@ -64,6 +64,7 @@ function editor() {
       if (id === "react/jsx-runtime" || id === "lucide-react") return require(id);
       if (id === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
       if (id === "@/lib/publish-caption") return captionModule.exports;
+      if (id === "@/lib/display-date") return { displayDateTime: () => "hoje" };
       if (id === "./video-preview" || id === "./instagram-post-insights") return {};
       if (id === "@/app/actions/publication-assistant") return {
         preparePublicationAction(input) { const call = { input, ...deferred() }; prepareCalls.push(call); return call.promise; },
@@ -74,6 +75,7 @@ function editor() {
     },
   });
   const props = { initialAccounts: [], initialPosts: [], videos: [{ id: "video-1", name: "Cena 1", resultUrl: "https://example.test/1.mp4", kind: "motion" }, { id: "video-2", name: "Cena 2", resultUrl: "https://example.test/2.mp4", kind: "motion" }], tiktokOAuth: false, instagramOAuth: false, preselectVideoId: "video-1", flash: null };
+  Object.assign(props, overrides);
   const render = () => { cursor = 0; tree = loaded.exports.PublishCenter(props); pendingEffects.splice(0).forEach(effect => effect()); return tree; };
   const find = predicate => walk(tree, predicate);
   const button = label => {
@@ -215,5 +217,25 @@ test("an improvement returned for another video is not offered", async () => {
   assert.equal(ui.caption(), "Meu texto");
   assert.match(ui.text(), /Não foi possível conferir a melhoria/);
   assert.doesNotMatch(ui.text(), /Sugestão de melhoria/);
+  ui.unmount();
+});
+
+test("published Instagram cards open their own editor without preparing or republishing a video", () => {
+  const base = { userId: "owner", videoId: "video-1", caption: "Já publicada", scheduledAt: 100, createdAt: 100, status: "posted", mode: "live", platform: "instagram" };
+  const ui = editor({ preselectVideoId: null, initialPosts: [
+    { ...base, id: "published-1" },
+    { ...base, id: "tiktok-1", platform: "tiktok" },
+    { ...base, id: "demo-1", mode: "demo" },
+  ] });
+  assert.equal(ui.find(node => node.props["aria-label"] === "Editar ou melhorar publicação").length, 1);
+  ui.click(" Editar / melhorar");
+  const dialog = ui.find(node => node.props.postId === "published-1" && typeof node.props.onSynced === "function")[0];
+  assert.ok(dialog);
+  assert.equal(ui.prepareCalls.length, 0); assert.equal(ui.improveCalls.length, 0);
+  assert.equal(ui.find(node => node.props.titleId === "composer-title").length, 0);
+  dialog.props.onSynced({ postId: "published-1", currentCaption: "Legenda confirmada na rede", checkedAt: 200 }); ui.render();
+  assert.match(ui.text(), /Legenda confirmada na rede/);
+  dialog.props.onClose(); ui.render();
+  assert.equal(ui.find(node => node.props.postId === "published-1" && typeof node.props.onSynced === "function").length, 0);
   ui.unmount();
 });

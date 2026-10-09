@@ -51,6 +51,7 @@ import {
 import styles from "./publish-center.module.css";
 import { VideoCover } from "./video-preview";
 import { InstagramPostInsights } from "./instagram-post-insights";
+import { PublishedPostEditor } from "@/components/published-post-editor";
 
 type MiniAccount = {
   platform: SocialPlatform;
@@ -148,6 +149,7 @@ export function PublishCenter({
   const [igModal, setIgModal] = useState(false);
   const [igError, setIgError] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(Boolean(preselectVideoId));
+  const [publishedEditorPostId, setPublishedEditorPostId] = useState<string | null>(null);
   const [draftId, setDraftId] = useState<string | undefined>();
   const [videoId, setVideoId] = useState(
     preselectVideoId && videos.some((video) => video.id === preselectVideoId)
@@ -752,6 +754,13 @@ export function PublishCenter({
                     )}
                   </div>
                   <div className={`q-actions ${styles.queueActions}`}>
+                    {post.status === "posted" && post.platform === "instagram" && !demo ? (
+                      <button type="button" className="btn btn-ghost btn-sm"
+                        aria-label="Editar ou melhorar publicação"
+                        onClick={() => setPublishedEditorPostId(post.id)}>
+                        <Pencil size={14} /> Editar / melhorar
+                      </button>
+                    ) : null}
                     {post.status === "draft" || (post.status === "failed" && !post.publicationUncertain) ? (
                       <button
                         type="button"
@@ -829,6 +838,15 @@ export function PublishCenter({
           </div>
         )}
       </section>
+
+      {publishedEditorPostId ? <PublishedPostEditor
+        key={`${publishedEditorPostId}:${instagramConnectionKey}`}
+        postId={publishedEditorPostId}
+        onClose={() => setPublishedEditorPostId(null)}
+        onSynced={editor => setPosts(current => current.map(item => item.id === editor.postId
+          ? { ...item, caption: editor.currentCaption, captionSyncedAt: editor.checkedAt }
+          : item))}
+      /> : null}
 
       {composerOpen ? (
         <PublishDialog
