@@ -60,3 +60,8 @@ Migração: `supabase/migrations/20261009080356_commerce_and_security.sql`. Nova
 
 Validação: 269 testes Node (267 aprovados, zero falhas, dois ignorados), TypeScript e build Next aprovados; 63 vídeos com áudio e 148 imagens do catálogo validados. Auditoria pnpm sem vulnerabilidades conhecidas. Banco validado com rollback e RLS restrita. Navegador local isolado: login, plano selecionado, temas, painel e configuração com auditoria. Produção: páginas públicas HTTP 200, administração anônima redireciona para login, cron sem segredo recebe 401 e recuperação de áudio Wan conferida. QA local usa contas fictícias e não tem chaves de provedores/gateway. Manter os testes simulados distintos de validação real externa.
 
+## Agendador verificado
+
+Vercel Cron configurado a cada minuto. Primeira execução automática comprovada no banco em 09/10/2026 às 05:45:28 (São Paulo), concluída às 05:45:29, sem chamada manual ao endpoint nem publicação de teste. A telemetria em `mi_settings/publication-cron-health` permite acompanhar início, sucesso e falha no painel administrativo. `PUBLICATION_CRON_CONFIGURED=true` habilita agendamento; ainda é necessária uma conexão social oficial válida. O endpoint sem Bearer continua respondendo 401.
+
+A correção de datas foi conferida no navegador de produção: sem novos erros de hidratação e com os quatro players principais carregados. Artefatos de QA locais em `artifacts/mvp/` (ignorados no Git).
