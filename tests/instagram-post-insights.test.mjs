@@ -83,9 +83,13 @@ test("direct published media reads are independent of recent-post limits and nev
 
 test("verified /me alone never authorizes a public media object belonging to someone else", async () => {
   for (const patch of [{ owner: { id: "99999" } }, { owner: undefined, username: "owner" }, { owner: { id: 12345 } }, { id: "99999" }]) {
-    const f = fixture({ state: { account: connected({ scopes: [BASIC, INSIGHTS] }) }, fetch: (url, _state, fallback) => url.pathname === "/v24.0/77777" ? Response.json(media(patch)) : fallback(url) });
+    const f = fixture({ state: { account: connected({ scopes: [BASIC, INSIGHTS] }) }, fetch: (url, _state, fallback) => {
+      if (url.pathname === "/v24.0/77777") return Response.json(media(patch));
+      if (url.pathname.endsWith("/media")) return Response.json({ data: [] });
+      return fallback(url);
+    } });
     const result = await f.get("owner", "post-1");
-    assert.equal(result.status, "unavailable"); assert.deepEqual(result.metrics, {}); assert.equal(f.state.calls.length, 2);
+    assert.equal(result.status, "unavailable"); assert.deepEqual(result.metrics, {}); assert.equal(f.state.calls.length, 3);
   }
   const stringOwner = fixture({ fetch: (url, _state, fallback) => url.pathname === "/v24.0/77777" ? Response.json(media({ owner: "12345" })) : fallback(url) });
   assert.equal((await stringOwner.get("owner", "post-1")).status, "ready");
@@ -128,12 +132,13 @@ test("hidden, invalid and absent basic counts stay absent even when the other co
   }
 });
 
-test("legacy lookup requires exact permalink, confirmed media owner and a cursor on the fixed Graph host", async () => {
+test("legacy lookup requires exact permalink on the verified account edge, without optional owner fields", async () => {
   const f = fixture({ state: { posts: [published({ publishedMediaId: undefined, postedUrl: "https://instagram.com/reel/RightCode?utm_source=x" })] }, fetch: (url, _state, fallback) => {
     if (!url.pathname.endsWith("/media")) return fallback(url);
     assert.equal(url.pathname, "/v24.0/12345/media"); assert.equal(url.searchParams.get("limit"), "50");
-    if (!url.searchParams.has("after")) return Response.json({ data: [media({ id: "100", permalink: "https://www.instagram.com/reel/RightCodeExtra/" }), media({ id: "101", owner: { id: "99999" } })], paging: { next: "https://attacker.example/steal", cursors: { after: "next-page" } } });
-    assert.equal(url.searchParams.get("after"), "next-page"); return Response.json({ data: [media()] });
+    assert.equal(url.searchParams.get("fields"), "id,caption,permalink,timestamp,like_count,comments_count,media_type");
+    if (!url.searchParams.has("after")) return Response.json({ data: [media({ id: "100", permalink: "https://www.instagram.com/reel/RightCodeExtra/" }), media({ id: "101", permalink: "https://www.instagram.com/reel/OtherCode/" })], paging: { next: "https://attacker.example/steal", cursors: { after: "next-page" } } });
+    assert.equal(url.searchParams.get("after"), "next-page"); return Response.json({ data: [media({ owner: undefined })] });
   } });
   const result = await f.get("owner", "post-1");
   assert.equal(result.status, "ready"); assert.equal(result.mediaId, "77777"); assert.equal(f.state.calls.length, 3);
@@ -143,11 +148,61 @@ test("legacy lookup requires exact permalink, confirmed media owner and a cursor
 test("legacy lookup is bounded to 150 media and does not invent a match from a container or username", async () => {
   const f = fixture({ state: { posts: [published({ publishedMediaId: undefined })] }, fetch: (url, state, fallback) => {
     if (!url.pathname.endsWith("/media")) return fallback(url);
-    return Response.json({ data: [media({ id: "88888", owner: undefined, username: "owner" })], paging: { next: "https://graph.instagram.com/ignored", cursors: { after: `page-${state.calls.length}` } } });
+    return Response.json({ data: [media({ id: "88888", owner: undefined, username: "owner", permalink: "https://www.instagram.com/reel/OtherCode/" })], paging: { next: "https://graph.instagram.com/ignored", cursors: { after: `page-${state.calls.length}` } } });
   } });
   const result = await f.get("owner", "post-1");
   assert.equal(result.status, "unavailable"); assert.match(result.message, /150/); assert.equal(f.state.calls.length, 4);
   assert.equal(result.mediaId, undefined); assert.deepEqual(result.metrics, {});
+});
+
+test("missing or differently scoped direct owner IDs use exact account-edge proof instead of failing", async () => {
+  for (const patch of [{ owner: undefined }, { owner: { id: "180000000012345" } }, { owner: "178999999999999" }]) {
+    const f = fixture({ fetch: (url, _state, fallback) => {
+      if (url.pathname === "/v24.0/77777") return Response.json(media({ ...patch, like_count: 99999 }));
+      if (url.pathname.endsWith("/media")) {
+        assert.equal(url.pathname, "/v24.0/12345/media");
+        assert.equal(url.searchParams.get("fields"), "id,caption,permalink,timestamp,like_count,comments_count,media_type");
+        return Response.json({ data: [media({ owner: undefined, like_count: 2 })] });
+      }
+      return fallback(url);
+    } });
+    const result = await f.get("owner", "post-1");
+    assert.equal(result.status, "ready"); assert.equal(result.mediaId, "77777"); assert.equal(result.metrics.likes, 2);
+    assert.equal(f.state.calls.length, 3);
+  }
+});
+
+test("unsupported direct owner fields fall back to the working account-edge fields", async () => {
+  for (const error of [{ code: 100, status: 400 }, { code: undefined, status: 404 }]) {
+    const f = fixture({ fetch: (url, _state, fallback) => {
+      if (url.pathname === "/v24.0/77777") return Response.json({ error: { code: error.code, message: "Unsupported owner field private-server-token" } }, { status: error.status });
+      if (url.pathname.endsWith("/media")) return Response.json({ data: [media({ owner: undefined })] });
+      return fallback(url);
+    } });
+    const result = await f.get("owner", "post-1");
+    assert.equal(result.status, "ready"); assert.equal(result.metrics.comments, 8); assert.equal(f.state.calls.length, 3);
+    assert.doesNotMatch(JSON.stringify(result), /private-server-token|Unsupported owner/);
+  }
+});
+
+test("account-edge fallback requires both stored media ID and permalink when both exist", async () => {
+  for (const edge of [[media({ id: "55555" })], [media({ permalink: "https://www.instagram.com/reel/OtherCode/" })], [media({ permalink: undefined })]]) {
+    const f = fixture({ fetch: (url, _state, fallback) => {
+      if (url.pathname === "/v24.0/77777") return Response.json(media({ owner: undefined }));
+      if (url.pathname.endsWith("/media")) return Response.json({ data: edge });
+      return fallback(url);
+    } });
+    const result = await f.get("owner", "post-1");
+    assert.equal(result.status, "unavailable"); assert.deepEqual(result.metrics, {});
+  }
+  const idOnly = fixture({ state: { posts: [published({ postedUrl: undefined })] }, fetch: (url, _state, fallback) => url.pathname === "/v24.0/77777" ? Response.json(media({ owner: undefined })) : fallback(url) });
+  assert.equal((await idOnly.get("owner", "post-1")).status, "ready");
+});
+
+test("direct authentication failures never trigger account-edge retries", async () => {
+  const f = fixture({ fetch: (url, _state, fallback) => url.pathname === "/v24.0/77777" ? Response.json({ error: { code: 190 } }, { status: 401 }) : fallback(url) });
+  assert.equal((await f.get("owner", "post-1")).status, "unavailable");
+  assert.equal(f.state.calls.length, 2);
 });
 
 test("invalid provider IDs and legacy links are never used as fetch paths", async () => {

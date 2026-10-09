@@ -243,16 +243,18 @@ function boundMedia(media: ObjectValue, accountId: string, expectedId?: string):
   return numericId(media.id) && (!expectedId || media.id === expectedId) && mediaOwner(media) === accountId;
 }
 
-/** Legacy posts have no media ID: only an exact permalink in the verified account's media edge can resolve it. */
-async function legacyMedia(post: Post, accountId: string, bearer: string, signal: AbortSignal): Promise<ObjectValue | undefined> {
+/** The authenticated user's media edge proves account membership without an optional owner field. */
+async function accountMedia(post: Post, accountId: string, bearer: string, signal: AbortSignal): Promise<ObjectValue | undefined> {
   const target = permalinkKey(post.postedUrl);
-  if (!target) return;
+  const publishedId = post.publishedMediaId;
+  if (publishedId ? !numericId(publishedId) || (post.postedUrl && !target) : !target) return;
   let after: string | undefined;
   const cursors = new Set<string>();
   for (let page = 0; page < 3; page++) {
-    const response = await graphRead(`${accountId}/media`, { fields: POST_FIELDS, limit: "50", ...(after ? { after } : {}) }, bearer, signal);
+    const response = await graphRead(`${accountId}/media`, { fields: MEDIA_FIELDS, limit: "50", ...(after ? { after } : {}) }, bearer, signal);
     if (!Array.isArray(response.data)) throw new GraphReadError();
-    const matching = response.data.slice(0, 50).map(object).find(media => media && boundMedia(media, accountId) && permalinkKey(media.permalink) === target);
+    const matching = response.data.slice(0, 50).map(object).find(media => media && numericId(media.id)
+      && (!publishedId || media.id === publishedId) && (!target || permalinkKey(media.permalink) === target));
     if (matching) return matching;
     const paging = object(response.paging), cursor = object(paging?.cursors)?.after;
     // Never follow the provider-supplied next URL or accept an unbounded cursor.
@@ -272,13 +274,19 @@ async function readPostInsights(post: Post, stored: SocialAccount): Promise<Inst
   let media: ObjectValue | undefined;
   if (post.publishedMediaId) {
     if (!numericId(post.publishedMediaId)) throw new GraphReadError();
-    media = await graphRead(post.publishedMediaId, { fields: POST_FIELDS }, bearer, signal);
-    // A successful /me check alone does not authorize a different public media object.
-    if (!boundMedia(media, accountId, post.publishedMediaId)) throw new GraphReadError();
-  } else {
-    media = await legacyMedia(post, accountId, bearer, signal);
-    if (!media) return postResult(post.id, "unavailable", "Esta publicação antiga não foi localizada entre as 150 mídias recentes da conta. Não foi possível confirmar suas métricas.");
+    try {
+      const direct = await graphRead(post.publishedMediaId, { fields: POST_FIELDS }, bearer, signal);
+      // Public objects cannot be trusted solely because /me succeeded. Some
+      // Instagram Login responses omit owner or use a different ID namespace.
+      if (boundMedia(direct, accountId, post.publishedMediaId)) media = direct;
+    } catch (error) {
+      // Optional fields can be unsupported even though the account media edge
+      // works. Authentication/network errors do not trigger additional queries.
+      if (!(error instanceof GraphReadError) || (error.code !== 100 && error.status !== 404)) throw error;
+    }
   }
+  if (!media) media = await accountMedia(post, accountId, bearer, signal);
+  if (!media) return postResult(post.id, "unavailable", "Esta publicação não foi confirmada entre as 150 mídias recentes da conta. Não foi possível consultar suas métricas.");
   const mediaId = media.id as string, metrics: InstagramPostInsights["metrics"] = {};
   const likes = count(media.like_count), comments = count(media.comments_count);
   if (likes !== undefined) metrics.likes = likes;
