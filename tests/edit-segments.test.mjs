@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -23,6 +23,7 @@ const ffmpeg = require("@ffmpeg-installer/ffmpeg").path;
 const original = readFileSync(new URL("../public/reel-videos/Dd_qcXdgsdb.mp4", import.meta.url));
 const originalMetadata = media.mp4Metadata(original);
 const ff = args => execFileSync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-nostdin", ...args], { windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+const frameHashes = file => ff(["-threads", "1", "-i", file, "-map", "0:v:0", "-vsync", "0", "-f", "framemd5", "pipe:1"]).toString().split(/\r?\n/).filter(line => line && !line.startsWith("#")).map(line => line.split(",").at(-1).trim());
 
 test("segment plan covers all time with adjacent ranges and no unsupported short tail", () => {
   for (const duration of [3, 14.999, 15, 15.001, 17.157, 29.08, 30]) {
@@ -98,11 +99,53 @@ test("lossless keyframe splitting keeps identical pictures and reports the actua
     assert.equal(parts[1].start, 9, "the returned start must use the actual pictures, not the proposed midpoint");
     assert.equal(parts[1].duration, 8);
     assert.equal(parts.reduce((sum, part) => sum + media.mp4Metadata(part.bytes).frameCount, 0), metadata.frameCount);
-    const hashes = file => ff(["-threads", "1", "-i", file, "-map", "0:v:0", "-vsync", "0", "-f", "framemd5", "pipe:1"]).toString().split(/\r?\n/).filter(line => line && !line.startsWith("#")).map(line => line.split(",").at(-1).trim());
     const actual = parts.flatMap((part, index) => {
-      const output = path.join(directory, `part-${index}.mp4`); writeFileSync(output, part.bytes); return hashes(output);
+      const output = path.join(directory, `part-${index}.mp4`); writeFileSync(output, part.bytes); return frameHashes(output);
     });
-    assert.deepEqual([...actual], hashes(sourcePath), "every full-resolution decoded frame must remain bit-identical and in order");
+    assert.deepEqual([...actual], frameHashes(sourcePath), "every full-resolution decoded frame must remain bit-identical and in order");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("timeline normalization rejects missing footage and only permits small frame-rounding errors", () => {
+  const metadata = { duration: 14.708333333333334, videoDuration: 14.708333333333334, width: 720, height: 1280, hasAudio: false, frameCount: 353 };
+  assert.doesNotThrow(() => segments.validateEditTiming(metadata, 14.833333333333334));
+  assert.throws(() => segments.validateEditTiming(metadata, 17));
+  assert.throws(() => segments.validateEditTiming({ ...metadata, duration: 20, videoDuration: 20, frameCount: 200 }, 20.3), "absolute limit remains 250ms");
+  assert.throws(() => segments.validateEditTiming({ ...metadata, duration: 3, videoDuration: 3, frameCount: 72 }, 3.09), "short clips cannot be stretched by more than 2%");
+  assert.throws(() => segments.validateEditTiming({ ...metadata, duration: 10, videoDuration: 10, frameCount: 600 }, 10.1), "high-FPS clips may not exceed four frame intervals");
+  for (const target of [0, -1, NaN, Infinity]) assert.throws(() => segments.validateEditTiming(metadata, target));
+});
+
+test("two 125ms provider deficits align to the original timeline without changing any generated picture", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-test-align-segments-"));
+  try {
+    const files = [path.join(directory, "first.mp4"), path.join(directory, "second.mp4")];
+    [353, 337].forEach((frames, index) => ff(["-f", "lavfi", "-i", "testsrc2=size=96x160:rate=24", "-frames:v", String(frames), "-c:v", "libx264", "-crf", "28", "-preset", "veryfast", "-y", files[index]]));
+    const buffers = files.map(file => readFileSync(file));
+    const joined = await segments.joinEditedSegments(buffers, { targetDurations: [14 + 5 / 6, 14 + 1 / 6] });
+    const metadata = media.mp4Metadata(joined);
+    assert.equal(metadata.frameCount, 690);
+    assert.equal(metadata.width, 96); assert.equal(metadata.height, 160); assert.equal(metadata.hasAudio, false);
+    assert.ok(Math.abs(metadata.videoDuration - 29) < 1 / 24);
+    const result = path.join(directory, "aligned.mp4"); writeFileSync(result, joined);
+    assert.deepEqual(frameHashes(result), files.flatMap(frameHashes), "timestamp normalization must retain every decoded pixel and frame order");
+    await assert.rejects(segments.joinEditedSegments(buffers, { targetDurations: [17, 14 + 1 / 6] }));
+    await assert.rejects(segments.joinEditedSegments(buffers, { targetDurations: [29] }));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+const recoveryDirectory = path.join(tmpdir(), "mi-audio-recovery");
+const recoveryFiles = [path.join(recoveryDirectory, "result-0.mp4"), path.join(recoveryDirectory, "result-1.mp4")];
+test("actual Kling results retain all 690 full-resolution frames bit-for-bit after timing recovery", { skip: !recoveryFiles.every(existsSync) }, async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-test-real-timing-"));
+  try {
+    const buffers = recoveryFiles.map(file => readFileSync(file));
+    const joined = await segments.joinEditedSegments(buffers, { targetDurations: [14 + 5 / 6, 14 + 1 / 6] });
+    const metadata = media.mp4Metadata(joined);
+    assert.equal(metadata.frameCount, 690); assert.equal(metadata.width, 720); assert.equal(metadata.height, 1280);
+    assert.ok(Math.abs(metadata.videoDuration - 29) < 1 / 24);
+    const result = path.join(directory, "aligned.mp4"); writeFileSync(result, joined);
+    assert.deepEqual(frameHashes(result), recoveryFiles.flatMap(frameHashes));
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

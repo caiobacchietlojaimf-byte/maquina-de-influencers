@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { VideoMetadata } from "./video-reference";
 
 /* Camada de dados com dois drivers e a MESMA API assíncrona:
    - Supabase (Postgres) quando SUPABASE_URL + SUPABASE_KEY + MI_DB_SECRET
@@ -61,10 +62,10 @@ export type Video = {
   edit?: {
     model: string; sourceUrl: string; imageUrl: string; target: string;
     provider?: "fal" | "higgsfield"; seed?: number;
-    segments?: Array<{ sourceUrl: string; start: number; source: { duration: number; width: number; height: number; hasAudio: boolean }; requestId?: string; resultUrl?: string }>;
-    source: { duration: number; width: number; height: number; hasAudio: boolean };
+    segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata; requestId?: string; resultUrl?: string }>;
+    source: VideoMetadata;
     resolution: "480p" | "720p" | "1080p" | "auto"; estimatedUsd: number;
-    result?: { duration: number; width: number; height: number; hasAudio: boolean };
+    result?: VideoMetadata;
     audioPreserved?: boolean;
   };
   finalizationStartedAt?: number;

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Film, Flame, Send, Trash2, Wand2 } from "lucide-react";
 
 import { deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
 import type { Video } from "@/lib/db";
 import { editModelLabel } from "@/lib/character-edit";
+import { canFinalizeExistingEdit, finalizeEditClient } from "@/lib/finalize-edit-client";
 
 const FILTERS = [
   { id: "all", label: "Todos" },
@@ -17,17 +18,57 @@ const FILTERS = [
 export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
   const [videos, setVideos] = useState<Video[]>(initialVideos);
   const [filter, setFilter] = useState<string>("all");
+  const [finalizing, setFinalizing] = useState<Set<string>>(() => new Set());
+  const [finalizationErrors, setFinalizationErrors] = useState<Record<string, string>>({});
+  const activeFinalizations = useRef(new Map<string, AbortController>());
+  const pollRevision = useRef(0);
   const hasPending = videos.some((v) => v.status === "processing" || v.status === "queued");
+
+  useEffect(() => () => {
+    for (const controller of activeFinalizations.current.values()) controller.abort();
+    activeFinalizations.current.clear();
+    pollRevision.current++;
+  }, []);
 
   useEffect(() => {
     if (!hasPending) return;
+    let disposed = false;
     const timer = setInterval(() => {
+      const revision = pollRevision.current;
       pollVideosAction()
-        .then(setVideos)
+        .then(items => {
+          if (disposed || revision !== pollRevision.current) return;
+          setVideos(current => items.map(item => activeFinalizations.current.has(item.id) ? current.find(video => video.id === item.id) ?? item : item));
+        })
         .catch(() => undefined);
     }, 4000);
-    return () => clearInterval(timer);
+    return () => { disposed = true; clearInterval(timer); };
   }, [hasPending]);
+
+  async function finalize(video: Video) {
+    if (!canFinalizeExistingEdit(video) || activeFinalizations.current.has(video.id)) return;
+    const controller = new AbortController();
+    activeFinalizations.current.set(video.id, controller);
+    pollRevision.current++;
+    setFinalizing(current => new Set(current).add(video.id));
+    setFinalizationErrors(current => ({ ...current, [video.id]: "" }));
+    try {
+      const result = await finalizeEditClient(video.id, { signal: controller.signal });
+      if (activeFinalizations.current.get(video.id) !== controller) return;
+      pollRevision.current++;
+      if (result.video) setVideos(current => current.map(item => item.id === video.id ? result.video! : item));
+      if (result.error) setFinalizationErrors(current => ({ ...current, [video.id]: result.error! }));
+    } catch (error) {
+      if (activeFinalizations.current.get(video.id) !== controller) return;
+      setFinalizationErrors(current => ({ ...current, [video.id]: error instanceof Error ? error.message : "Não foi possível confirmar a finalização. Atualize a página para conferir o vídeo." }));
+    } finally {
+      if (activeFinalizations.current.get(video.id) === controller) {
+        activeFinalizations.current.delete(video.id);
+        pollRevision.current++;
+        setFinalizing(current => { const next = new Set(current); next.delete(video.id); return next; });
+      }
+    }
+  }
 
   const list = useMemo(
     () => (filter === "all" ? videos : videos.filter((v) => v.kind === filter)),
@@ -67,16 +108,18 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
         {list.map((video) => (
           <div key={video.id} className="gen-card">
             <div className="media" style={{ aspectRatio: "9 / 12" }}>
-              {(video.status === "completed" || video.status === "review") && video.resultUrl ? (
+              {finalizing.has(video.id) ? (
+                <div className="pending skeleton" role="status"><span className="spinner" /><span className="hint">Finalizando vídeo e áudio…</span></div>
+              ) : (video.status === "completed" || video.status === "review") && video.resultUrl ? (
                 <video
                   src={video.resultUrl}
                   poster={video.thumbnailUrl}
                   controls
-                  muted
                   loop
                   playsInline
                   preload="metadata"
                   style={{ objectFit: "contain" }}
+                  aria-label={`${video.status === "completed" ? "Vídeo completo" : "Resultado para revisão"}: ${video.presetName ?? "Vídeo"}`}
                 />
               ) : video.status === "failed" || video.status === "review" ? (
                 <div className="pending">
@@ -91,7 +134,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 </div>
               )}
               <span className="status-tag" data-status={video.status}>
-                {video.status === "completed" ? (
+                {finalizing.has(video.id) ? "Finalizando" : video.status === "completed" ? (
                   video.edit ? "Personagem trocado" : video.kind === "viral" ? "Viral" : "Movimento"
                 ) : video.status === "review" ? (
                   "Precisa de revisão"
@@ -107,7 +150,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                     {video.status === "completed" && <Link href={`/app/publicar?video=${video.id}`} title="Publicar nas redes">
                       <Send size={14} />
                     </Link>}
-                    <a href={video.resultUrl} target="_blank" rel="noreferrer" title="Baixar vídeo">
+                    <a href={video.resultUrl} target="_blank" rel="noreferrer" title={video.status === "completed" ? "Baixar vídeo completo" : "Abrir resultado para revisão"}>
                       <Download size={14} />
                     </a>
                   </>
@@ -115,7 +158,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 <button
                   type="button"
                   title="Excluir"
-                  disabled={Boolean(video.edit && (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)))}
+                  disabled={finalizing.has(video.id) || Boolean(video.edit && (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)))}
                   onClick={async () => {
                     await deleteVideoAction(video.id);
                     setVideos((prev) => prev.filter((v) => v.id !== video.id));
@@ -140,13 +183,21 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               <span>Original: {video.edit.source.duration.toFixed(2)}s{video.edit.result ? ` · Resultado: ${video.edit.result.duration.toFixed(2)}s` : ""}</span>
               {video.edit.audioPreserved && <span>Áudio original preservado · duração e proporção conferidas</span>}
               {video.error && <p role="status" style={{ color: "var(--danger)" }}>{video.error}</p>}
+              {canFinalizeExistingEdit(video) && <>
+                <button type="button" className="btn btn-accent btn-sm" disabled={finalizing.has(video.id)} onClick={() => void finalize(video)}>
+                  {finalizing.has(video.id) ? <><span className="spinner" />Finalizando vídeo e áudio…</> : <><Film size={14} />Finalizar vídeo completo</>}
+                </button>
+                <p style={{ color: "var(--tx2)", lineHeight: 1.5 }}>Reúne os resultados disponíveis e restaura o áudio original. Sem nova geração ou cobrança de créditos.</p>
+              </>}
+              {finalizationErrors[video.id] && finalizationErrors[video.id] !== video.error && <p role="alert" style={{ color: "var(--danger)" }}>{finalizationErrors[video.id]}</p>}
               <details>
                 <summary style={{ cursor: "pointer" }}>Comparar com o original</summary>
                 <video src={video.edit.sourceUrl} controls playsInline preload="none" style={{ width: "100%", marginTop: 8 }} aria-label={`Original de ${video.presetName ?? "vídeo"}`} />
                 <p>{video.edit.target}</p>
               </details>
               {video.edit.segments && video.edit.segments.length > 1 && <details>
-                <summary style={{ cursor: "pointer" }}>Trechos da edição ({video.edit.segments.length})</summary>
+                <summary style={{ cursor: "pointer" }}>Trechos gerados antes da finalização ({video.edit.segments.length})</summary>
+                <p style={{ color: "var(--tx2)", marginTop: 8, lineHeight: 1.5 }}>Estes são os arquivos separados recebidos da IA. O áudio original é restaurado no vídeo completo após a finalização.</p>
                 {video.edit.segments.map((part, index) => <div key={part.sourceUrl} style={{ marginTop: 8 }}>
                   <p>Trecho {index + 1} · {part.source.duration.toFixed(2)}s{part.requestId ? ` · Pedido ${part.requestId}` : ""}</p>
                   {part.resultUrl && <video src={part.resultUrl} controls playsInline preload="none" style={{ width: "100%" }} aria-label={`Resultado do trecho ${index + 1}`} />}

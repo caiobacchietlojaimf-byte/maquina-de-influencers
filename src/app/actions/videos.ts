@@ -129,7 +129,10 @@ export async function pollVideosAction(): Promise<Video[]> {
             const urls = statuses.map(s => s.videoUrl!);
             const edit = { ...video.edit, segments: parts.map((p, i) => ({ ...p, resultUrl: urls[i] })) };
             const complete = { ...video, edit };
-            await updateVideo(video.id, parts.length > 1 ? await finalizeSegmentedEdit(complete, urls) : await finalizeCharacterEdit(complete, urls[0]));
+            // Persist paid results before CPU/network work so an interrupted assembly can be retried for free.
+            await updateVideo(video.id, { edit });
+            const finalized = parts.length > 1 ? await finalizeSegmentedEdit(complete, urls) : await finalizeCharacterEdit(complete, urls[0]);
+            await updateVideo(video.id, { ...finalized, finalizationStartedAt: undefined, ...(finalized.status === "completed" ? { error: undefined } : {}) });
           }
           return;
         }
@@ -137,7 +140,11 @@ export async function pollVideosAction(): Promise<Video[]> {
         if (!TERMINAL_STATUSES.has(status.status)) return;
         if (status.status === "completed" && status.video?.url) {
           if (video.edit) {
-            if (await claimVideoFinalization(video)) await updateVideo(video.id, await finalizeCharacterEdit(video, status.video.url));
+            if (await claimVideoFinalization(video)) {
+              await updateVideo(video.id, { resultUrl: status.video.url });
+              const finalized = await finalizeCharacterEdit(video, status.video.url);
+              await updateVideo(video.id, { ...finalized, finalizationStartedAt: undefined, ...(finalized.status === "completed" ? { error: undefined } : {}) });
+            }
           } else await updateVideo(video.id, { status: "completed", resultUrl: status.video.url });
         } else {
           await updateVideo(video.id, {

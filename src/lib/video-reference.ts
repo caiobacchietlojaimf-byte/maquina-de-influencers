@@ -1,5 +1,5 @@
 export const MAX_REFERENCE_BYTES = 50 * 1024 * 1024;
-export type VideoMetadata = { duration: number; width: number; height: number; hasAudio: boolean; frameCount?: number; videoDuration?: number };
+export type VideoMetadata = { duration: number; width: number; height: number; hasAudio: boolean; frameCount?: number; videoDuration?: number; audioDuration?: number };
 export type StudioReference = {
   kind: "profile" | "viral" | "upload";
   id: string;
@@ -64,7 +64,7 @@ export function mp4Metadata(data: Uint8Array): VideoMetadata {
     // Fragmented MP4s can have an empty table; duration × FPS is not a count.
     return count > 0 ? count : undefined;
   }
-  function videoTrackDuration(mdia: { start: number; end: number }): number | undefined {
+  function trackDuration(mdia: { start: number; end: number }): number | undefined {
     const header = boxes(mdia.start, mdia.end).find(b => b.type === "mdhd");
     // Older/fragmented files may not declare a usable track duration. Keep
     // this optional for those files and for metadata saved before this check.
@@ -80,17 +80,17 @@ export function mp4Metadata(data: Uint8Array): VideoMetadata {
     if (ticks > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Duração da faixa de vídeo do MP4 inválida.");
     return Number(ticks) / scale;
   }
-  let width = 0, height = 0, hasAudio = false, frameCount: number | undefined, videoDuration: number | undefined;
+  let width = 0, height = 0, hasAudio = false, frameCount: number | undefined, videoDuration: number | undefined, audioDuration: number | undefined;
   let primaryVideoFound = false;
   const hasVideo = children.filter(b => b.type === "trak").map(track => {
     const mdia = boxes(track.start, track.end).find(b => b.type === "mdia");
     const handler = mdia && boxes(mdia.start, mdia.end).find(b => b.type === "hdlr");
     const kind = handler && handler.end - handler.start >= 12 && text(handler.start + 8, 4);
-    if (kind === "soun") hasAudio = true;
+    if (kind === "soun" && !hasAudio) { hasAudio = true; audioDuration = trackDuration(mdia!); }
     if (kind === "vide" && !primaryVideoFound) {
       primaryVideoFound = true;
       frameCount = sampleCount(mdia!);
-      videoDuration = videoTrackDuration(mdia!);
+      videoDuration = trackDuration(mdia!);
       const tkhd = boxes(track.start, track.end).find(b => b.type === "tkhd");
       if (tkhd && tkhd.end - tkhd.start >= 84) {
         width = view.getUint32(tkhd.end - 8) / 65536;
@@ -109,5 +109,5 @@ export function mp4Metadata(data: Uint8Array): VideoMetadata {
   const ticks = version === 1 ? Number(view.getBigUint64(header.start + 24)) : view.getUint32(header.start + 16);
   const duration = ticks / scale;
   if (!Number.isFinite(duration) || duration <= 0) throw new Error("Duração do MP4 inválida.");
-  return { duration, width, height, hasAudio, ...(frameCount === undefined ? {} : { frameCount }), ...(videoDuration === undefined ? {} : { videoDuration }) };
+  return { duration, width, height, hasAudio, ...(frameCount === undefined ? {} : { frameCount }), ...(videoDuration === undefined ? {} : { videoDuration }), ...(audioDuration === undefined ? {} : { audioDuration }) };
 }

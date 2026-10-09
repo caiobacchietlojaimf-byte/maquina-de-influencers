@@ -203,11 +203,10 @@ test("successful assembly retains order and delegates the complete video to orig
   const result = await f.actions.finalizeSegmentedEdit(f.item, outputUrls);
   assert.deepEqual(f.reads, outputUrls); assert.equal(f.joins.length, 1);
   assert.equal(f.joins[0][0], f.buffers[0]); assert.equal(f.joins[0][1], f.buffers[1]);
-  assert.equal(f.stores.length, 1); assert.equal(f.stores[0][0], "edited-videos/owner/edit-1-joined.mp4");
-  assert.equal(f.stores[0][1], f.joined); assert.equal(f.stores[0][2].contentType, "video/mp4");
+  assert.equal(f.stores.length, 0, "silent intermediate is passed in memory and never published as the final video");
   assert.equal(f.finalizations.length, 1); assert.equal(f.finalizations[0][0], f.item);
   assert.equal(f.finalizations[0][0].edit.sourceUrl, "https://media.example/original.mp4");
-  assert.equal(f.finalizations[0][1], "https://media.example/joined.mp4");
+  assert.equal(f.finalizations[0][1], f.joined);
   assert.equal(result.status, "completed"); assert.equal(result.edit.audioPreserved, true);
   assert.equal(result.resultUrl, "https://media.example/final-with-original-audio.mp4");
 });

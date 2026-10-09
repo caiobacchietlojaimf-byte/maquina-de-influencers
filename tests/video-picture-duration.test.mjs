@@ -64,6 +64,24 @@ test("duration validation allows normal audio padding and remains compatible wit
   assert.ok(checkEditResult(media, { ...media, videoDuration: NaN }));
 });
 
+test("audio track duration is read independently from the picture and movie clocks", () => {
+  function track(kind, seconds, version) {
+    const mdhd = Buffer.alloc(version === 1 ? 36 : 24); mdhd[0] = version;
+    mdhd.writeUInt32BE(48000, version === 1 ? 20 : 12);
+    if (version === 1) mdhd.writeBigUInt64BE(BigInt(seconds * 48000), 24);
+    else mdhd.writeUInt32BE(seconds * 48000, 16);
+    const handler = Buffer.alloc(12); handler.write(kind, 8);
+    return box("trak", box("mdia", Buffer.concat([box("mdhd", mdhd), box("hdlr", handler)])));
+  }
+  for (const version of [0, 1]) {
+    const mvhd = Buffer.alloc(20); mvhd.writeUInt32BE(1000, 12); mvhd.writeUInt32BE(30000, 16);
+    const file = Buffer.concat([box("ftyp", Buffer.from("isom")), box("moov", Buffer.concat([box("mvhd", mvhd), track("soun", 29, version), track("vide", 28, version)])), box("mdat", Buffer.alloc(1001))]);
+    const result = mp4Metadata(file);
+    assert.equal(result.duration, 30); assert.equal(result.videoDuration, 28); assert.equal(result.audioDuration, 29); assert.equal(result.hasAudio, true);
+  }
+  assert.equal(mp4Metadata(testMp4(0)).audioDuration, undefined);
+});
+
 test("a real three-second picture with the original seventeen-second soundtrack is rejected", () => {
   const input = fileURLToPath(new URL("../public/reel-videos/Dd_qcXdgsdb.mp4", import.meta.url));
   const original = mp4Metadata(readFileSync(input));
