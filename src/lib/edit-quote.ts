@@ -7,6 +7,7 @@ export type EditReceipt = {
   name: string; target: string; metadata: VideoMetadata; resolution: EditResolution;
   estimatedUsd: number; expiresAt: number;
   engine?: EditEngine; seed?: number;
+  assembly?: "overlap-v1";
   segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata }>;
 };
 function signature(value: string) {

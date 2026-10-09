@@ -3,6 +3,7 @@ import { readPublicVideo } from "./video-media";
 import { mp4Metadata } from "./video-reference";
 import { checkEditResult } from "./character-edit";
 import { joinEditedSegments } from "./edit-segments";
+import { joinContinuousEditSegments } from "./join-continuous-edit";
 import { finalizeCharacterEdit } from "./finalize-edit";
 import type { Video } from "./db";
 
@@ -18,7 +19,7 @@ export async function finalizeSegmentedEdit(video: Video, resultUrls: string[]):
       if (mismatch) throw new Error(`Trecho ${index + 1}: ${mismatch}`);
       buffers.push(bytes);
     }
-    const joined = await joinEditedSegments(buffers, {
+    const joined = video.edit?.assembly === "overlap-v1" ? await joinContinuousEditSegments(buffers, parts) : await joinEditedSegments(buffers, {
       targetDurations: parts.map(part => part.source.videoDuration ?? part.source.duration),
     });
     const mismatch = checkEditResult(video.edit!.source, mp4Metadata(joined));

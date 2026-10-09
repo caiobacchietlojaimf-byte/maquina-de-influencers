@@ -158,7 +158,7 @@ test("transient fal polling errors retain processing and the next poll can compl
 
 function assemblyFixture(overrides = {}) {
   const item = video(), buffers = [Buffer.from("first edited video"), Buffer.from("second edited video")], joined = Buffer.from("complete edited video");
-  const reads = [], joins = [], stores = [], finalizations = [];
+  const reads = [], joins = [], stores = [], finalizations = [], continuousJoins = [];
   const metadata = new Map([
     [buffers[0], overrides.first ?? item.edit.segments[0].source],
     [buffers[1], overrides.second ?? item.edit.segments[1].source],
@@ -170,13 +170,29 @@ function assemblyFixture(overrides = {}) {
     "./video-reference": { mp4Metadata: bytes => { assert.ok(metadata.has(bytes)); return metadata.get(bytes); } },
     "./character-edit": edit,
     "./edit-segments": { joinEditedSegments: async parts => { joins.push(parts); return joined; } },
+    "./join-continuous-edit": { joinContinuousEditSegments: async (...args) => { continuousJoins.push(args); return joined; } },
     "./finalize-edit": { finalizeCharacterEdit: async (...args) => {
       finalizations.push(args);
       return { status: "completed", resultUrl: "https://media.example/final-with-original-audio.mp4", edit: { ...args[0].edit, audioPreserved: true } };
     } },
   });
-  return { actions, item, buffers, joined, reads, joins, stores, finalizations };
+  return { actions, item, buffers, joined, reads, joins, stores, finalizations, continuousJoins };
 }
+
+test("versioned overlapping edits use the original global segment positions before restoring audio", async () => {
+  const f = assemblyFixture();
+  f.item.edit.assembly = "overlap-v1";
+  f.item.edit.segments[1].start -= 0.5;
+  const result = await f.actions.finalizeSegmentedEdit(f.item, outputUrls);
+  assert.equal(result.status, "completed", result.error);
+  assert.equal(f.joins.length, 0, "overlap must never be concatenated as adjacent footage");
+  assert.equal(f.continuousJoins.length, 1);
+  assert.equal(f.continuousJoins[0][0][0], f.buffers[0]);
+  assert.equal(f.continuousJoins[0][1], f.item.edit.segments);
+  assert.equal(f.finalizations.length, 1);
+  assert.equal(result.edit.assembly, "overlap-v1");
+  assert.equal(result.edit.audioPreserved, true);
+});
 
 test("the assembler rejects a short or cropped piece before joining or storing any output", async () => {
   for (const second of [{ ...source, duration: 3.97 }, { ...source, duration: 8.657, width: 816, height: 1104 }]) {

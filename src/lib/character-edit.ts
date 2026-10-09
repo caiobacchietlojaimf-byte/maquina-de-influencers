@@ -3,8 +3,8 @@ import type { VideoMetadata } from "./video-reference";
 export const CHARACTER_EDIT_MODEL = "higgsfield/genjutsu/object-swap/v1.0";
 export type EditEngine = "fal-kling-pro" | "fal-kling-standard" | "fal-wan" | "higgsfield";
 export const EDIT_ENGINES = {
-  "fal-kling-pro": { label: "fal.ai · Kling O3 Pro", model: "fal-ai/kling-video/o3/pro/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução, com referência do personagem. Vídeos acima de 15s são editados em trechos e remontados; pode haver variação entre trechos." },
-  "fal-kling-standard": { label: "fal.ai · Kling O3 Standard", model: "fal-ai/kling-video/o3/standard/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução com menor custo que Pro. Vídeos acima de 15s são editados em trechos e remontados; pode haver variação entre trechos." },
+  "fal-kling-pro": { label: "fal.ai · Kling O3 Pro", model: "fal-ai/kling-video/o3/pro/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução, com referência do personagem. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
+  "fal-kling-standard": { label: "fal.ai · Kling O3 Standard", model: "fal-ai/kling-video/o3/standard/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução com menor custo que Pro. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
   "fal-wan": { label: "fal.ai · Wan 2.2 Replace", model: "fal-ai/wan/v2.2-14b/animate/replace", provider: "fal", resolutions: ["480p", "720p"], note: "Indicado para um único personagem visível. Não aceita escolher a pessoa por texto; pode trocar a pessoa errada em cenas com várias pessoas." },
   higgsfield: { label: "Higgsfield · Genjutsu Object Swap", model: CHARACTER_EDIT_MODEL, provider: "higgsfield", resolutions: ["480p", "720p", "1080p"], note: "Troca localizada por instrução. Usa o saldo da Higgsfield." },
 } as const;

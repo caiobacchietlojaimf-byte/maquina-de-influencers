@@ -62,6 +62,7 @@ export type Video = {
   edit?: {
     model: string; sourceUrl: string; imageUrl: string; target: string;
     provider?: "fal" | "higgsfield"; seed?: number;
+    assembly?: "overlap-v1";
     segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata; requestId?: string; resultUrl?: string }>;
     source: VideoMetadata;
     resolution: "480p" | "720p" | "1080p" | "auto"; estimatedUsd: number;

@@ -14,7 +14,7 @@ import { signEditQuote } from "@/lib/edit-quote";
 import { isConfigured } from "@/lib/platform";
 import { isFalConfigured } from "@/lib/fal";
 import { ensureVideoToolsAvailable } from "@/lib/finalize-edit";
-import { splitEditSource } from "@/lib/edit-segments";
+import { splitContinuousEditSource } from "@/lib/edit-continuity";
 export type PrepareOptions = { signal?: AbortSignal; onProgress?: (event: { type: "progress"; stage: string; message: string }) => void };
 
 export async function prepareCharacterEdit(input: { influencerId: string; source: EditSource; target?: string; targetMode?: EditTargetMode; resolution: EditResolution; engine?: EditEngine }, options: PrepareOptions = {}): Promise<{ quote: EditQuote } | { error: string }> {
@@ -65,8 +65,8 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
     const sourceUrl = snapshot.url;
     const segments = [];
     if (engine.startsWith("fal-kling") && metadata.duration > 15) {
-      progress("segments", "Preparando dois trechos com a duração completa do original…");
-      const parts = await splitEditSource(bytes, metadata.duration, { signal: options.signal, onProgress: (completed, total) => {
+      progress("segments", "Preparando a continuidade do vídeo original…");
+      const parts = await splitContinuousEditSource(bytes, metadata.duration, { signal: options.signal, onProgress: (completed, total) => {
         if (completed) progress("segments", `Conferindo os trechos preparados (${completed}/${total})…`);
       } });
       for (const [index, part] of parts.entries()) {
@@ -76,7 +76,8 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
       }
     } else segments.push({ sourceUrl, start: 0, source: metadata });
     const cost = estimateProviderEdit(engine, metadata, input.resolution, segments.map(s => s.source.duration));
-    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, expiresAt: Date.now() + 15 * 60000 };
+    if (engine.startsWith("fal-kling") && segments.length > 1) cost.costDetail += " Inclui o intervalo compartilhado entre os trechos para melhorar a continuidade.";
+    const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, ...(engine.startsWith("fal-kling") ? { assembly: "overlap-v1" as const } : {}), seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, expiresAt: Date.now() + 15 * 60000 };
     progress("ready", "Original conferido. Preparação concluída.");
     return { quote: { token: signEditQuote(receipt), name, sourceUrl, metadata, resolution: receipt.resolution, engine, segmentCount: segments.length, costDetail: cost.costDetail, estimatedUsd: receipt.estimatedUsd, expiresAt: receipt.expiresAt } };
   } catch (error) {

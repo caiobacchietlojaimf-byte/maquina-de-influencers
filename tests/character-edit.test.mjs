@@ -80,7 +80,7 @@ function fixture(overrides = {}) {
     "@/lib/video-media": { publicMediaUrl: v => v, inspectPublicVideo: async url => overrides.inspect ? overrides.inspect(url, metadataByUrl.get(url)) : metadataByUrl.get(url), readPublicVideo: async (...args) => overrides.read ? overrides.read(...args) : overrides.bytes ?? original },
     "@/lib/video-reference": fixtureMedia, "@/lib/character-edit": edit, "@/lib/edit-quote": quotes,
     "@/lib/finalize-edit": { ensureVideoToolsAvailable: async () => {} },
-    "@/lib/edit-segments": { splitEditSource: async (...args) => { splitCalls.push(args); return parts; } },
+    "@/lib/edit-continuity": { splitContinuousEditSource: async (...args) => { splitCalls.push(args); return parts; } },
     "@/lib/fal": { isFalConfigured: () => overrides.falConfigured !== false, FalError, submitFalGeneration: async (...args) => {
       falSubmissions.push(args);
       if (overrides.falFailure && falSubmissions.length === (overrides.falFailureAt ?? 1)) throw new FalError(overrides.falFailure);
@@ -365,4 +365,53 @@ test("real MP4 finalization copies the original audio packets and keeps picture 
     const withoutInventedAudio = await f.preserveSourceAudio(original, silent);
     assert.equal(media.mp4Metadata(withoutInventedAudio).hasAudio, false);
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("a fifteen-second picture track with an audio tail uses one verified Kling input and one charge", async () => {
+  const source = { ...metadata, duration: 15.137, videoDuration: 15, audioDuration: 15.137, frameCount: 450 };
+  const silent = { ...source, duration: 15, hasAudio: false, audioDuration: undefined };
+  const parts = [{ start: 0, duration: 15, bytes: Buffer.from('all 450 original pictures without the audio tail'), metadata: silent }];
+  const f = fixture({ metadata: source, parts });
+  const prepared = await f.actions.prepareCharacterEditAction({ influencerId: 'character', source: {kind:'preset',id:'preset'}, targetMode:'main', engine:'fal-kling-pro', resolution:'auto' });
+  assert.ok(prepared.quote, prepared.error);
+  assert.equal(prepared.quote.segmentCount, 1);
+  assert.equal(prepared.quote.estimatedUsd, 2.52);
+  const frozen = quotes.readEditQuote(prepared.quote.token, 'owner');
+  assert.equal(frozen.assembly, 'overlap-v1');
+  assert.equal(frozen.segments[0].source.frameCount, 450);
+  assert.equal(frozen.segments[0].source.duration, 15);
+  assert.notEqual(frozen.segments[0].sourceUrl, frozen.sourceUrl);
+  const result = await f.actions.generateCharacterEditAction({quoteToken:prepared.quote.token,acceptedEstimate:true});
+  assert.equal(result.id, frozen.id);
+  assert.equal(f.falSubmissions.length, 1);
+  assert.equal(f.falSubmissions[0][1].video_url, frozen.segments[0].sourceUrl);
+  assert.equal(f.charges.length, 1);
+  assert.equal(f.rows.get(result.id).edit.assembly, 'overlap-v1');
+  const tampered = fixture({metadata:source,parts,inspect:(url,value)=>url.includes('?segment=')?{...value,duration:15.8}:value});
+  const quote = await tampered.actions.prepareCharacterEditAction({ influencerId:'character',source:{kind:'preset',id:'preset'},targetMode:'main',engine:'fal-kling-pro',resolution:'auto' });
+  assert.ok((await tampered.actions.generateCharacterEditAction({quoteToken:quote.quote.token,acceptedEstimate:true})).error);
+  assert.equal(tampered.charges.length,0);
+  assert.equal(tampered.falSubmissions.length,0);
+});
+
+test("overlap and a third segment are bound into the accepted quote without hidden submissions or charges", async () => {
+  const source = {...metadata,duration:30,videoDuration:30,frameCount:720};
+  const starts=[0,9.833333333333334,19.666666666666668];
+  const parts=starts.map((start,i)=>({start,duration:10.333333333333334,bytes:Buffer.from(`context video ${i}`),metadata:{...source,duration:10.333333333333334,videoDuration:10.333333333333334,frameCount:248,hasAudio:false}}));
+  const f=fixture({metadata:source,parts});
+  const prepared=await f.actions.prepareCharacterEditAction({influencerId:'character',source:{kind:'preset',id:'preset'},targetMode:'main',engine:'fal-kling-pro',resolution:'auto'});
+  assert.ok(prepared.quote,prepared.error);
+  assert.equal(prepared.quote.segmentCount,3);
+  assert.equal(prepared.quote.estimatedUsd,5.55); // Three 11-second billing ceilings; includes all repeated context.
+  assert.match(prepared.quote.costDetail,/intervalo compartilhado/);
+  const frozen=quotes.readEditQuote(prepared.quote.token,'owner');
+  assert.equal(frozen.assembly,'overlap-v1');
+  assert.deepEqual(Array.from(frozen.segments,s=>s.start),starts);
+  assert.equal(f.charges.length,0);
+  assert.equal(f.falSubmissions.length,0);
+  const first=await f.actions.generateCharacterEditAction({quoteToken:prepared.quote.token,acceptedEstimate:true});
+  const repeat=await f.actions.generateCharacterEditAction({quoteToken:prepared.quote.token,acceptedEstimate:true});
+  assert.equal(first.id,repeat.id);
+  assert.equal(f.falSubmissions.length,3);
+  assert.equal(f.charges.length,1);
 });

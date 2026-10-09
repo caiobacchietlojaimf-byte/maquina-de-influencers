@@ -34,17 +34,20 @@ export async function generateCharacterEditAction(input: { quoteToken: string; a
     const prompt = buildCharacterEditPrompt(receipt.target, source.duration);
     const segments = receipt.segments ?? [{ sourceUrl: receipt.sourceUrl, start: 0, source }];
     // Inspect every immutable segment BEFORE a paid submission or credit debit.
-    if (segments.length > 1) for (const part of segments) {
+    if (engine.startsWith("fal-kling") || segments.length > 1) for (const part of segments) {
       const actual = await inspectPublicVideo(part.sourceUrl);
       if (actual.duration < 3 || actual.duration > 15 || Math.abs(actual.duration - part.source.duration) > 0.05 || actual.width !== part.source.width || actual.height !== part.source.height) return { error: "Um trecho mudou. Prepare a troca novamente." };
     }
-    const video: Video = { id: receipt.id, userId: user.id, influencerId: inf.id, kind: "viral", presetName: receipt.name, prompt, status: "queued", createdAt: Date.now(), edit: { model: config.model, provider: config.provider, sourceUrl: receipt.sourceUrl, imageUrl: inf.imageUrl, target: receipt.target, source, resolution: receipt.resolution, estimatedUsd: receipt.estimatedUsd, segments, seed: receipt.seed } };
+    const video: Video = { id: receipt.id, userId: user.id, influencerId: inf.id, kind: "viral", presetName: receipt.name, prompt, status: "queued", createdAt: Date.now(), edit: { model: config.model, provider: config.provider, sourceUrl: receipt.sourceUrl, imageUrl: inf.imageUrl, target: receipt.target, source, resolution: receipt.resolution, estimatedUsd: receipt.estimatedUsd, segments, seed: receipt.seed, ...(receipt.assembly ? { assembly: receipt.assembly } : {}) } };
     if (!await createVideoOnce(video)) return { id: video.id };
     if (!await reserveVideoCredits(user.id, VIDEO_COST)) { await updateVideo(video.id, { status: "failed", error: "Não foi possível reservar os créditos. Nenhuma chamada paga foi feita." }); return { error: "Créditos indisponíveis. Prepare novamente." }; }
     let providerRequestId: string | undefined;
     try {
       for (const part of video.edit!.segments!) {
         const payload = buildProviderEditInput(engine, part.sourceUrl, inf.imageUrl, receipt.target, part.source.duration, receipt.resolution, receipt.seed ?? 0);
+        if (receipt.assembly === "overlap-v1" && segments.length > 1 && typeof payload.prompt === "string") {
+          payload.prompt += "\nThis video is an overlapping excerpt of a longer continuous take. Keep the source person's exact screen position, body scale and distance from the camera throughout, especially at the first and last frames. Continue the existing action without introducing an entrance, a new pose, a framing reset or an ending. Keep the same face, hair, clothing fit, accessories and colors throughout the excerpt.";
+        }
         const queued = config.provider === "fal" ? await submitFalGeneration(config.model, payload) : await submitGeneration(config.model, payload);
         providerRequestId = queued.requestId;
         part.requestId = queued.requestId;

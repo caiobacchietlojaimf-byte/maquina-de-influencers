@@ -21,6 +21,7 @@ function load(file, mocks = {}) {
 const media = load("src/lib/video-reference.ts");
 const rules = load("src/lib/character-edit.ts");
 const assembly = load("src/lib/edit-segments.ts", { "./video-reference": media });
+const continuousAssembly = load("src/lib/join-continuous-edit.ts", { "./video-reference": media, "./edit-segments": assembly });
 const ffmpeg = require("@ffmpeg-installer/ffmpeg").path;
 const ff = args => execFileSync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-nostdin", ...args], { windowsHide: true, maxBuffer: 32 * 1024 * 1024 });
 const audioPackets = file => ff(["-i", file, "-map", "0:a:0", "-c", "copy", "-f", "data", "pipe:1"]);
@@ -41,6 +42,7 @@ function finalizers(source, pieces, sourceUrl = "https://media.example/original.
   const segmented = load("src/lib/finalize-segmented-edit.ts", {
     "./video-media": videoMedia, "./video-reference": media, "./character-edit": rules,
     "./edit-segments": assembly, "./finalize-edit": finalizer,
+    "./join-continuous-edit": continuousAssembly,
   });
   return { ...finalizer, ...segmented, urls, reads, stores };
 }
@@ -146,4 +148,33 @@ test("reported Supercar job is recovered locally with all 690 generated frames a
   assert.deepEqual(decodedAudio(output), decodedAudio(originalPath));
   assert.equal(rules.checkEditResult(item.edit.source, result.edit.result), undefined);
   console.log("recovered Supercar metadata", JSON.stringify(result.edit.result));
+});
+
+test('overlapping picture contexts become a full-length final video with the exact original audio and no repeated time', async () => {
+  const directory=mkdtempSync(path.join(tmpdir(),'mi-overlap-audio-'));
+  try {
+    const originalPath=path.join(directory,'original.mp4');
+    ff(['-f','lavfi','-i','testsrc2=size=96x160:rate=24:duration=20','-f','lavfi','-i','sine=frequency=503:sample_rate=48000:duration=20.05','-c:v','libx264','-preset','ultrafast','-threads','1','-bf','0','-vsync','0','-c:a','aac','-y',originalPath]);
+    const source=readFileSync(originalPath), starts=[0,9.75];
+    const pieces=starts.map((start,index)=>{
+      const file=path.join(directory,`overlap-${index}.mp4`);
+      ff(['-i',originalPath,'-vf',`trim=start=${start}:end=${start+10.25},setpts=PTS-STARTPTS`,'-an','-c:v','libx264','-preset','ultrafast','-threads','1','-bf','0','-vsync','0','-y',file]);
+      return readFileSync(file);
+    });
+    const f=finalizers(source,pieces);
+    const item={id:'overlap-audio',userId:'owner',edit:{assembly:'overlap-v1',source:media.mp4Metadata(source),sourceUrl:'https://media.example/original.mp4',segments:pieces.map((piece,index)=>({start:starts[index],source:media.mp4Metadata(piece),sourceUrl:`https://media.example/input-${index}`,requestId:`already-paid-${index}`}))}};
+    const result=await f.finalizeSegmentedEdit(item,f.urls);
+    assert.equal(result.status,'completed',result.error);
+    assert.equal(result.edit.assembly,'overlap-v1');
+    assert.equal(result.edit.audioPreserved,true);
+    assert.equal(f.stores.length,1);
+    const output=path.join(directory,'final.mp4');
+    writeFileSync(output,f.stores[0].bytes);
+    const actual=media.mp4Metadata(f.stores[0].bytes);
+    assert.equal(actual.frameCount,480);
+    assert.ok(Math.abs(actual.videoDuration-20)<0.002);
+    assert.deepEqual(audioPackets(output),audioPackets(originalPath));
+    assert.deepEqual(decodedAudio(output),decodedAudio(originalPath));
+    assert.equal(f.reads.filter(url=>url==='https://media.example/original.mp4').length,1);
+  } finally {rmSync(directory,{recursive:true,force:true});}
 });
