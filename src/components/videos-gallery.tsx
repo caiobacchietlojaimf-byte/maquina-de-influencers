@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Film, Flame, Send, Trash2, Wand2 } from "lucide-react";
 
 import { deleteVideoAction, pollVideosAction } from "@/app/actions/videos";
+import { canDeleteVideo } from "@/lib/video-deletion";
 import type { Video } from "@/lib/db";
 import { editModelLabel } from "@/lib/character-edit";
 import { canFinalizeExistingEdit, finalizeEditClient } from "@/lib/finalize-edit-client";
@@ -165,7 +166,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 <button
                   type="button"
                   title="Excluir"
-                  disabled={finalizing.has(video.id) || Boolean((video.edit || video.requestFingerprint) && (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)))}
+                  disabled={finalizing.has(video.id) || !canDeleteVideo(video)}
                   onClick={async () => {
                     try {
                       await deleteVideoAction(video.id);

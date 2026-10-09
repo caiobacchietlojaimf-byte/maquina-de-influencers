@@ -9,6 +9,7 @@ import type { PlanGrant, PlanId } from "./plans";
 import type { EditIdentityReferences } from "./character-edit";
 import type { PublicationReferenceSnapshot } from "./publication-context";
 import type { PublicationSuggestion } from "./publication-assistant-types";
+import { canDeleteVideo } from "./video-deletion";
 
 /* Camada de dados com dois drivers e a MESMA API assíncrona:
    - Supabase (Postgres) quando SUPABASE_URL + SUPABASE_KEY + MI_DB_SECRET
@@ -960,7 +961,7 @@ export async function updateVideo(id: string, patch: Partial<Video>): Promise<Vi
 export async function deleteVideo(userId: string, id: string): Promise<boolean> {
   const video = await getVideo(userId, id);
   if (video?.edit || video?.requestFingerprint) {
-    if (video.status === "queued" || video.status === "processing" || (video.status === "review" && !video.resultUrl)) return false;
+    if (!canDeleteVideo(video)) return false;
     // Keep the quote UUID as an idempotency tombstone even after hiding the card.
     // Deleting it would allow the same signed quote to submit another paid job.
     await updateVideo(id, { deletedAt: Date.now() });
