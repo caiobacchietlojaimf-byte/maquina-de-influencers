@@ -15,6 +15,7 @@ import { MOTION_PRESETS, type MotionPreset } from "@/data/motion-presets";
 import { VIDEO_COST } from "@/lib/costs";
 import type { Influencer } from "@/lib/db";
 import { MotionPresetCard } from "./motion-preset-card";
+import { HelpTooltip } from "./help-tooltip";
 import styles from "./video-studio.module.css";
 
 type PresetScope = "all" | "trending" | "higgsfield";
@@ -64,6 +65,7 @@ export function VideoStudio({
   const [engine, setEngine] = useState<EditEngine>("fal-kling-pro");
   const [resolution, setResolution] = useState<EditResolution>("auto");
   const engineConfig = EDIT_ENGINES[engine];
+  const modelDefinesResolution = engineConfig.resolutions.length === 1 && engineConfig.resolutions[0] === "auto";
   const referenceReady = reference ? reference.duration >= 4 && reference.duration <= 30 : Boolean(presetId);
   const busy = submitting || uploading || preparing;
   useEffect(() => { setQuote(null); setAcceptedEstimate(false); }, [reference, presetId, influencerId, prompt, targetMode, resolution, engine]);
@@ -188,7 +190,10 @@ export function VideoStudio({
         <aside className={`builder ${styles.builder}`} aria-label="Configurar vídeo">
           <div className="builder-head">
             <div className="kicker">Seu influencer no vídeo original</div>
-            <h2>Troque o personagem</h2>
+            <div className={styles.titleRow}>
+              <h2>Troque o personagem</h2>
+              <HelpTooltip label="Sobre a preservação do vídeo">Preservação solicitada: duração, câmera, cenário e demais pessoas. O áudio original é recolocado no arquivo final. A fidelidade visual ainda depende da IA.</HelpTooltip>
+            </div>
           </div>
           <div className="builder-scroll">
             <fieldset className={styles.fieldset} disabled={busy}>
@@ -254,17 +259,23 @@ export function VideoStudio({
               {(reference || preset) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setReference(null); setPresetId(null); setPrompt(""); setTargetMode("main"); setError(null); }}><X size={14} />Trocar vídeo</button>}
             </fieldset>
 
-            <div className="field">
-              <label htmlFor={`${formId}-engine`} className={styles.fieldLabel}>Modelo de edição</label>
+            <div className={`field ${styles.editFields}`}>
+              <div className={styles.controlGroup}>
+              <div className={styles.labelRow}>
+                <label htmlFor={`${formId}-engine`} className={styles.fieldLabel}>Modelo de edição</label>
+                <HelpTooltip label="Sobre o modelo de edição">{engineConfig.note}</HelpTooltip>
+              </div>
               <select id={`${formId}-engine`} className="input" value={engine} disabled={busy} onChange={event => { const next = event.target.value as EditEngine; setEngine(next); setResolution(next === "higgsfield" || next === "fal-wan" ? "720p" : EDIT_ENGINES[next].resolutions[0]); if (next === "fal-wan") setTargetMode("main"); }}>
                 {(Object.keys(EDIT_ENGINES) as EditEngine[]).map(key => <option key={key} value={key}>{EDIT_ENGINES[key].label}</option>)}
               </select>
-              <p className={styles.hint}>{engineConfig.note}</p>
+              </div>
               <fieldset className={styles.fieldset} disabled={busy}>
-                <legend className={styles.fieldLabel}><span>3</span> Quem deve ser substituído?</legend>
+                <legend className={`${styles.fieldLabel} ${styles.targetLegend}`}><span>3</span> Quem deve ser substituído?
+                  <HelpTooltip label="Ajuda para escolher quem substituir">{targetMode === "manual" ? "Descreva roupa, posição e aparência de uma única pessoa no original. A imagem do influencer define a identidade e a roupa da substituição." : engine === "fal-wan" ? "O Wan faz a seleção automaticamente. Use uma cena com uma única pessoa." : "A IA escolhe o protagonista durante a edição. Em cenas com várias pessoas ou trechos, indique roupa e aparência para manter o mesmo alvo."}</HelpTooltip>
+                </legend>
                 <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "main"} onChange={() => setTargetMode("main")} />Personagem principal (automático)</label>
                 <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "manual"} disabled={engine === "fal-wan"} onChange={() => setTargetMode("manual")} />Indicar uma pessoa{engine === "fal-wan" ? " (use Kling)" : ""}</label>
-                {targetMode === "main" ? <p className={styles.hint}>{engine === "fal-wan" ? "O Wan faz a seleção automaticamente. Use uma cena com uma única pessoa." : "A IA escolhe o protagonista durante a edição. Em cenas com várias pessoas ou trechos, indique roupa e aparência para manter o mesmo alvo."}</p> : <>
+                {targetMode === "manual" && <>
               <label htmlFor={`${formId}-prompt`} className={styles.fieldLabel}>Descreva a pessoa no vídeo</label>
               <textarea
                 id={`${formId}-prompt`}
@@ -276,14 +287,14 @@ export function VideoStudio({
                 disabled={busy}
                 onChange={(event) => setPrompt(event.target.value)}
               />
-              <p className={styles.hint}>Descreva roupa, posição e aparência de uma única pessoa no original. A imagem do influencer define a identidade e a roupa da substituição.</p>
                 </>}
               </fieldset>
+              {!modelDefinesResolution && <div className={styles.controlGroup}>
               <label htmlFor={`${formId}-quality`} className={styles.fieldLabel}>Qualidade do vídeo</label>
               <select id={`${formId}-quality`} className="input" value={resolution} disabled={busy} onChange={event => setResolution(event.target.value as EditResolution)}>
-                {engineConfig.resolutions.map(value => <option key={value} value={value}>{value === "auto" ? "Resolução definida pelo modelo" : `${value}${value === "480p" ? " · menor custo e definição" : value === "1080p" ? " · maior resolução" : " · qualidade padrão"}`}</option>)}
+                {engineConfig.resolutions.map(value => <option key={value} value={value}>{`${value}${value === "480p" ? " · menor custo e definição" : value === "1080p" ? " · maior resolução" : " · qualidade padrão"}`}</option>)}
               </select>
-              <p className={styles.hint}>Preservação solicitada: duração, câmera, cenário e demais pessoas. O áudio original é recolocado no arquivo final. A fidelidade visual ainda depende da IA.</p>
+              </div>}
             </div>
           </div>
 
