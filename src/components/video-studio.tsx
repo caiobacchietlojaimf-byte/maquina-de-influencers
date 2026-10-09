@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowRight, Clapperboard, Search, Sparkles, Upload, Users, X } from "lucide-react";
+import { ArrowRight, Clapperboard, Download, Package, Search, Sparkles, Upload, Users, X } from "lucide-react";
 
 import { pollInfluencersAction } from "@/app/actions/influencers";
 import { generateCharacterEditAction } from "@/app/actions/character-edit";
 import { prepareEditClient, PrepareEditClientError } from "@/lib/prepare-edit-client";
+import { exportEditClient, ExportEditClientError, type ExportEditPackage } from "@/lib/export-edit-client";
 import { EDIT_PRICE_DATE, EDIT_ENGINES, type EditEngine, type EditQuote, type EditResolution, type EditTargetMode, type EditSource } from "@/lib/character-edit";
 import { verifyVideoReferenceAction } from "@/app/actions/video-reference";
 import { MAX_REFERENCE_BYTES, type StudioReference } from "@/lib/video-reference";
@@ -60,6 +61,12 @@ export function VideoStudio({
   const [prepareSeconds, setPrepareSeconds] = useState(0);
   const activePreparation = useRef<{ id: number; controller: AbortController; startedAt: number } | null>(null);
   const preparationSequence = useRef(0);
+  const [exporting, setExporting] = useState(false);
+  const [exportMessage, setExportMessage] = useState("");
+  const [exportSeconds, setExportSeconds] = useState(0);
+  const [exportedPackage, setExportedPackage] = useState<ExportEditPackage | null>(null);
+  const activeExport = useRef<{ id: number; controller: AbortController; startedAt: number } | null>(null);
+  const exportSequence = useRef(0);
   const [quote, setQuote] = useState<EditQuote | null>(null);
   const [acceptedEstimate, setAcceptedEstimate] = useState(false);
   const [engine, setEngine] = useState<EditEngine>("fal-kling-pro");
@@ -67,20 +74,25 @@ export function VideoStudio({
   const engineConfig = EDIT_ENGINES[engine];
   const modelDefinesResolution = engineConfig.resolutions.length === 1 && engineConfig.resolutions[0] === "auto";
   const referenceReady = reference ? reference.duration >= 4 && reference.duration <= 30 : Boolean(presetId);
-  const busy = submitting || uploading || preparing;
-  useEffect(() => { setQuote(null); setAcceptedEstimate(false); }, [reference, presetId, influencerId, prompt, targetMode, resolution, engine]);
+  const busy = submitting || uploading || preparing || exporting;
+  const targetReady = targetMode !== "manual" || prompt.trim().length >= 8;
+  useEffect(() => { setQuote(null); setAcceptedEstimate(false); setExportedPackage(null); }, [reference, presetId, influencerId, prompt, targetMode, resolution, engine]);
   useEffect(() => () => {
     const active = activePreparation.current;
     activePreparation.current = null;
     active?.controller.abort();
+    const exportRequest = activeExport.current;
+    activeExport.current = null;
+    exportRequest?.controller.abort();
   }, []);
   useEffect(() => {
-    if (!preparing) return;
+    if (!preparing && !exporting) return;
     const timer = setInterval(() => {
       if (activePreparation.current) setPrepareSeconds(Math.floor((Date.now() - activePreparation.current.startedAt) / 1000));
+      if (activeExport.current) setExportSeconds(Math.floor((Date.now() - activeExport.current.startedAt) / 1000));
     }, 1000);
     return () => clearInterval(timer);
-  }, [preparing]);
+  }, [preparing, exporting]);
   const hasPending = influencers.some((inf) => inf.status === "processing" || inf.status === "queued");
   const ready = useMemo(() => influencers.filter((inf) => inf.status === "completed" && inf.imageUrl), [influencers]);
   const influencer = ready.find((inf) => inf.id === influencerId);
@@ -112,7 +124,7 @@ export function VideoStudio({
     return { kind: "preset", id: presetId! };
   }
   async function prepare() {
-    if (busy || activePreparation.current || !influencer || !referenceReady) return;
+    if (busy || activePreparation.current || activeExport.current || !influencer || !referenceReady) return;
     const active = { id: ++preparationSequence.current, controller: new AbortController(), startedAt: Date.now() };
     activePreparation.current = active;
     setPreparing(true); setError(null); setQuote(null); setAcceptedEstimate(false);
@@ -138,8 +150,35 @@ export function VideoStudio({
     active?.controller.abort();
     setPreparing(false); setPrepareMessage(""); setError(null);
   }
+  async function exportPackage() {
+    if (busy || activeExport.current || activePreparation.current || !influencer || !referenceReady || !targetReady) return;
+    const active = { id: ++exportSequence.current, controller: new AbortController(), startedAt: Date.now() };
+    activeExport.current = active;
+    setExporting(true); setError(null); setExportedPackage(null);
+    setExportMessage("Preparando os arquivos do pacote…"); setExportSeconds(0);
+    try {
+      const result = await exportEditClient({ influencerId: influencer.id, source: editSource(), targetMode, target: targetMode === "manual" ? prompt.trim() : undefined, resolution, engine }, {
+        signal: active.controller.signal,
+        onProgress: event => { if (activeExport.current?.id === active.id) setExportMessage(event.message); },
+      });
+      if (activeExport.current?.id !== active.id) return;
+      if ("error" in result) setError(result.error); else setExportedPackage(result.package);
+    } catch (caught) {
+      if (activeExport.current?.id !== active.id) return;
+      if (caught instanceof ExportEditClientError && caught.code === "cancelled") return;
+      setError(caught instanceof Error ? caught.message : "Não foi possível concluir a exportação. Tente novamente; nenhum crédito de geração foi usado.");
+    } finally {
+      if (activeExport.current?.id === active.id) { activeExport.current = null; setExporting(false); }
+    }
+  }
+  function cancelExport() {
+    const active = activeExport.current;
+    activeExport.current = null;
+    active?.controller.abort();
+    setExporting(false); setExportMessage(""); setError(null);
+  }
   async function generate() {
-    if (busy || !quote || !acceptedEstimate) return;
+    if (busy || activeExport.current || activePreparation.current || !quote || !acceptedEstimate) return;
     setSubmitting(true); setError(null);
     try {
       const result = await generateCharacterEditAction({ quoteToken: quote.token, acceptedEstimate });
@@ -307,6 +346,11 @@ export function VideoStudio({
               <span>Tempo decorrido: {Math.floor(prepareSeconds / 60)}:{String(prepareSeconds % 60).padStart(2, "0")}. Nenhuma geração foi iniciada.</span>
               <button type="button" className="btn btn-ghost btn-sm" onClick={cancelPreparation}>Cancelar preparação</button>
             </div> : null}
+            {exporting ? <div className={styles.preparation}>
+              <p role="status" aria-live="polite">{exportMessage}</p>
+              <span>Tempo decorrido: {Math.floor(exportSeconds / 60)}:{String(exportSeconds % 60).padStart(2, "0")}. Sem usar créditos de geração.</span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={cancelExport}>Cancelar exportação</button>
+            </div> : null}
             {quote ? (
               <div className={styles.quote} aria-live="polite">
                 <b>Pronto para trocar o personagem</b>
@@ -319,9 +363,18 @@ export function VideoStudio({
                 <label className={styles.accept}><input type="checkbox" checked={acceptedEstimate} disabled={busy} onChange={e => setAcceptedEstimate(e.target.checked)} />Li a estimativa em dólares e quero gerar este vídeo.</label>
               </div>
             ) : null}
-            <button type="button" className="generate-btn" disabled={busy || !influencer || !referenceReady || (targetMode === "manual" && prompt.trim().length < 8) || !enoughCredits || (Boolean(quote) && !acceptedEstimate)} onClick={quote ? generate : prepare}>
-              {busy ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Preparando vídeo…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Gerar troca de personagem" : "Preparar troca e ver custo"}{quote && <span className="cost">✦ {VIDEO_COST}</span>}</>}
-            </button>
+            <div className={styles.studioActions}>
+              <button type="button" className="generate-btn" disabled={busy || !influencer || !referenceReady || !targetReady || !enoughCredits || (Boolean(quote) && !acceptedEstimate)} onClick={quote ? generate : prepare}>
+                {submitting || uploading || preparing ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Preparando vídeo…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Confirmar geração" : "Gerar no site"}{quote && <span className="cost">✦ {VIDEO_COST}</span>}</>}
+              </button>
+              <div className={styles.exportAction}>
+                {exportedPackage ? <a className="btn btn-ghost" href={exportedPackage.url} download={exportedPackage.filename} target="_blank" rel="noopener noreferrer"><Download size={16} />Baixar pacote ZIP</a> : <button type="button" className="btn btn-ghost" disabled={busy || !influencer || !referenceReady || !targetReady} onClick={() => void exportPackage()}>
+                  {exporting ? <><span className="spinner" />Exportando pacote…</> : <><Package size={16} />Exportar pacote</>}
+                </button>}
+                <HelpTooltip label="O que inclui o pacote de exportação">Baixe um ZIP com o vídeo original e seu áudio, a imagem do influencer, os prompts, os trechos quando necessários e um guia para continuar a edição fora do sistema. A exportação não gera um novo vídeo e não usa créditos de geração.</HelpTooltip>
+              </div>
+            </div>
+            {exportedPackage && <p className="sr-only" role="status">Pacote pronto para baixar.</p>}
             <p className={styles.hint}>A preparação não cobra geração. Uma edição completa usa {VIDEO_COST} créditos do sistema e saldo da {engineConfig.provider === "fal" ? "fal.ai" : "Higgsfield"}. Duração e proporção são conferidas; a fidelidade visual precisa ser revisada.</p>
           </div>
         </aside>

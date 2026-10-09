@@ -173,6 +173,32 @@
   gap: 10px;
 }
 
+.studioActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.studioActions > button {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.exportAction {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.exportAction > button:first-child,
+.exportAction > a:first-child {
+  flex: 1;
+  min-height: 44px;
+}
+
 .creditBalance {
   display: flex;
   justify-content: space-between;
