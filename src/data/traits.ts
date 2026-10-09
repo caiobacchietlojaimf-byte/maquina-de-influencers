@@ -4,12 +4,18 @@
    original em inglês para montar o brief do prompt. */
 
 import type { CharacterTier } from "./character-types";
+import { TRAIT_KINDS, TRAIT_MEDIA, TRAIT_RULES } from "./influencer-trait-media";
 
 export type TraitOption = {
   id: string;
   label: string;
   en: string;
   tiers: readonly CharacterTier[];
+  /** Preview oficial salvo localmente; cores/itens de texto não inventam uma foto. */
+  image?: string;
+  imageFit?: "contain" | "cover";
+  swatch?: string;
+  exclusive?: boolean;
   /** Grupos com slots (ex.: Features) só aceitam uma opção por slot. */
   slot?: string;
 };
@@ -19,6 +25,7 @@ export type TraitGroup = {
   label: string;
   en: string;
   max: number;
+  kind: "media" | "color" | "text";
   options: readonly TraitOption[];
 };
 
@@ -30,7 +37,7 @@ const TOTAL: readonly CharacterTier[] = ["total"];
 const ANIMALS_TOTAL: readonly CharacterTier[] = ["total", "insects", "frogs", "cats", "dogs", "capybaras", "birds"];
 
 const o = (id: string, label: string, en: string, tiers: readonly CharacterTier[] = ALL, slot?: string): TraitOption =>
-  slot ? { id, label, en, tiers, slot } : { id, label, en, tiers };
+  ({ id, label, en, ...(slot ? { slot } : {}), ...TRAIT_MEDIA[id], ...(TRAIT_RULES[id] ?? { tiers }) });
 
 export const TRAIT_GROUPS: readonly TraitGroup[] = [
   {
@@ -58,6 +65,7 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("body_curvy", "Curvilíneo", "Curvy"),
       o("body_heavy", "Robusto", "Heavy"),
       o("body_ultra", "Ultra musculoso", "Ultra Muscular"),
+      o("body_glutes", "Quadris largos", "Big glutes, wide hips"),
       o("pr_centaur", "Centauro", "Centaur", ANIMALS_TOTAL),
     ],
   },
@@ -93,6 +101,10 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("hs_corkscrews", "Saca-rolhas", "Corkscrews", FREAKY),
       o("hs_sidecoil", "Espiral lateral", "Side coil", FREAKY),
       o("hs_mushroom", "Cogumelo", "Mushroom", FREAKY),
+      o("hs_curlblock", "Cachos em topo reto", "Curly flat-top block", FREAKY),
+      o("hs_batwing", "Cuia com asas", "Bat-wing bowl", FREAKY),
+      o("hs_spirals", "Cabelo em alças", "Handlebar hair", FREAKY),
+      o("hs_periwig", "Peruca barroca", "Baroque wig", FREAKY),
     ],
   },
   {
@@ -179,6 +191,7 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
     en: "Height",
     max: 1,
     options: [
+      o("h_short", "Baixo", "Short", ANIMALS_TOTAL),
       o("h_average", "Média", "Average"),
       o("h_tall", "Alto", "Tall"),
       o("h_very_tall", "Muito alto", "Very tall"),
@@ -195,6 +208,7 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("pr_shoulders", "Ombros largos", "Broad shoulders"),
       o("pr_waist", "Cintura fina", "Tiny waist"),
       o("pr_egg", "Corpo de ovo", "Egg body", FREAKY),
+      o("pr_potbelly", "Barriga saliente", "Pot belly", FREAKY),
     ],
   },
   {
@@ -213,6 +227,7 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("head_round", "Redonda", "Round", HUMAN),
       o("head_square", "Quadrada", "Square", HUMAN),
       o("head_heart", "Coração", "Heart", HUMAN),
+      o("head_blockjaw", "Maxilar quadrado largo", "Wide square jaw", TOTAL),
     ],
   },
   {
@@ -293,6 +308,9 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("fn_pointychin", "Queixo pontudo", "Pointy chin", HUMAN, "chin"),
       o("ff_chin_13", "Queixo fraco", "Weak chin", FREAK_TOTAL, "chin"),
       o("ff_forehead_14", "Testa grande", "Big forehead", FREAK_TOTAL, "forehead"),
+      o("fn_arrowbrows", "Sobrancelhas longas e retas", "Long straight eyebrows", HUMAN, "brows"),
+      o("fn_flatcheeks", "Maçãs do rosto planas", "Flat cheekbones", HUMAN, "cheeks"),
+      o("ff_chin_15", "Queixo longo", "Long chin", FREAK_TOTAL, "chin"),
     ],
   },
   {
@@ -309,6 +327,7 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("fh_pencil", "Bigode fino", "Pencil"),
       o("fh_pushbroom", "Bigode vassoura", "Push-broom", FREAKY),
       o("fh_braid", "Barba trançada", "Braided", FREAKY),
+      o("fh_handlebar", "Bigode de guidão", "Handlebar moustache", FREAKY),
     ],
   },
   {
@@ -347,7 +366,7 @@ export const TRAIT_GROUPS: readonly TraitGroup[] = [
       o("acc_bag", "Bolsa", "Bag"),
     ],
   },
-];
+].map(group => ({ ...group, kind: TRAIT_KINDS[group.id] }));
 
 export type Selection = Record<string, string[]>;
 
@@ -369,8 +388,16 @@ export function getOption(groupId: string, optionId: string): TraitOption | unde
 export function pruneSelection(selection: Selection, tier: CharacterTier): Selection {
   const out: Selection = {};
   for (const group of TRAIT_GROUPS) {
-    const allowed = new Set(optionsFor(group, tier).map((opt) => opt.id));
-    const kept = (selection[group.id] ?? []).filter((id) => allowed.has(id)).slice(0, group.max);
+    const allowed = new Map(optionsFor(group, tier).map((opt) => [opt.id, opt]));
+    const kept: string[] = [], slots = new Set<string>();
+    for (const id of selection[group.id] ?? []) {
+      const option = allowed.get(id);
+      if (!option || kept.includes(id) || (option.slot && slots.has(option.slot))) continue;
+      if (option.exclusive) { kept.splice(0, kept.length, id); break; }
+      if (kept.length >= group.max) break;
+      kept.push(id);
+      if (option.slot) slots.add(option.slot);
+    }
     if (kept.length) out[group.id] = kept;
   }
   return out;
@@ -389,6 +416,7 @@ export function randomSelection(tier: CharacterTier, rng: () => number = Math.ra
     for (const opt of pool) {
       if (picked.length >= count) break;
       if (opt.slot && usedSlots.has(opt.slot)) continue;
+      if (opt.exclusive) { if (!picked.length) picked.push(opt); break; }
       if (opt.slot) usedSlots.add(opt.slot);
       picked.push(opt);
     }

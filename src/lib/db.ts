@@ -20,6 +20,8 @@ export type User = {
   passwordHash: string;
   salt: string;
   credits: number;
+  creditRevision?: string;
+  influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   createdAt: number;
 };
 
@@ -39,6 +41,13 @@ export type Influencer = {
   gallery?: string[];
   error?: string;
   referenceUrl?: string;
+  styleReferenceUrl?: string;
+  requestFingerprint?: string;
+  submissionStartedAt?: number;
+  submissionUncertain?: boolean;
+  creditsRefunded?: boolean;
+  referenceUploadIncomplete?: boolean;
+  deletedAt?: number;
   revision?: string;
   createdAt: number;
 };
@@ -259,23 +268,56 @@ export async function createUser(input: Omit<User, "id" | "createdAt">): Promise
 }
 
 export async function adjustCredits(userId: string, delta: number): Promise<number> {
-  const sb = remote();
-  if (sb) {
-    const user = await findUserById(userId);
-    if (!user) throw new Error("Usuário não encontrado");
-    const credits = Math.max(0, user.credits + delta);
-    const { error } = await sb
-      .from("mi_users")
-      .update({ data: { ...user, credits } })
-      .eq("id", userId);
-    if (error) fail("ajustar créditos", error);
-    return credits;
-  }
-  return mutate((db) => {
-    const user = db.users.find((u) => u.id === userId);
-    if (!user) throw new Error("Usuário não encontrado");
+  if (!Number.isFinite(delta)) throw new Error("Valor de créditos inválido");
+  return mutateCredits(userId, user => {
     user.credits = Math.max(0, user.credits + delta);
     return user.credits;
+  });
+}
+
+/** Balance and reservation ledger change together, with a revision against ABA races. */
+async function mutateCredits<T>(userId: string, change: (user: User) => T): Promise<T> {
+  const sb = remote();
+  if (!sb) return mutate(db => {
+    const user = db.users.find(u => u.id === userId);
+    if (!user) throw new Error("Usuário não encontrado");
+    const result = change(user);
+    user.creditRevision = randomUUID();
+    return result;
+  });
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const current = await findUserById(userId);
+    if (!current) throw new Error("Usuário não encontrado");
+    const next = { ...current, influencerCredits: { ...current.influencerCredits } };
+    const result = change(next);
+    next.creditRevision = randomUUID();
+    let update = sb.from("mi_users").update({ data: next }).eq("id", userId).eq("data->>credits", String(current.credits));
+    update = current.creditRevision ? update.eq("data->>creditRevision", current.creditRevision) : update.is("data->>creditRevision", null);
+    const { data, error } = await update.select("id");
+    if (error) fail("ajustar créditos", error);
+    if (data?.length) return result;
+  }
+  throw new Error("O saldo foi atualizado. Tente novamente.");
+}
+
+export async function reserveInfluencerCredits(userId: string, id: string, cost: number): Promise<boolean> {
+  if (!Number.isFinite(cost) || cost <= 0) throw new Error("Valor de créditos inválido");
+  return mutateCredits(userId, user => {
+    const prior = user.influencerCredits?.[id];
+    if (prior) return prior.cost === cost && prior.state === "reserved";
+    if (user.credits < cost) return false;
+    user.credits -= cost;
+    user.influencerCredits = { ...user.influencerCredits, [id]: { cost, state: "reserved" } };
+    return true;
+  });
+}
+
+export async function refundInfluencerCredits(userId: string, id: string): Promise<void> {
+  await mutateCredits(userId, user => {
+    const prior = user.influencerCredits?.[id];
+    if (!prior || prior.state !== "reserved") return;
+    user.credits += prior.cost;
+    user.influencerCredits = { ...user.influencerCredits, [id]: { ...prior, state: "refunded" } };
   });
 }
 
@@ -334,15 +376,15 @@ async function deleteOwned(table: string, userId: string, id: string): Promise<b
 /* ================= influencers ================= */
 
 export async function listInfluencers(userId: string): Promise<Influencer[]> {
-  if (remote()) return listByUser<Influencer>("mi_influencers", userId);
+  if (remote()) return (await listByUser<Influencer>("mi_influencers", userId)).filter(i => !i.deletedAt);
   return load()
-    .influencers.filter((i) => i.userId === userId)
+    .influencers.filter((i) => i.userId === userId && !i.deletedAt)
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
-export async function getInfluencer(userId: string, id: string): Promise<Influencer | undefined> {
-  if (remote()) return getOwned<Influencer>("mi_influencers", userId, id);
-  return load().influencers.find((i) => i.id === id && i.userId === userId);
+export async function getInfluencer(userId: string, id: string, includeDeleted = false): Promise<Influencer | undefined> {
+  const influencer = remote() ? await getOwned<Influencer>("mi_influencers", userId, id) : load().influencers.find((i) => i.id === id && i.userId === userId);
+  return influencer && (includeDeleted || !influencer.deletedAt) ? influencer : undefined;
 }
 
 export async function createInfluencer(
@@ -364,6 +406,74 @@ export async function createInfluencer(
     db.influencers.push(influencer);
     return influencer;
   });
+}
+
+/** The stable, user-scoped request ID prevents duplicate submissions across workers. */
+export async function createInfluencerOnce(influencer: Influencer): Promise<boolean> {
+  const sb = remote();
+  if (sb) {
+    const { error } = await sb.from("mi_influencers").insert({ id: influencer.id, user_id: influencer.userId, created_at: influencer.createdAt, data: influencer });
+    if (error?.code === "23505") return false;
+    if (error) fail("reservar influencer", error);
+    return true;
+  }
+  return mutate(db => {
+    if (db.influencers.some(i => i.id === influencer.id)) return false;
+    db.influencers.push(influencer);
+    return true;
+  });
+}
+
+/** Submission and abandoned-preparation recovery compete for the same queued state. */
+export async function claimInfluencerSubmission(userId: string, id: string): Promise<boolean> {
+  return transitionQueuedInfluencer(userId, id, { status: "processing", submissionStartedAt: Date.now() });
+}
+
+export async function failAbandonedInfluencerPreparation(userId: string, id: string): Promise<boolean> {
+  return transitionQueuedInfluencer(userId, id, { status: "failed", error: "A preparação foi interrompida. Tente novamente." }, Date.now() - 180_000);
+}
+
+export async function markUnconfirmedInfluencerSubmission(userId: string, id: string): Promise<boolean> {
+  const eligible = (item: Influencer | undefined): item is Influencer => Boolean(item && item.status === "processing" && !item.requestId && item.submissionStartedAt && item.submissionStartedAt < Date.now() - 180_000);
+  const patch: Partial<Influencer> = { status: "failed", submissionUncertain: true, error: "A plataforma não confirmou este pedido. Não gere novamente até conferir a solicitação no provedor." };
+  const sb = remote();
+  if (!sb) return mutate(db => {
+    const item = db.influencers.find(i => i.id === id && i.userId === userId);
+    if (!eligible(item)) return false;
+    Object.assign(item, patch);
+    return true;
+  });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const item = await getInfluencer(userId, id);
+    if (!eligible(item)) return false;
+    let query = sb.from("mi_influencers").update({ data: { ...item, ...patch, revision: randomUUID() } }).eq("id", id).eq("user_id", userId).eq("data->>status", "processing").is("data->>requestId", null);
+    query = item.revision ? query.eq("data->>revision", item.revision) : query.is("data->>revision", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("conferir submissão do influencer", error);
+    if (data?.length) return true;
+  }
+  return false;
+}
+
+async function transitionQueuedInfluencer(userId: string, id: string, patch: Partial<Influencer>, createdBefore?: number): Promise<boolean> {
+  const eligible = (item: Influencer | undefined): item is Influencer => Boolean(item && !item.deletedAt && item.status === "queued" && !item.submissionStartedAt && (createdBefore === undefined || item.createdAt < createdBefore));
+  const sb = remote();
+  if (!sb) return mutate(db => {
+    const item = db.influencers.find(i => i.id === id && i.userId === userId);
+    if (!eligible(item)) return false;
+    Object.assign(item, patch);
+    return true;
+  });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const item = await getInfluencer(userId, id);
+    if (!eligible(item)) return false;
+    let query = sb.from("mi_influencers").update({ data: { ...item, ...patch, revision: randomUUID() } }).eq("id", id).eq("user_id", userId).eq("data->>status", "queued").is("data->>submissionStartedAt", null);
+    query = item.revision ? query.eq("data->>revision", item.revision) : query.is("data->>revision", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("reservar submissão do influencer", error);
+    if (data?.length) return true;
+  }
+  return false;
 }
 
 export async function updateInfluencer(
@@ -400,6 +510,11 @@ export async function updateInfluencer(
 }
 
 export async function deleteInfluencer(userId: string, id: string): Promise<boolean> {
+  const influencer = await getInfluencer(userId, id);
+  if (!influencer || influencer.deletedAt) return false;
+  if (influencer.status === "queued" || influencer.status === "processing" || influencer.submissionUncertain) return false;
+  // Keep new request keys consumed even after a card is removed.
+  if (influencer.requestFingerprint) return Boolean(await updateInfluencer(id, { deletedAt: Date.now() }, userId));
   if (remote()) return deleteOwned("mi_influencers", userId, id);
   return mutate((db) => {
     const before = db.influencers.length;
@@ -464,16 +579,12 @@ export async function createVideoOnce(video: Video): Promise<boolean> {
 }
 
 export async function reserveVideoCredits(userId: string, cost: number): Promise<boolean> {
-  const sb = remote();
-  if (!sb) return mutate(db => { const u = db.users.find(u => u.id === userId); if (!u || u.credits < cost) return false; u.credits -= cost; return true; });
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const user = await findUserById(userId);
-    if (!user || user.credits < cost) return false;
-    const { data, error } = await sb.from("mi_users").update({ data: { ...user, credits: user.credits - cost } }).eq("id", userId).eq("data->>credits", String(user.credits)).select("id");
-    if (error) fail("reservar créditos", error);
-    if (data?.length) return true;
-  }
-  return false;
+  if (!Number.isFinite(cost) || cost <= 0) return false;
+  return mutateCredits(userId, user => {
+    if (user.credits < cost) return false;
+    user.credits -= cost;
+    return true;
+  });
 }
 
 export async function claimVideoFinalization(video: Video): Promise<boolean> {

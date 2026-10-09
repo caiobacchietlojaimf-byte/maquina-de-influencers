@@ -1,137 +1,138 @@
 "use server";
 
+import { randomInt } from "node:crypto";
 import { revalidatePath } from "next/cache";
-
-import PRESETS from "@/data/influencer-presets.json";
-import type { CharacterTier } from "@/data/character-types";
-import { pruneSelection, type Selection } from "@/data/traits";
 import { requireUser } from "@/lib/auth";
 import {
-  adjustCredits,
-  createInfluencer,
-  deleteInfluencer,
-  getInfluencer,
-  listInfluencers,
-  updateInfluencer,
-  type Influencer,
+  claimInfluencerSubmission, createInfluencerOnce, deleteInfluencer, failAbandonedInfluencerPreparation, getInfluencer, listInfluencers, markUnconfirmedInfluencerSubmission,
+  refundInfluencerCredits, reserveInfluencerCredits, updateInfluencer, type Influencer,
 } from "@/lib/db";
 import { buildBrief } from "@/lib/prompt";
-import { getStatus, isConfigured, submitGeneration, TERMINAL_STATUSES } from "@/lib/platform";
-
+import {
+  buildInfluencerPayload, checkInfluencerConfiguration, getInfluencerGenerationStatus,
+  InfluencerGenerationError, influencerRequestIdentity, storeInfluencerReference,
+  submitInfluencerGeneration, validateInfluencerInput, type CreateInfluencerInput,
+} from "@/lib/influencer-generation";
 import { SHEET_COST } from "@/lib/costs";
 
-/** Modelo de imagem usado para o character sheet (Higgsfield Soul). */
-const SHEET_MODEL = "higgsfield-ai/soul/v2/standard";
-const DEMO_DELAY_MS = 8000;
+export type { CreateInfluencerInput } from "@/lib/influencer-generation";
+type CreateResult = { id: string } | { error: string; retryable?: boolean };
 
-export type CreateInfluencerInput = {
-  name: string;
-  tier: CharacterTier;
-  selection: Selection;
-  referenceUrl?: string;
-};
+async function failGeneration(influencer: Influencer, error: string) {
+  // Ledger makes recovery safe if a worker stops between the refund and this update.
+  await refundInfluencerCredits(influencer.userId, influencer.id);
+  await updateInfluencer(influencer.id, { status: "failed", error, creditsRefunded: true, submissionUncertain: false }, influencer.userId);
+}
 
-export async function createInfluencerAction(input: CreateInfluencerInput): Promise<{ id: string } | { error: string }> {
-  const user = await requireUser();
-  const name = input.name?.trim() || "Influencer sem nome";
-  const tier = input.tier;
-  const selection = pruneSelection(input.selection ?? {}, tier);
-  const brief = buildBrief(tier, selection);
-  const seed = Math.floor(Math.random() * 100000);
-
-  if (user.credits < SHEET_COST) {
-    return { error: `Créditos insuficientes (precisa de ${SHEET_COST})` };
-  }
-
-  const influencer = await createInfluencer({
-    userId: user.id,
-    name,
-    tier,
-    selection,
-    brief,
-    seed,
-    status: "processing",
-    ...(input.referenceUrl ? { referenceUrl: input.referenceUrl } : {}),
-  });
-
-  if (!isConfigured()) {
-    // Modo demonstração: sem HF_API_KEY, a geração resolve sozinha com um
-    // preset oficial compatível com o tier, para o fluxo inteiro ser navegável.
-    await updateInfluencer(influencer.id, { requestId: "demo" });
-    await adjustCredits(user.id, -SHEET_COST);
-    revalidatePath("/app", "layout");
-    return { id: influencer.id };
-  }
-
+async function createForUser(userId: string, value: CreateInfluencerInput, storedReferences = false): Promise<CreateResult> {
+  let influencer: Influencer | undefined;
+  let ownsSubmission = false;
+  let sent = false;
+  let submittedRequestId: string | undefined;
   try {
-    const queued = await submitGeneration(SHEET_MODEL, {
-      prompt: brief,
-      batch_size: 4,
-      resolution: "1080p",
-      aspect_ratio: "3:4",
-      enhance_prompt: false,
-    });
-    await updateInfluencer(influencer.id, { requestId: queued.requestId, status: "processing" });
-    await adjustCredits(user.id, -SHEET_COST);
+    const input = validateInfluencerInput(value, userId, storedReferences);
+    const { id, fingerprint } = influencerRequestIdentity(userId, input);
+    const existing = await getInfluencer(userId, id, true);
+    if (existing) {
+      if (existing.deletedAt || existing.requestFingerprint !== fingerprint) return { error: "Este pedido já foi utilizado. Inicie uma nova criação.", retryable: false };
+      if (existing.status === "failed") return { error: existing.error ?? "Este pedido falhou. Use Tentar novamente no influencer.", retryable: !existing.submissionUncertain };
+      return { id };
+    }
+    checkInfluencerConfiguration(Boolean(input.referenceUrl || input.styleReferenceUrl));
+    influencer = {
+      id, userId, name: input.name, tier: input.tier, selection: input.selection,
+      brief: buildBrief(input.tier, input.selection, { identity: Boolean(input.referenceUrl), style: Boolean(input.styleReferenceUrl) }),
+      seed: randomInt(1, 1_000_001), status: "queued", requestFingerprint: fingerprint, createdAt: Date.now(),
+      referenceUploadIncomplete: Boolean(input.referenceUrl || input.styleReferenceUrl),
+    };
+    if (!await createInfluencerOnce(influencer)) return { id };
+    ownsSubmission = true;
+    // Save public references before any paid submission. Never send a data URI to the model.
+    const [referenceUrl, styleReferenceUrl] = await Promise.all([
+      storeInfluencerReference(input.referenceUrl, userId, id, "identity"),
+      storeInfluencerReference(input.styleReferenceUrl, userId, id, "style"),
+    ]);
+    await updateInfluencer(id, { referenceUrl, styleReferenceUrl, referenceUploadIncomplete: false }, userId);
+    if (!await reserveInfluencerCredits(userId, id, SHEET_COST)) {
+      await failGeneration(influencer, `Créditos insuficientes (precisa de ${SHEET_COST}).`);
+      return { error: `Créditos insuficientes (precisa de ${SHEET_COST}).`, retryable: true };
+    }
+    if (!await claimInfluencerSubmission(userId, id)) {
+      await refundInfluencerCredits(userId, id);
+      return { error: "A preparação foi interrompida. Inicie uma nova tentativa.", retryable: true };
+    }
+    sent = true;
+    const queued = await submitInfluencerGeneration(buildInfluencerPayload({ ...input, referenceUrl, styleReferenceUrl }, influencer.seed), id);
+    submittedRequestId = queued.requestId;
+    await updateInfluencer(id, { requestId: queued.requestId, status: "processing" }, userId);
     revalidatePath("/app", "layout");
-    return { id: influencer.id };
+    return { id };
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : String(caught);
-    await updateInfluencer(influencer.id, { status: "failed", error: message });
-    return { error: message };
+    const uncertain = caught instanceof InfluencerGenerationError ? caught.uncertain : sent;
+    const message = caught instanceof InfluencerGenerationError ? caught.message : uncertain
+      ? "A confirmação da geração está pendente. Não envie outro pedido; confira este influencer novamente."
+      : "Não foi possível preparar o influencer. Tente novamente.";
+    if (influencer && ownsSubmission) {
+      try {
+        if (uncertain) {
+          await updateInfluencer(influencer.id, { status: submittedRequestId ? "processing" : "failed", ...(submittedRequestId ? { requestId: submittedRequestId } : {}), submissionUncertain: true, error: message }, userId);
+        } else await failGeneration(influencer, message);
+        revalidatePath("/app", "layout");
+      } catch { /* A later poll recovers persisted reservations; never submit again here. */ }
+    }
+    return { error: message, retryable: !uncertain };
   }
 }
 
-/** Snapshot dos influencers do usuário; resolve os pendentes em uma passada. */
+export async function createInfluencerAction(input: CreateInfluencerInput): Promise<CreateResult> {
+  const user = await requireUser();
+  return createForUser(user.id, input);
+}
+
+/** Polls existing requests only. Failed submissions are never silently resubmitted. */
 export async function pollInfluencersAction(): Promise<Influencer[]> {
   const user = await requireUser();
-  const pending = (await listInfluencers(user.id)).filter((i) => i.status === "processing" || i.status === "queued");
-
-  await Promise.all(
-    pending.map(async (influencer) => {
-      if (influencer.requestId === "demo") {
-        if (Date.now() - influencer.createdAt >= DEMO_DELAY_MS) {
-          const pool = (PRESETS as Array<{ tier: string; preview: { url: string }; sheet: { url: string } }>).filter(
-            (p) => p.tier === influencer.tier,
-          );
-          const all = pool.length ? pool : (PRESETS as Array<{ preview: { url: string }; sheet: { url: string } }>);
-          const pick = all[Math.floor(Math.random() * all.length)];
-          await updateInfluencer(influencer.id, {
-            status: "completed",
-            imageUrl: pick.preview.url,
-            gallery: [pick.sheet.url],
-          });
-        }
+  const records = await listInfluencers(user.id);
+  const pending = records.filter(i => i.status === "processing" || i.status === "queued" || (i.status === "failed" && i.requestFingerprint && !i.submissionUncertain && !i.creditsRefunded));
+  let changed = false;
+  await Promise.all(pending.slice(0, 20).map(async influencer => {
+    try {
+      if (influencer.status === "failed") {
+        await failGeneration(influencer, influencer.error ?? "Não foi possível gerar o influencer.");
+        changed = true;
         return;
       }
-      if (!influencer.requestId) return;
-      try {
-        const status = await getStatus(influencer.requestId);
-        if (!TERMINAL_STATUSES.has(status.status)) return;
-        if (status.status === "completed" && status.images?.length) {
-          await updateInfluencer(influencer.id, {
-            status: "completed",
-            imageUrl: status.images[0].url,
-            gallery: status.images.slice(1).map((image) => image.url),
-          });
-        } else {
-          await updateInfluencer(influencer.id, {
-            status: "failed",
-            error: typeof status.error === "string" ? status.error : `Geração ${status.status}`,
-          });
-        }
-      } catch {
-        /* Falha transitória de rede: tenta de novo na próxima rodada. */
+      if (influencer.requestId === "demo") {
+        await failGeneration(influencer, "Este pedido antigo não foi enviado à IA. Crie um novo influencer.");
+        changed = true;
+        return;
       }
-    }),
-  );
-
+      if (!influencer.requestId) {
+        if (influencer.submissionStartedAt) {
+          if (!await markUnconfirmedInfluencerSubmission(user.id, influencer.id)) return;
+        } else if (await failAbandonedInfluencerPreparation(user.id, influencer.id)) {
+          await failGeneration(influencer, "A preparação foi interrompida. Tente novamente.");
+        }
+        changed = true;
+        return;
+      }
+      const status = await getInfluencerGenerationStatus(influencer.requestId);
+      if (status.status === "completed" && status.images.length) {
+        await updateInfluencer(influencer.id, { status: "completed", imageUrl: status.images[0], gallery: status.images.slice(1), submissionUncertain: false, error: undefined }, user.id);
+        changed = true;
+      } else if (["completed", "failed", "nsfw", "canceled", "cancelled"].includes(status.status)) {
+        await failGeneration(influencer, status.status === "nsfw" ? "A plataforma recusou esta geração. Revise as fotos e características." : "A plataforma não entregou uma imagem válida. Os créditos foram devolvidos.");
+        changed = true;
+      }
+    } catch { /* Transient polling failures keep the same request for the next pass. */ }
+  }));
+  if (changed) revalidatePath("/app", "layout");
   return listInfluencers(user.id);
 }
 
 export async function deleteInfluencerAction(id: string): Promise<void> {
   const user = await requireUser();
-  await deleteInfluencer(user.id, id);
+  if (!await deleteInfluencer(user.id, id)) throw new Error("Não foi possível excluir este influencer. Aguarde a confirmação da geração e tente novamente.");
   revalidatePath("/app", "layout");
 }
 
@@ -150,14 +151,15 @@ export async function renameInfluencerAction(id: string, value: string): Promise
   }
 }
 
-export async function retryInfluencerAction(id: string): Promise<{ id: string } | { error: string }> {
+export async function retryInfluencerAction(id: string, requestKey: string): Promise<CreateResult> {
   const user = await requireUser();
   const influencer = await getInfluencer(user.id, id);
-  if (!influencer) return { error: "Influencer não encontrado" };
-  return createInfluencerAction({
-    name: influencer.name,
-    tier: influencer.tier as CharacterTier,
-    selection: influencer.selection,
+  if (!influencer || influencer.deletedAt) return { error: "Influencer não encontrado", retryable: false };
+  if (influencer.status !== "failed" || influencer.submissionUncertain) return { error: "Este pedido ainda não permite uma nova tentativa. Confira o status antes de gerar novamente.", retryable: false };
+  if (influencer.referenceUploadIncomplete) return { error: "As fotos deste pedido não terminaram de enviar. Reenvie as fotos pelo formulário para criar o influencer.", retryable: false };
+  return createForUser(user.id, {
+    requestKey, name: influencer.name, tier: influencer.tier as CreateInfluencerInput["tier"], selection: influencer.selection,
     ...(influencer.referenceUrl ? { referenceUrl: influencer.referenceUrl } : {}),
-  });
+    ...(influencer.styleReferenceUrl ? { styleReferenceUrl: influencer.styleReferenceUrl } : {}),
+  }, true);
 }

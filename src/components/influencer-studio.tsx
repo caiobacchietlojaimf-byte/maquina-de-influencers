@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   BicepsFlexed,
   Blend,
   CalendarDays,
+  Check,
   ChevronDown,
   Clock,
   Compass,
@@ -47,14 +48,11 @@ import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
 import { HeroReel } from "./hero-reel";
 import PRESETS from "@/data/influencer-presets.json";
-import { MOTION_PRESETS } from "@/data/motion-presets";
-import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection } from "@/data/traits";
-import { VIDEO_PRESETS } from "@/data/video-presets";
+import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection, type TraitGroup } from "@/data/traits";
 import type { Influencer } from "@/lib/db";
-import { RenderProbe } from "./render-probe";
-import { MotionPresetCard } from "./motion-preset-card";
 import { InfluencerDetails } from "./influencer-details";
 import detailStyles from "./influencer-details.module.css";
+import styles from "./influencer-studio.module.css";
 
 type Preset = {
   id: string;
@@ -66,7 +64,6 @@ type Preset = {
 };
 
 type RightTab = "explore" | "history";
-type ExploreScope = "influencers" | "presets" | "trends";
 
 const TIER_LABEL: Record<string, string> = Object.fromEntries(
   CHARACTER_TYPES.map((t) => [t.id, t.label]),
@@ -102,47 +99,82 @@ export function InfluencerStudio({
   credits: number;
 }) {
   const router = useRouter();
+  const studioId = useId();
+  const mounted = useRef(true);
+  const submittingRef = useRef(false);
+  const requestRef = useRef<{ signature: string; key: string } | null>(null);
+  const refreshRef = useRef<Promise<void> | null>(null);
+  const deletedIds = useRef(new Set<string>());
 
   /* ----- builder ----- */
   const [tier, setTier] = useState<CharacterTier>("total");
   const [selection, setSelection] = useState<Selection>({});
   const [name, setName] = useState("");
   const [reference, setReference] = useState<string | null>(null);
+  const [styleReference, setStyleReference] = useState<string | null>(null);
+  const [referenceLoading, setReferenceLoading] = useState(false);
+  const [styleReferenceLoading, setStyleReferenceLoading] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ gender: true });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   /* ----- lado direito ----- */
   const [rightTab, setRightTab] = useState<RightTab>("explore");
-  const [scope, setScope] = useState<ExploreScope>("influencers");
   const [viewer, setViewer] = useState<Preset | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
   /* ----- dados vivos ----- */
   const [influencers, setInfluencers] = useState<Influencer[]>(initialInfluencers);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const detail = influencers.find((influencer) => influencer.id === detailId);
   const hasPending = influencers.some((i) => i.status === "processing" || i.status === "queued");
+  const busy = submitting || referenceLoading || styleReferenceLoading;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const refreshInfluencers = useCallback(() => {
+    if (refreshRef.current) return refreshRef.current;
+    setRefreshing(true);
+    const request = pollInfluencersAction().then((fresh) => {
+      if (!mounted.current) return;
+      setInfluencers(fresh.filter((item) => !deletedIds.current.has(item.id)));
+      setRefreshError(null);
+    }).catch(() => {
+      if (mounted.current) setRefreshError("Não foi possível atualizar seus influencers. A geração continua; atualize para conferir.");
+    }).finally(() => {
+      refreshRef.current = null;
+      if (mounted.current) setRefreshing(false);
+    });
+    refreshRef.current = request;
+    return request;
+  }, []);
 
   useEffect(() => {
     if (!hasPending) return;
-    const timer = setInterval(() => {
-      pollInfluencersAction()
-        .then(setInfluencers)
-        .catch(() => undefined);
-    }, 4000);
+    const timer = setInterval(() => { void refreshInfluencers(); }, 4000);
     return () => clearInterval(timer);
-  }, [hasPending]);
+  }, [hasPending, refreshInfluencers]);
 
   /* ----- handlers ----- */
 
   const toggleOption = useCallback(
-    (groupId: string, optionId: string, max: number) => {
+    (group: TraitGroup, optionId: string) => {
       setSelection((prev) => {
+        const { id: groupId, max } = group;
         const current = prev[groupId] ?? [];
         if (current.includes(optionId)) {
           return { ...prev, [groupId]: current.filter((id) => id !== optionId) };
         }
-        const next = max === 1 ? [optionId] : [...current, optionId].slice(-max);
+        const option = group.options.find((item) => item.id === optionId);
+        const compatible = current.filter((id) => {
+          if (option?.exclusive || group.options.find((item) => item.id === id)?.exclusive) return false;
+          return !option?.slot || group.options.find((item) => item.id === id)?.slot !== option.slot;
+        });
+        const next = max === 1 ? [optionId] : [...compatible, optionId].slice(-max);
         return { ...prev, [groupId]: next };
       });
     },
@@ -159,57 +191,62 @@ export function InfluencerStudio({
     setSelection((prev) => pruneSelection(prev, next));
   }, []);
 
-  const pickReference = useCallback((file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const img = new window.Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        const scale = Math.min(1, 512 / Math.max(img.width, img.height));
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
-        setReference(canvas.toDataURL("image/jpeg", 0.82));
-      };
-      img.src = String(reader.result);
-    };
-    reader.readAsDataURL(file);
-  }, []);
-
   const generateSheet = useCallback(async () => {
+    if (submittingRef.current || referenceLoading || styleReferenceLoading) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
-    const result = await createInfluencerAction({
+    const input = {
       name: name.trim() || `Influencer ${influencers.length + 1}`,
       tier,
       selection,
       ...(reference ? { referenceUrl: reference } : {}),
-    }).catch((caught: unknown) => ({ error: caught instanceof Error ? caught.message : String(caught) }));
-    setSubmitting(false);
-    if ("error" in result) {
-      setError(result.error);
-      return;
+      ...(styleReference ? { styleReferenceUrl: styleReference } : {}),
+    };
+    const signature = JSON.stringify(input);
+    if (requestRef.current?.signature !== signature) {
+      requestRef.current = { signature, key: crypto.randomUUID() };
     }
-    setRightTab("history");
-    const fresh = await pollInfluencersAction().catch(() => null);
-    if (fresh) setInfluencers(fresh);
-    router.refresh();
-  }, [name, tier, selection, reference, influencers.length, router]);
+    try {
+      const result = await createInfluencerAction({ ...input, requestKey: requestRef.current.key });
+      if (!mounted.current) return;
+      if ("error" in result) {
+        setError(result.error);
+        if (result.retryable === true) requestRef.current = null;
+        await refreshRef.current;
+        await refreshInfluencers();
+        router.refresh();
+        return;
+      }
+      requestRef.current = null;
+      setRightTab("history");
+      await refreshRef.current;
+      await refreshInfluencers();
+      router.refresh();
+    } catch {
+      if (mounted.current) setError("A conexão foi interrompida. Tente novamente para conferir esta solicitação sem duplicá-la.");
+    } finally {
+      submittingRef.current = false;
+      if (mounted.current) setSubmitting(false);
+    }
+  }, [name, tier, selection, reference, styleReference, referenceLoading, styleReferenceLoading, influencers.length, refreshInfluencers, router]);
 
   const recreate = useCallback((preset: Preset) => {
     setTier(preset.tier as CharacterTier);
     setSelection(pruneSelection(preset.selection ?? {}, preset.tier as CharacterTier));
     setName(preset.name);
+    setReference(null);
+    setStyleReference(null);
+    setError(null);
     setViewer(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, []);
 
   const groups = useMemo(() => groupsFor(tier), [tier]);
   /* =========================================================== */
 
   return (
-    <div className="studio">
-      <RenderProbe />
+    <div className={`studio ${styles.studio}`}>
       {/* ------------------- construtor (esquerda) ------------------- */}
       <aside className="builder">
         <div className="builder-head">
@@ -217,40 +254,24 @@ export function InfluencerStudio({
           <h2>Influenciador de IA</h2>
         </div>
         <div className="builder-scroll">
-          <label className="upload-box">
-            <span className="optional">Opcional</span>
-            {reference ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={reference} alt="Sua foto de referência" />
-            ) : (
-              <>
-                <ImagePlus size={20} />
-                <b style={{ color: "var(--tx)" }}>Envie sua foto</b>
-              </>
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) pickReference(file);
-              }}
-            />
-          </label>
-          {reference ? (
-            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setReference(null)}>
-              Remover foto
-            </button>
-          ) : null}
+          <ReferenceUpload
+            label="Envie sua foto"
+            previewLabel="Sua foto de referência"
+            value={reference}
+            onChange={setReference}
+            onLoadingChange={setReferenceLoading}
+            disabled={busy}
+          />
 
           <div className="field">
-            <label htmlFor="inf-name">Nome do influencer</label>
+            <label htmlFor={`${studioId}-name`}>Nome do influencer</label>
             <input
-              id="inf-name"
+              id={`${studioId}-name`}
               className="input"
               placeholder="Ex.: Lola Turbo"
               value={name}
+              maxLength={80}
+              disabled={busy}
               onChange={(event) => setName(event.target.value)}
             />
           </div>
@@ -261,16 +282,22 @@ export function InfluencerStudio({
               <span>Tipo de personagem</span>
               <span className="count">⋅ {CHARACTER_TYPES.length}</span>
             </div>
-            <div className="type-grid">
+            <div className={styles.optionGrid} role="group" aria-label="Tipo de personagem">
               {CHARACTER_TYPES.map((type) => (
                 <button
                   type="button"
                   key={type.id}
-                  className="type-card"
+                  className={styles.optionCard}
+                  data-kind="media"
                   data-active={tier === type.id}
+                  aria-pressed={tier === type.id}
+                  disabled={busy}
                   onClick={() => changeTier(type.id)}
                 >
-                  <Image src={type.icon} alt={type.label} width={56} height={56} unoptimized />
+                  <span className={styles.optionVisual}>
+                    <Image src={type.icon} alt="" width={96} height={96} unoptimized />
+                    {tier === type.id ? <Check className={styles.selectedMark} size={16} aria-hidden="true" /> : null}
+                  </span>
                   <span>{type.label}</span>
                 </button>
               ))}
@@ -291,6 +318,9 @@ export function InfluencerStudio({
                 <button
                   type="button"
                   className="trait-head"
+                  disabled={referenceLoading || styleReferenceLoading}
+                  aria-expanded={open}
+                  aria-controls={`${studioId}-${group.id}`}
                   onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))}
                 >
                   {GroupIcon ? <GroupIcon size={15} style={{ color: "var(--tx3)", flexShrink: 0 }} /> : null}
@@ -299,36 +329,58 @@ export function InfluencerStudio({
                   {pickedLabels ? <span className="picked">{pickedLabels}</span> : null}
                   <ChevronDown className="chev" size={16} />
                 </button>
-                {open ? (
-                  <div className="trait-body">
+                <div id={`${studioId}-${group.id}`} hidden={!open}>
+                  {open ? <>
+                  {group.max > 1 ? <p className={styles.choiceHint}>Escolha até {group.max}</p> : null}
+                  {group.id === "aesthetic" ? <div className={styles.styleUpload}>
+                    <ReferenceUpload
+                      label="Adicionar referência de estilo"
+                      previewLabel="Foto de referência de estilo"
+                      value={styleReference}
+                      onChange={setStyleReference}
+                      onLoadingChange={setStyleReferenceLoading}
+                      disabled={busy}
+                    />
+                  </div> : null}
+                  <div className={styles.optionGrid} role="group" aria-label={group.label}>
                     {opts.map((opt) => (
                       <button
                         type="button"
                         key={opt.id}
-                        className="trait-opt"
+                        className={styles.optionCard}
+                        data-kind={opt.image ? "media" : opt.swatch ? "color" : "text"}
                         data-active={picked.includes(opt.id)}
-                        onClick={() => toggleOption(group.id, opt.id, group.max)}
+                        aria-pressed={picked.includes(opt.id)}
+                        disabled={busy}
+                        onClick={() => toggleOption(group, opt.id)}
                       >
-                        {opt.label}
+                        {opt.image || opt.swatch ? <span className={styles.optionVisual}>
+                          {opt.image ? <Image src={opt.image} alt="" width={96} height={96} style={{ objectFit: opt.imageFit ?? "cover" }} unoptimized /> : <span className={styles.swatch} style={{ backgroundColor: opt.swatch }} />}
+                          {picked.includes(opt.id) ? <Check className={styles.selectedMark} size={16} aria-hidden="true" /> : null}
+                        </span> : null}
+                        <span>{opt.label}</span>
+                        {!opt.image && !opt.swatch && picked.includes(opt.id) ? <Check size={14} aria-hidden="true" /> : null}
                       </button>
                     ))}
                   </div>
-                ) : null}
+                  </> : null}
+                </div>
               </section>
             );
           })}
         </div>
 
         <div className="builder-footer">
-          <button type="button" className="dice-btn" title="Sortear visual" onClick={rollDice}>
+          <button type="button" className="dice-btn" title="Sortear visual" aria-label="Sortear visual" disabled={busy} onClick={rollDice}>
             <Dices size={20} />
           </button>
-          <button type="button" className="generate-btn" disabled={submitting} onClick={generateSheet}>
-            {submitting ? <span className="spinner" /> : <>Gerar <span className="cost">✦ {SHEET_COST}</span></>}
+          <button type="button" className="generate-btn" disabled={busy || credits < SHEET_COST} onClick={generateSheet}>
+            {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar <span className="cost">✦ {SHEET_COST}</span></>}
           </button>
         </div>
+        {credits < SHEET_COST ? <p className={styles.builderNotice}>Você precisa de {SHEET_COST} créditos para gerar.</p> : null}
         {error ? (
-          <div className="auth-error" style={{ margin: "0 14px 14px" }}>
+          <div className="auth-error" role="alert" style={{ margin: "0 14px 14px" }}>
             {error}
           </div>
         ) : null}
@@ -337,11 +389,11 @@ export function InfluencerStudio({
       {/* ------------------- explorar / histórico (direita) ------------------- */}
       <section>
         <div className="explore-bar">
-          <button type="button" className="chip" data-active={rightTab === "explore"} onClick={() => setRightTab("explore")}>
+          <button type="button" className="chip" data-active={rightTab === "explore"} aria-pressed={rightTab === "explore"} onClick={() => setRightTab("explore")}>
             <Compass size={14} />
             Explorar
           </button>
-          <button type="button" className="chip" data-active={rightTab === "history"} onClick={() => setRightTab("history")}>
+          <button type="button" className="chip" data-active={rightTab === "history"} aria-pressed={rightTab === "history"} onClick={() => setRightTab("history")}>
             <Clock size={14} />
             Meus Influencers
           </button>
@@ -349,6 +401,12 @@ export function InfluencerStudio({
             ✦ {credits.toLocaleString("pt-BR")} créditos
           </span>
         </div>
+        {refreshError ? <div className={styles.refreshNotice} role="status">
+          <span>{refreshError}</span>
+          <button type="button" className="btn btn-sm btn-ghost" disabled={refreshing} onClick={() => { void refreshInfluencers(); }}>
+            <RotateCcw size={14} aria-hidden="true" />{refreshing ? "Atualizando…" : "Atualizar"}
+          </button>
+        </div> : null}
 
         {rightTab === "explore" ? (
           <>
@@ -360,27 +418,21 @@ export function InfluencerStudio({
                 seu hit viral
               </h2>
               <p>
-                Monte seu influencer de IA com o rosto, corpo e estilo que você quiser. Escolha um
-                movimento e veja ele performar em um vídeo pronto para compartilhar.
+                Monte seu influencer de IA com o rosto, corpo e estilo que você quiser.
+                Explore os personagens e use um deles como ponto de partida.
               </p>
               <div className="chips">
-                <button type="button" className="chip" data-active={scope === "influencers"} onClick={() => setScope("influencers")}>
+                <span className={`chip ${styles.galleryLabel}`} data-active="true">
                   <Sparkles size={13} />
                   AI Influencers
-                </button>
-                <button type="button" className="chip" data-active={scope === "presets"} onClick={() => setScope("presets")}>
-                  Higgsfield Presets
-                </button>
-                <button type="button" className="chip" data-active={scope === "trends"} onClick={() => setScope("trends")}>
-                  Tendências
-                </button>
+                </span>
               </div>
             </div>
 
-            {scope === "influencers" ? (
               <div className="masonry">
                 {(PRESETS as Preset[]).map((preset) => (
-                  <figure key={preset.id} className="preset-card" onClick={() => setViewer(preset)}>
+                  <figure key={preset.id} className={`preset-card ${styles.presetCard}`}>
+                    <button type="button" className={styles.presetOpen} onClick={() => setViewer(preset)} aria-label={`Ver ${preset.name}`} />
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={preset.preview.thumb || preset.preview.url} alt={preset.name} loading="lazy" />
                     <span className="tier-tag">{TIER_LABEL[preset.tier] ?? preset.tier}</span>
@@ -389,10 +441,8 @@ export function InfluencerStudio({
                       <button
                         type="button"
                         className="recreate-btn"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          recreate(preset);
-                        }}
+                        disabled={busy}
+                        onClick={() => recreate(preset)}
                       >
                         Recriar
                       </button>
@@ -400,46 +450,6 @@ export function InfluencerStudio({
                   </figure>
                 ))}
               </div>
-            ) : null}
-
-            {scope === "presets" ? (
-              <div className="masonry" style={{ columns: "3 280px" }}>
-                {VIDEO_PRESETS.map((preset) => (
-                  <figure
-                    key={preset.id}
-                    className="video-card"
-                    onMouseEnter={(e) => e.currentTarget.querySelector("video")?.play().catch(() => undefined)}
-                    onMouseLeave={(e) => e.currentTarget.querySelector("video")?.pause()}
-                  >
-                    <video src={preset.video} poster={preset.poster} muted loop playsInline preload="none" />
-                    <div className="meta">
-                      <div className="faces">
-                        {preset.faces.map((face) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img key={face} src={face} alt="" loading="lazy" />
-                        ))}
-                      </div>
-                      <span className="name">{preset.name}</span>
-                    </div>
-                  </figure>
-                ))}
-              </div>
-            ) : null}
-
-            {scope === "trends" ? (
-              <div className="motion-grid" style={{ marginTop: 18, gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))" }}>
-                {MOTION_PRESETS.filter((p) => p.category === "trending").map((preset) => (
-                  <MotionPresetCard
-                    key={preset.id}
-                    name={preset.name}
-                    thumbnail={preset.thumbnail}
-                    preview={preset.preview}
-                    active={false}
-                    onPick={() => router.push(`/app/criar-videos?preset=${encodeURIComponent(preset.id)}`)}
-                  />
-                ))}
-              </div>
-            ) : null}
           </>
         ) : null}
 
@@ -453,12 +463,15 @@ export function InfluencerStudio({
                   onOpen={() => setDetailId(inf.id)}
                   onDelete={async () => {
                     await deleteInfluencerAction(inf.id);
+                    deletedIds.current.add(inf.id);
                     setInfluencers((prev) => prev.filter((i) => i.id !== inf.id));
                   }}
-                  onRetry={async () => {
-                    await retryInfluencerAction(inf.id);
-                    const fresh = await pollInfluencersAction().catch(() => null);
-                    if (fresh) setInfluencers(fresh);
+                  onRetry={async (requestKey) => {
+                    const result = await retryInfluencerAction(inf.id, requestKey);
+                    await refreshRef.current;
+                    await refreshInfluencers();
+                    router.refresh();
+                    if ("error" in result) throw new Error(result.error);
                   }}
                   onUseMotion={() => router.push(`/app/criar-videos?influencer=${encodeURIComponent(inf.id)}`)}
                 />
@@ -468,7 +481,7 @@ export function InfluencerStudio({
             <div className="empty-state">
               <div className="big">Nenhum influencer ainda</div>
               <p>Monte o personagem na coluna da esquerda e aperte Gerar.</p>
-              <button type="button" className="btn btn-accent" onClick={rollDice}>
+              <button type="button" className="btn btn-accent" disabled={busy} onClick={rollDice}>
                 <Dices size={16} />
                 Sortear um visual
               </button>
@@ -483,34 +496,146 @@ export function InfluencerStudio({
       }} /> : null}
 
       {/* ------------------- visualizador de preset ------------------- */}
-      {viewer ? (
-        <div className="modal-backdrop" onClick={() => setViewer(null)}>
-          <div className="modal" onClick={(event) => event.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setViewer(null)}>
-              <X size={16} />
-            </button>
-            <h2>{viewer.name}</h2>
-            <p className="modal-sub">Tipo: {TIER_LABEL[viewer.tier] ?? viewer.tier}</p>
-            <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={viewer.sheet.url || viewer.preview.url}
-                alt={viewer.name}
-                style={{ borderRadius: 14, border: "1px solid var(--line)" }}
-              />
-              <button type="button" className="btn btn-accent" onClick={() => recreate(viewer)}>
-                <Sparkles size={16} />
-                Recriar este influencer
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {viewer ? <PresetViewer preset={viewer} disabled={busy} onClose={() => setViewer(null)} onRecreate={() => recreate(viewer)} /> : null}
     </div>
   );
 }
 
 /* ---------------- subcomponentes ---------------- */
+
+async function prepareReferenceImage(file: File): Promise<string> {
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+    throw new Error("Escolha uma imagem JPG, PNG ou WebP.");
+  }
+  if (!file.size || file.size > 10 * 1024 * 1024) throw new Error("A imagem deve ter até 10 MB.");
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const item = new window.Image();
+      const timeout = window.setTimeout(() => {
+        item.onload = null;
+        item.onerror = null;
+        item.src = "";
+        reject(new Error("Não foi possível abrir esta imagem. Escolha outro arquivo."));
+      }, 15_000);
+      item.onload = () => { window.clearTimeout(timeout); resolve(item); };
+      item.onerror = () => { window.clearTimeout(timeout); reject(new Error("A imagem está inválida ou corrompida. Escolha outro arquivo.")); };
+      item.src = url;
+    });
+    if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 64_000_000) {
+      throw new Error("Esta imagem é muito grande para preparar. Envie uma versão menor.");
+    }
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Não foi possível preparar a imagem neste navegador.");
+    for (const maxSize of [1024, 800, 640, 512]) {
+      const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.86, 0.72, 0.58]) {
+        const result = canvas.toDataURL("image/jpeg", quality);
+        // Two references stay below the server action's 1 MB request limit.
+        if (result.length <= 400 * 1024) return result;
+      }
+    }
+    throw new Error("Não foi possível reduzir esta imagem. Escolha um arquivo menor.");
+  } finally { URL.revokeObjectURL(url); }
+}
+
+function ReferenceUpload({ label, previewLabel, value, disabled, onChange, onLoadingChange }: {
+  label: string;
+  previewLabel: string;
+  value: string | null;
+  disabled: boolean;
+  onChange: (value: string | null) => void;
+  onLoadingChange: (loading: boolean) => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadingRef = useRef(false);
+  const mounted = useRef(true);
+  const errorId = useId();
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  async function pick(file: File) {
+    if (loadingRef.current || disabled) return;
+    loadingRef.current = true;
+    setLoading(true);
+    setError(null);
+    onLoadingChange(true);
+    try {
+      const result = await prepareReferenceImage(file);
+      if (mounted.current) onChange(result);
+    } catch (caught) {
+      if (mounted.current) setError(caught instanceof Error ? caught.message : "Não foi possível preparar a imagem.");
+    } finally {
+      loadingRef.current = false;
+      if (mounted.current) { setLoading(false); onLoadingChange(false); }
+    }
+  }
+
+  return <div className={styles.referenceUpload}>
+    <label className={`upload-box ${styles.uploadBox}`} data-disabled={disabled}>
+      <span className="optional">Opcional</span>
+      {loading ? <span className="spinner" aria-hidden="true" /> : value ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={value} alt={previewLabel} />
+      ) : <ImagePlus size={20} aria-hidden="true" />}
+      <b>{loading ? "Preparando imagem…" : value ? "Trocar imagem" : label}</b>
+      {!value && !loading ? <span className={styles.uploadHint}>JPG, PNG ou WebP · até 10 MB</span> : null}
+      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label={label}
+        disabled={disabled || loading} aria-describedby={error ? errorId : undefined}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) void pick(file);
+        }} />
+    </label>
+    <span className="sr-only" role="status">{loading ? "Preparando imagem" : ""}</span>
+    {value ? <button type="button" className="btn btn-sm btn-ghost" disabled={disabled || loading} onClick={() => { onChange(null); setError(null); }}>Remover imagem<span className="sr-only">: {previewLabel}</span></button> : null}
+    {error ? <p id={errorId} className={styles.uploadError} role="alert">{error}</p> : null}
+  </div>;
+}
+
+function PresetViewer({ preset, disabled, onClose, onRecreate }: {
+  preset: Preset;
+  disabled: boolean;
+  onClose: () => void;
+  onRecreate: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    const overflow = document.body.style.overflow;
+    element?.showModal();
+    document.body.style.overflow = "hidden";
+    return () => { element?.close(); document.body.style.overflow = overflow; };
+  }, []);
+  function close() { dialog.current?.close(); onClose(); }
+  return <dialog ref={dialog} className={`modal ${styles.presetDialog}`} aria-labelledby={titleId}
+    onCancel={(event) => { event.preventDefault(); close(); }}
+    onClick={(event) => {
+      if (event.target !== event.currentTarget) return;
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) close();
+    }}>
+    <button type="button" className="modal-close" aria-label="Fechar visualização" onClick={close}><X size={16} /></button>
+    <h2 id={titleId}>{preset.name}</h2>
+    <p className="modal-sub">Tipo: {TIER_LABEL[preset.tier] ?? preset.tier}</p>
+    <div className={styles.presetPreview}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={preset.sheet.url || preset.preview.url} alt={preset.name} />
+      <button type="button" className="btn btn-accent" disabled={disabled} onClick={() => { dialog.current?.close(); onRecreate(); }}><Sparkles size={16} />Recriar este influencer</button>
+    </div>
+  </dialog>;
+}
 
 function InfluencerCard({
   influencer,
@@ -521,10 +646,40 @@ function InfluencerCard({
 }: {
   influencer: Influencer;
   onOpen: () => void;
-  onDelete: () => void;
-  onRetry: () => void;
+  onDelete: () => Promise<void>;
+  onRetry: (requestKey: string) => Promise<void>;
   onUseMotion: () => void;
 }) {
+  const [action, setAction] = useState<"delete" | "retry" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const actionRef = useRef(false);
+  const retryKey = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  async function runAction(kind: "delete" | "retry") {
+    if (actionRef.current) return;
+    actionRef.current = true;
+    setAction(kind);
+    setError(null);
+    try {
+      if (kind === "delete") await onDelete();
+      else {
+        retryKey.current ??= crypto.randomUUID();
+        await onRetry(retryKey.current);
+        // Keep the key: refreshing an old failed card must not create another job.
+      }
+    } catch (caught) {
+      if (mounted.current) setError(caught instanceof Error ? caught.message : "Não foi possível concluir. Tente novamente.");
+    } finally {
+      actionRef.current = false;
+      if (mounted.current) setAction(null);
+    }
+  }
+
   const date = new Date(influencer.createdAt).toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "short",
@@ -542,10 +697,10 @@ function InfluencerCard({
             <span style={{ color: "var(--danger)", fontSize: 13, padding: "0 14px", textAlign: "center" }}>
               {influencer.error ?? "A geração falhou"}
             </span>
-            <button type="button" className={`btn btn-sm btn-ghost ${detailStyles.cardAction}`} onClick={onRetry}>
+            {!influencer.submissionUncertain ? <button type="button" className={`btn btn-sm btn-ghost ${detailStyles.cardAction}`} disabled={action !== null} onClick={() => { void runAction("retry"); }}>
               <RotateCcw size={14} />
-              Tentar de novo
-            </button>
+              {action === "retry" ? "Enviando…" : `Gerar novamente · ✦ ${SHEET_COST}`}
+            </button> : null}
           </div>
         ) : (
           <div className="pending skeleton">
@@ -563,15 +718,15 @@ function InfluencerCard({
         <div className={`actions ${detailStyles.cardAction}`}>
           {influencer.status === "completed" && influencer.imageUrl ? (
             <>
-              <a href={influencer.imageUrl} target="_blank" rel="noreferrer" title="Baixar imagem">
+              <a href={influencer.imageUrl} target="_blank" rel="noreferrer" title="Baixar imagem" aria-label={`Baixar imagem de ${influencer.name}`}>
                 <Download size={14} />
               </a>
-              <button type="button" title="Usar em um vídeo" onClick={onUseMotion}>
+              <button type="button" title="Usar em um vídeo" aria-label={`Usar ${influencer.name} em um vídeo`} disabled={action !== null} onClick={onUseMotion}>
                 <Sparkles size={14} />
               </button>
             </>
           ) : null}
-          <button type="button" title="Excluir" onClick={onDelete}>
+          <button type="button" title={influencer.submissionUncertain || influencer.status === "queued" || influencer.status === "processing" ? "Aguarde a confirmação desta geração para excluir" : "Excluir"} aria-label={`Excluir ${influencer.name}`} disabled={action !== null || influencer.submissionUncertain || influencer.status === "queued" || influencer.status === "processing"} onClick={() => { void runAction("delete"); }}>
             <Trash2 size={14} />
           </button>
         </div>
@@ -580,6 +735,7 @@ function InfluencerCard({
         <b>{influencer.name}</b>
         <span>{date}</span>
       </div>
+      {error ? <p className={styles.cardError} role="alert">{error}</p> : null}
     </div>
   );
 }

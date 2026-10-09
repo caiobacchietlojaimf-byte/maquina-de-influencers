@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "next dev --port 3000",
-    "build": "npm run validate:media && next build",
+    "build": "npm run validate:media && npm run validate:traits && next build",
     "validate:media": "node scripts/validate-viral-media.mjs",
+    "validate:traits": "node scripts/sync-influencer-traits.mjs --check",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"

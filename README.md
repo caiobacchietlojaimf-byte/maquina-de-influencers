@@ -35,9 +35,10 @@ pnpm install
 pnpm dev        # http://localhost:3000
 ```
 
-Sem chaves de API o app roda em **modo demonstração** de ponta a ponta: a
-mineração do TikTok é real, e as gerações e publicações resolvem em segundos
-com resultados simulados — o fluxo inteiro é navegável.
+A criação de influencers exige a API da Higgsfield configurada no servidor.
+Sem a chave, o formulário informa a indisponibilidade e não cobra créditos nem
+substitui a geração por um preset. Fotos de identidade e estilo exigem também
+`BLOB_READ_WRITE_TOKEN` para disponibilizar as referências ao provedor.
 
 ## Ligando as integrações reais
 
@@ -46,14 +47,21 @@ Copie `.env.example` para `.env.local`:
 | Variável | Para quê |
 | --- | --- |
 | `HF_API_KEY` (`id:secret`) + `HF_API_BASE_URL` | Geração real (Higgsfield Platform API) |
+| `BLOB_READ_WRITE_TOKEN` | Armazenamento das fotos de identidade e estilo antes da geração |
 | `TIKTOK_CLIENT_KEY` + `TIKTOK_CLIENT_SECRET` | Publicação real no TikTok (Content Posting API via OAuth; callback em `/api/oauth/tiktok/callback`) |
 | `PUBLIC_BASE_URL` | URL pública do app (necessária para o OAuth do TikTok) |
 | Instagram | Sem .env: cole o IG User ID + access token do Graph API (escopo `instagram_content_publish`) na página Publicar |
 
 ### Mapeamento de geração (mesma API do open-higgsfield)
 
-- **Character sheet** → `higgsfield-ai/soul/v2/standard` (batch 4, 3:4) com o
-  brief montado a partir dos traços escolhidos.
+- **Character sheet** → `higgsfield/ai-influencer` (uma imagem 2K, 16:9), com
+  `tier`, `selection`, `seed`, `brief`, `image_url` para identidade e
+  `item_image_urls` para estilo. Os pedidos usam `Idempotency-Key`; falhas
+  confirmadas devolvem os créditos do sistema uma única vez. Pedidos de
+  resultado incerto não são reenviados automaticamente.
+- **Catálogo de aparência** → 18 grupos e 182 opções da API oficial, com 148
+  imagens locais. `npm run validate:traits` verifica hashes e arquivos sem rede;
+  `node scripts/sync-influencer-traits.mjs --discover` atualiza a cópia do catálogo público.
 - **Duplicação de viral / Movimento** → `kling-video/v3/motion-control/std`
   com `image_url` (influencer) + `video_url` (vídeo minerado ou driving video
   do preset Genjutsu).

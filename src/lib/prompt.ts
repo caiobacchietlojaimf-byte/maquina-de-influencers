@@ -50,7 +50,7 @@ const GROUP_PHRASE: Record<string, (labels: string[]) => string> = {
   },
 };
 
-export function buildBrief(tier: CharacterTier, selection: Selection): string {
+export function buildBrief(tier: CharacterTier, selection: Selection, references: { identity?: boolean; style?: boolean } = {}): string {
   const type = getCharacterType(tier);
   const parts: string[] = [TIER_FLAVOR[tier] ?? TIER_FLAVOR.normal];
 
@@ -73,6 +73,8 @@ export function buildBrief(tier: CharacterTier, selection: Selection): string {
     parts.push("The animal head blends seamlessly into the human body, fully photoreal, no cartoon rendering.");
   }
   parts.push("Hyper-realistic, natural uniform skin tone, crisp texture, sharp focus.");
+  if (references.identity) parts.push("Use the identity reference to preserve recognizable facial identity, adapted only to the selected character type and traits.");
+  if (references.style) parts.push("Use the item reference for clothing, colors and styling; do not replace the character's identity with a person from that image.");
   return parts.join(" ");
 }
 

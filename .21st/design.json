@@ -99,7 +99,14 @@
     ],
     "avoid": []
   },
-  "decisions": [],
+  "decisions": [
+    {
+      "scope": "Influencers / criador de personagem",
+      "decision": "Seguir a referência visual Higgsfield fornecida pelo usuário: cards de mídia com fotos oficiais locais, três colunas, cantos arredondados, fundo branco e legenda escura; seleção em lima da marca. Usar amostras de cor e cards de texto quando o catálogo oficial não oferece fotografia. Manter tema escuro, Explorar e Meus Influencers, e apenas a galeria AI Influencers neste menu.",
+      "source": "Direção explícita do usuário e revisão visual da implementação",
+      "date": "2026-10-09"
+    }
+  ],
   "evidence": [
     {
       "fact": "design.colorMode:light",

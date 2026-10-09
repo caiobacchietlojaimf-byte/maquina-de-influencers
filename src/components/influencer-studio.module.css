@@ -1,0 +1,79 @@
+.studio { --trait-surface: #fff; }
+.studio > *, .studio :global(.builder-scroll) > * { min-width: 0; }
+.studio :global(.builder-scroll) { grid-template-columns: minmax(0, 1fr); }
+.studio :global(.input) { min-width: 0; max-width: 100%; }
+.studio :is(button, a, input):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.studio button:disabled { cursor: not-allowed; }
+.optionGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 4px 10px 12px; }
+.optionCard { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 7px; min-width: 0; padding: 5px 5px 8px; border: 2px solid transparent; border-radius: 14px; background: var(--s2); color: var(--tx2); font-size: 11.5px; font-weight: 500; line-height: 1.25; text-align: center; cursor: pointer; }
+.optionCard > span:last-child { overflow-wrap: anywhere; }
+.optionCard:hover:not(:disabled) { border-color: var(--line-2); color: var(--tx); }
+.optionCard[data-active="true"], .optionCard[data-active="true"]:hover { border-color: var(--accent); background: var(--accent-08); color: var(--tx); }
+.optionCard[data-kind="media"] { background: var(--trait-surface); color: var(--accent-ink); }
+.optionCard[data-kind="media"]:hover:not(:disabled) { color: var(--accent-ink); }
+.optionCard[data-kind="media"][data-active="true"] { background: var(--accent); color: var(--accent-ink); }
+.optionCard[data-kind="media"] .optionVisual { background: var(--trait-surface); }
+.optionCard:disabled { opacity: 0.65; }
+.optionVisual { position: relative; display: block; width: 100%; aspect-ratio: 1; border-radius: 9px; overflow: hidden; background: var(--s3, var(--s1)); }
+.optionVisual > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.selectedMark { position: absolute; right: 3px; bottom: 3px; width: 19px; height: 19px; padding: 3px; border-radius: 50%; color: var(--accent-ink); background: var(--accent); stroke-width: 3; }
+.swatch { display: block; width: 100%; height: 100%; }
+.optionCard[data-kind="color"] .optionVisual { aspect-ratio: 1.45; }
+.optionCard[data-kind="text"] { min-height: 58px; align-items: center; justify-content: center; }
+.choiceHint { margin: 0; padding: 0 12px 9px; color: var(--tx3); font-size: 11.5px; }
+.referenceUpload { display: grid; gap: 8px; }
+.uploadBox { text-align: center; }
+.uploadBox:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.uploadBox[data-disabled="true"] { opacity: 0.65; cursor: not-allowed; }
+.uploadBox > b { color: var(--tx); }
+.uploadHint { font-size: 11px; color: var(--tx3); }
+.uploadError, .cardError { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.styleUpload { padding: 0 10px 12px; }
+.styleUpload .uploadBox { min-height: 110px; }
+.builderNotice { color: var(--tx2); font-size: 12px; padding: 0 14px 14px; margin: 0; }
+.refreshNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0 0 16px; color: var(--tx2); font-size: 13px; }
+.refreshNotice > span { flex: 1 1 220px; }
+.galleryLabel { cursor: default; }
+.presetOpen { position: absolute; inset: 0; z-index: 1; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.presetOpen:focus-visible { outline-offset: -3px !important; }
+.presetCard:focus-within :global(.overlay) { opacity: 1; }
+.presetCard :global(.overlay) { pointer-events: none; z-index: 2; }
+.presetCard :global(.recreate-btn) { pointer-events: auto; }
+.presetCard :global(.recreate-btn):disabled { opacity: 0.6; }
+.presetDialog { margin: auto; width: min(680px, calc(100% - 32px)); color: var(--tx); }
+.presetDialog::backdrop { background: rgba(0, 0, 0, 0.72); }
+.presetDialog :is(button, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.presetPreview { display: grid; gap: 12px; margin-top: 16px; }
+.presetPreview > img { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
+.cardError { padding: 0 14px 14px; }
+
+@media (max-width: 1060px) {
+  .studio { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 430px) {
+  .studio :global(.builder-head) { padding-inline: 12px; }
+  .studio :global(.builder-head h2) { font-size: 19px; }
+  .studio :global(.builder-scroll) { padding: 10px; }
+  .studio :global(.trait-head) { gap: 6px; padding: 12px 10px; }
+  .studio :global(.trait-head) > span:first-of-type { min-width: 0; overflow-wrap: anywhere; }
+  .studio :global(.trait-head .count), .studio :global(.trait-head svg) { flex-shrink: 0; }
+  .studio :global(.trait-head .picked) { display: none; }
+  .optionGrid { gap: 6px; padding-inline: 8px; }
+  .optionCard { padding-inline: 3px; font-size: 11px; }
+  .uploadBox { padding-inline: 10px; padding-top: 30px; }
+}
+
+@media (hover: none) {
+  .presetCard :global(.overlay) { opacity: 1; }
+  .studio :global(.gen-card .actions) { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presetDialog { animation: none; }
+  .presetCard :global(.overlay) { transition: none; }
+}
