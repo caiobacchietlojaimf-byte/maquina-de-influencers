@@ -187,7 +187,9 @@ function PublishedPostEditorDialog({ postId, onClose, onSynced }: Props) {
       if ("error" in result) { setError(result.error); setConflict(Boolean(result.conflict)); return; }
       if (!acceptEditor(result.editor)) return;
       onSynced(result.editor);
-      setNotice(sentRevision === revision.current && result.editor.currentCaption === currentText ? "Alteração confirmada no Instagram." : "Legenda conferida no Instagram. Seu texto em edição foi mantido; compare os dois antes de continuar.");
+      setNotice(sentRevision === revision.current && result.editor.currentCaption === currentText
+        ? result.editor.currentCaption !== editor.currentCaption ? "Alteração confirmada no Instagram." : "A legenda do sistema confere com a do Instagram."
+        : "Legenda conferida no Instagram. Seu texto em edição foi mantido; compare os dois antes de continuar.");
     }, "Não foi possível conferir a legenda no Instagram. Seu texto em edição foi mantido.");
   }
 

@@ -147,6 +147,20 @@ test("only an explicit successful sync updates the parent and preserves the loca
   ui.unmount();
 });
 
+test("checking an unchanged caption does not claim that a change was applied", async () => {
+  const ui = harness();
+  await ui.settle("get", { editor: snapshot() });
+  ui.click("Conferir alteração");
+  await ui.settle("sync", { editor: snapshot({ checkedAt: 123, revision: "r2" }) });
+  assert.match(ui.text(), /A legenda do sistema confere com a do Instagram/);
+  assert.doesNotMatch(ui.text(), /Alteração confirmada/);
+  ui.change("published-caption", "Texto revisado");
+  ui.click("Conferir alteração");
+  await ui.settle("sync", { editor: snapshot({ currentCaption: "Texto revisado", checkedAt: 124, revision: "r3" }) });
+  assert.match(ui.text(), /Alteração confirmada no Instagram/);
+  ui.unmount();
+});
+
 test("revision conflicts can reload the latest snapshot without discarding manual text", async () => {
   const ui = harness();
   await ui.settle("get", { editor: snapshot() });
