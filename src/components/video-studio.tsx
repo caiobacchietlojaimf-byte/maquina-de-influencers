@@ -15,6 +15,7 @@ import { MAX_REFERENCE_BYTES, type StudioReference } from "@/lib/video-reference
 import { MOTION_PRESETS, type MotionPreset } from "@/data/motion-presets";
 import { creditsToUsd } from "@/lib/credit-pricing";
 import type { Influencer } from "@/lib/db";
+import { groupInfluencerVersions, influencerRootId, influencerVersionLabel } from "@/lib/influencer-versions";
 import { MotionPresetCard } from "./motion-preset-card";
 import styles from "./video-studio.module.css";
 
@@ -44,7 +45,7 @@ export function VideoStudio({
   const [presetId, setPresetId] = useState<string | null>(initialPreset?.id ?? null);
   const [influencerId, setInfluencerId] = useState<string | null>(() => {
     if (initialInfluencerId) return initialInfluencerId;
-    return initialInfluencers.find((inf) => inf.status === "completed" && inf.imageUrl)?.id ?? null;
+    return groupInfluencerVersions(initialInfluencers).flatMap(family => family.versions).find((inf) => inf.status === "completed" && inf.imageUrl)?.id ?? null;
   });
   const [prompt, setPrompt] = useState("");
   const [targetMode, setTargetMode] = useState<EditTargetMode>("main");
@@ -95,6 +96,9 @@ export function VideoStudio({
   const hasPending = influencers.some((inf) => inf.status === "processing" || inf.status === "queued");
   const ready = useMemo(() => influencers.filter((inf) => inf.status === "completed" && inf.imageUrl), [influencers]);
   const influencer = ready.find((inf) => inf.id === influencerId);
+  const families = useMemo(() => groupInfluencerVersions(influencers).filter(family => family.versions.some(version => version.status === "completed" && version.imageUrl)), [influencers]);
+  const family = influencer ? families.find(item => item.id === influencerRootId(influencer)) : undefined;
+  const readyVersions = family?.versions.filter(version => version.status === "completed" && version.imageUrl) ?? [];
   const preset = MOTION_PRESETS.find((item) => item.id === presetId);
   const enoughCredits = !quote || credits >= quote.creditCost;
   const list = useMemo(() => {
@@ -238,23 +242,35 @@ export function VideoStudio({
               {ready.length ? (
                 <>
                   <div className="influencer-pick">
-                    {ready.map((inf) => (
+                    {families.map((item) => {
+                      const selected = family?.id === item.id;
+                      const inf = selected && influencer ? influencer : item.versions.find(version => version.status === "completed" && version.imageUrl)!;
+                      return (
                       <button
                         type="button"
-                        key={inf.id}
+                        key={item.id}
                         className="pick"
-                        data-active={influencerId === inf.id}
-                        aria-pressed={influencerId === inf.id}
-                        title={inf.name}
+                        data-active={selected}
+                        aria-pressed={selected}
+                        title={item.root.name}
                         onClick={() => { setInfluencerId(inf.id); setError(null); }}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={inf.imageUrl} alt="" loading="lazy" />
-                        <span>{inf.name}</span>
+                        <span>{item.root.name}</span>
                       </button>
-                    ))}
+                    ); })}
                   </div>
-                  <p className={styles.hint}>{influencer ? `${influencer.name} será o protagonista.` : "Selecione um dos seus influencers prontos."}</p>
+                  {readyVersions.length > 1 ? <div className={styles.versions}>
+                    <span className={styles.versionLabel} id={`${formId}-version-label`}>Roupa e versão</span>
+                    <div className={styles.versionGrid} role="group" aria-labelledby={`${formId}-version-label`}>
+                      {readyVersions.map(version => <button type="button" key={version.id} className={styles.versionPick} aria-pressed={influencerId === version.id} onClick={() => { setInfluencerId(version.id); setError(null); }}>
+                        <img src={version.imageUrl} alt="" loading="lazy" />
+                        <span>{influencerVersionLabel(version)}</span>
+                      </button>)}
+                    </div>
+                  </div> : null}
+                  <p className={styles.hint}>{influencer ? `${family?.root.name ?? influencer.name} · ${influencerVersionLabel(influencer)}` : "Selecione um dos seus influencers prontos."}</p>
                 </>
               ) : (
                 <div className={styles.emptyInfluencers}>

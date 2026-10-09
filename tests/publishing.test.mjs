@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
@@ -24,7 +25,7 @@ function loadTs(file, mocks = {}, globals = {}) {
       module,
       exports: module.exports,
       require: (id) =>
-        id === "server-only" ? {} : id in mocks ? mocks[id] : id === "./db" ? {} : id === "./social-token" ? { openSocialToken: value => value, socialTokenConfigured: () => false } : require(id),
+        id === "server-only" ? {} : id in mocks ? mocks[id] : id === "./db" ? {} : id === "./social-token" ? { openSocialToken: value => value, socialTokenConfigured: () => false } : id.startsWith(".") ? loadTs(path.posix.join(path.posix.dirname(file), `${id}.ts`), mocks, globals) : require(id),
       process: { env: {} },
       URLSearchParams,
       AbortSignal,

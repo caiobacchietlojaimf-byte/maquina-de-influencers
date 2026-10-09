@@ -43,6 +43,19 @@ export type Influencer = {
   requestId?: string;
   imageUrl?: string;
   gallery?: string[];
+  /** Versions share a root but retain their own image, request and credit ledger. */
+  rootInfluencerId?: string;
+  sourceInfluencerId?: string;
+  variantLabel?: string;
+  creationMode?: "form" | "prompt" | "edit";
+  editKind?: "outfit" | "details";
+  prompt?: string;
+  provider?: "higgsfield" | "fal";
+  model?: string;
+  creditCost?: number;
+  /** Completed upstream output waiting for our durable storage, never a new generation. */
+  pendingImageUrl?: string;
+  completionCheckedAt?: number;
   error?: string;
   referenceUrl?: string;
   styleReferenceUrl?: string;
@@ -469,6 +482,22 @@ export async function listInfluencers(userId: string): Promise<Influencer[]> {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/** Server-only bounded queue for scheduled finalization, even with no browser open. */
+export async function listPendingInfluencers(limit = 8): Promise<Influencer[]> {
+  const bounded = Math.min(20, Math.max(1, Math.floor(limit)));
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_influencers").select("data")
+      .or("data->>status.in.(queued,processing),and(data->>status.eq.failed,data->>requestFingerprint.not.is.null,or(data->>submissionUncertain.is.null,data->>submissionUncertain.eq.false),or(data->>creditsRefunded.is.null,data->>creditsRefunded.eq.false))")
+      .is("data->>deletedAt", null)
+      .order("data->>completionCheckedAt", { ascending: true, nullsFirst: true }).limit(bounded);
+    if (error) fail("buscar influencers em processamento", error);
+    return (data ?? []).map(row => rowData<Influencer>(row));
+  }
+  return load().influencers.filter(item => !item.deletedAt && (["queued", "processing"].includes(item.status) || (item.status === "failed" && item.requestFingerprint && !item.submissionUncertain && !item.creditsRefunded)))
+    .sort((a, b) => (a.completionCheckedAt ?? 0) - (b.completionCheckedAt ?? 0)).slice(0, bounded);
+}
+
 export async function getInfluencer(userId: string, id: string, includeDeleted = false): Promise<Influencer | undefined> {
   const influencer = remote() ? await getOwned<Influencer>("mi_influencers", userId, id) : load().influencers.find((i) => i.id === id && i.userId === userId);
   return influencer && (includeDeleted || !influencer.deletedAt) ? influencer : undefined;
@@ -596,18 +625,37 @@ export async function updateInfluencer(
   });
 }
 
+/** CAS for poll/terminal transitions: a late worker cannot undo a completed job. */
+export async function updatePendingInfluencer(userId: string, id: string, patch: Partial<Influencer>): Promise<Influencer | undefined> {
+  const eligible = (item: Influencer | undefined): item is Influencer => Boolean(item && !item.deletedAt && (item.status === "queued" || item.status === "processing"));
+  const sb = remote();
+  if (!sb) return mutate(db => {
+    const current = db.influencers.find(item => item.id === id && item.userId === userId);
+    if (!eligible(current)) return undefined;
+    Object.assign(current, patch);
+    return current;
+  });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const current = await getInfluencer(userId, id);
+    if (!eligible(current)) return undefined;
+    const merged = { ...current, ...patch, revision: randomUUID() };
+    let query = sb.from("mi_influencers").update({ data: merged }).eq("id", id).eq("user_id", userId)
+      .eq("data->>status", current.status).is("data->>deletedAt", null);
+    query = current.revision ? query.eq("data->>revision", current.revision) : query.is("data->>revision", null);
+    const { data, error } = await query.select("data").maybeSingle();
+    if (error) fail("finalizar influencer", error);
+    if (data) return rowData<Influencer>(data);
+  }
+  return undefined;
+}
+
 export async function deleteInfluencer(userId: string, id: string): Promise<boolean> {
   const influencer = await getInfluencer(userId, id);
   if (!influencer || influencer.deletedAt) return false;
   if (influencer.status === "queued" || influencer.status === "processing" || influencer.submissionUncertain) return false;
-  // Keep new request keys consumed even after a card is removed.
-  if (influencer.requestFingerprint) return Boolean(await updateInfluencer(id, { deletedAt: Date.now() }, userId));
-  if (remote()) return deleteOwned("mi_influencers", userId, id);
-  return mutate((db) => {
-    const before = db.influencers.length;
-    db.influencers = db.influencers.filter((i) => !(i.id === id && i.userId === userId));
-    return db.influencers.length < before;
-  });
+  // Preserve lineage and consumed request keys, including legacy roots. An edit
+  // already being prepared may keep this archived root as its owned ancestor.
+  return Boolean(await updateInfluencer(id, { deletedAt: Date.now() }, userId));
 }
 
 /* ================= vídeos ================= */

@@ -6,6 +6,7 @@ import { InfluencerStudio } from "@/components/influencer-studio";
 
 export const metadata = { title: "Influencers" };
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export default async function InfluencersPage({
   searchParams,

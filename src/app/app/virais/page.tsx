@@ -2,6 +2,7 @@ import { requirePageUser } from "@/lib/auth";
 import { listInfluencers } from "@/lib/db";
 import { listAiVirals } from "@/lib/miner";
 import { MinedVirals } from "@/components/mined-virals";
+import { groupInfluencerVersions, influencerVersionLabel } from "@/lib/influencer-versions";
 
 export const metadata = { title: "Vídeos Virais" };
 export const dynamic = "force-dynamic";
@@ -15,7 +16,7 @@ export default async function ViraisPage() {
     listInfluencers(user.id),
     listAiVirals(),
   ]);
-  const ready = influencers.filter((i) => i.status === "completed" && i.imageUrl);
+  const ready = groupInfluencerVersions(influencers).flatMap(family => family.versions.filter(i => i.status === "completed" && i.imageUrl).map(i => ({ ...i, name: family.versions.length > 1 ? `${family.root.name} · ${influencerVersionLabel(i)}` : family.root.name })));
 
   return (
     <div>

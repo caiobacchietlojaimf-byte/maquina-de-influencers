@@ -97,6 +97,16 @@
   line-height: 1.5;
 }
 
+.versions { display: grid; gap: 8px; min-width: 0; }
+.versionLabel { color: var(--tx2); font-size: 12px; font-weight: 600; }
+.versionGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.versionPick { display: grid; gap: 6px; padding: 5px; background: var(--s1); border: 1px solid var(--line); border-radius: 12px; color: var(--tx2); cursor: pointer; min-width: 0; text-align: center; }
+.versionPick img { width: 100%; aspect-ratio: 3 / 4; object-fit: contain; border-radius: 7px; background: var(--s2); }
+.versionPick span { overflow-wrap: anywhere; font-size: 11px; line-height: 1.3; }
+.versionPick[aria-pressed="true"] { border-color: var(--accent); color: var(--tx); box-shadow: 0 0 0 1px var(--accent); }
+.versionPick:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.versionPick:disabled { cursor: wait; opacity: .65; }
+
 .emptyInfluencers {
   display: grid;
   justify-items: start;

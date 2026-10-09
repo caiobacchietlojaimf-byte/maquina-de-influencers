@@ -18,7 +18,6 @@ import {
   Gem,
   Glasses,
   Globe,
-  ImagePlus,
   MoveVertical,
   Palette,
   Proportions,
@@ -43,7 +42,7 @@ import {
   pollInfluencersAction,
   retryInfluencerAction,
 } from "@/app/actions/influencers";
-import { SHEET_COST } from "@/lib/costs";
+import { INFLUENCER_EDIT_COST, INFLUENCER_PROMPT_COST, SHEET_COST } from "@/lib/costs";
 import { displayDate } from "@/lib/display-date";
 import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
@@ -51,7 +50,9 @@ import { HeroReel } from "./hero-reel";
 import PRESETS from "@/data/influencer-presets.json";
 import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection, type TraitGroup } from "@/data/traits";
 import type { Influencer } from "@/lib/db";
+import { groupInfluencerVersions, influencerRootId } from "@/lib/influencer-versions";
 import { InfluencerDetails } from "./influencer-details";
+import { ReferenceUpload } from "./influencer-reference-upload";
 import detailStyles from "./influencer-details.module.css";
 import styles from "./influencer-studio.module.css";
 
@@ -108,6 +109,8 @@ export function InfluencerStudio({
   const deletedIds = useRef(new Set<string>());
 
   /* ----- builder ----- */
+  const [creationMode, setCreationMode] = useState<"form" | "prompt">("form");
+  const [prompt, setPrompt] = useState("");
   const [tier, setTier] = useState<CharacterTier>("total");
   const [selection, setSelection] = useState<Selection>({});
   const [name, setName] = useState("");
@@ -128,6 +131,9 @@ export function InfluencerStudio({
   const [influencers, setInfluencers] = useState<Influencer[]>(initialInfluencers);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const families = useMemo(() => groupInfluencerVersions(influencers), [influencers]);
+  const rootInfluencers = families.map((family) => family.root);
+  const generationCost = creationMode === "prompt" ? INFLUENCER_PROMPT_COST : SHEET_COST;
   const detail = influencers.find((influencer) => influencer.id === detailId);
   const hasPending = influencers.some((i) => i.status === "processing" || i.status === "queued");
   const busy = submitting || referenceLoading || styleReferenceLoading;
@@ -194,15 +200,21 @@ export function InfluencerStudio({
 
   const generateSheet = useCallback(async () => {
     if (submittingRef.current || referenceLoading || styleReferenceLoading) return;
+    if (creationMode === "prompt" && (!reference || !prompt.trim())) {
+      setError("Adicione a imagem e descreva como quer seu influencer.");
+      return;
+    }
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     const input = {
-      name: name.trim() || `Influencer ${influencers.length + 1}`,
+      name: name.trim() || `Influencer ${rootInfluencers.length + 1}`,
+      mode: creationMode,
+      ...(prompt.trim() ? { prompt: prompt.trim() } : {}),
       tier,
       selection,
       ...(reference ? { referenceUrl: reference } : {}),
-      ...(styleReference ? { styleReferenceUrl: styleReference } : {}),
+      ...(creationMode === "form" && styleReference ? { styleReferenceUrl: styleReference } : {}),
     };
     const signature = JSON.stringify(input);
     if (requestRef.current?.signature !== signature) {
@@ -230,9 +242,11 @@ export function InfluencerStudio({
       submittingRef.current = false;
       if (mounted.current) setSubmitting(false);
     }
-  }, [name, tier, selection, reference, styleReference, referenceLoading, styleReferenceLoading, influencers.length, refreshInfluencers, router]);
+  }, [name, tier, selection, creationMode, prompt, reference, styleReference, referenceLoading, styleReferenceLoading, rootInfluencers.length, refreshInfluencers, router]);
 
   const recreate = useCallback((preset: Preset) => {
+    setCreationMode("form");
+    setPrompt("");
     setTier(preset.tier as CharacterTier);
     setSelection(pruneSelection(preset.selection ?? {}, preset.tier as CharacterTier));
     setName(preset.name);
@@ -254,9 +268,14 @@ export function InfluencerStudio({
           <div className="kicker">Crie seu próprio personagem com</div>
           <h2>Influenciador de IA</h2>
         </div>
+        <div className={styles.creationModes} role="group" aria-label="Como criar o influencer">
+          <button type="button" aria-pressed={creationMode === "form"} disabled={busy} onClick={() => { setCreationMode("form"); setError(null); }}>Formulário</button>
+          <button type="button" aria-pressed={creationMode === "prompt"} disabled={busy} onClick={() => { setCreationMode("prompt"); setError(null); }}>Imagem + prompt</button>
+        </div>
         <div className="builder-scroll">
           <ReferenceUpload
-            label="Envie sua foto"
+            label={creationMode === "prompt" ? "Adicionar imagem do personagem" : "Envie sua foto"}
+            required={creationMode === "prompt"}
             previewLabel="Sua foto de referência"
             value={reference}
             onChange={setReference}
@@ -277,6 +296,12 @@ export function InfluencerStudio({
             />
           </div>
 
+          <div className="field">
+            <label htmlFor={`${studioId}-prompt`}>{creationMode === "prompt" ? "Como será seu influencer?" : "Roupa e detalhes extras"}{creationMode === "form" ? <span className={styles.optionalLabel}>Opcional</span> : null}</label>
+            <textarea id={`${studioId}-prompt`} className={`input ${styles.promptInput}`} rows={4} maxLength={3000} value={prompt} disabled={busy} required={creationMode === "prompt"} placeholder={creationMode === "prompt" ? "Use o rosto da imagem. Corpo inteiro, camiseta preta, calça jeans e tênis branco…" : "Ex.: jaqueta vermelha aberta, camiseta branca e calça preta."} onChange={(event) => setPrompt(event.target.value)} />
+          </div>
+
+          {creationMode === "form" ? <>
           <section className="trait-section" data-open="true">
             <div className="trait-head" style={{ cursor: "default" }}>
               <Drama size={15} style={{ color: "var(--tx3)" }} />
@@ -369,17 +394,18 @@ export function InfluencerStudio({
               </section>
             );
           })}
+          </> : null}
         </div>
 
         <div className="builder-footer">
-          <button type="button" className="dice-btn" title="Sortear visual" aria-label="Sortear visual" disabled={busy} onClick={rollDice}>
+          {creationMode === "form" ? <button type="button" className="dice-btn" title="Sortear visual" aria-label="Sortear visual" disabled={busy} onClick={rollDice}>
             <Dices size={20} />
-          </button>
-          <button type="button" className="generate-btn" disabled={busy || credits < SHEET_COST} onClick={generateSheet}>
-            {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar <span className="cost">✦ {SHEET_COST}</span></>}
+          </button> : null}
+          <button type="button" className="generate-btn" disabled={busy || credits < generationCost || (creationMode === "prompt" && (!reference || !prompt.trim()))} onClick={generateSheet}>
+            {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar <span className="cost">✦ {generationCost}</span></>}
           </button>
         </div>
-        {credits < SHEET_COST ? <p className={styles.builderNotice}>Você precisa de {SHEET_COST} créditos para gerar.</p> : null}
+        {credits < generationCost ? <p className={styles.builderNotice}>Você precisa de {generationCost} créditos para gerar.</p> : null}
         {error ? (
           <div className="auth-error" role="alert" style={{ margin: "0 14px 14px" }}>
             {error}
@@ -455,12 +481,13 @@ export function InfluencerStudio({
         ) : null}
 
         {rightTab === "history" ? (
-          influencers.length ? (
+          rootInfluencers.length ? (
             <div className="history-grid">
-              {influencers.map((inf) => (
+              {rootInfluencers.map((inf) => (
                 <InfluencerCard
                   key={inf.id}
                   influencer={inf}
+                  versionCount={(families.find((family) => family.id === influencerRootId(inf))?.versions.length ?? 1) - 1}
                   onOpen={() => setDetailId(inf.id)}
                   onDelete={async () => {
                     await deleteInfluencerAction(inf.id);
@@ -491,7 +518,11 @@ export function InfluencerStudio({
         ) : null}
       </section>
 
-      {detail ? <InfluencerDetails key={detail.id} influencer={detail} onClose={() => setDetailId(null)} onRename={(id, nextName) => {
+      {detail ? <InfluencerDetails key={detail.id} influencer={detail} variants={families.find((family) => family.id === influencerRootId(detail))?.versions ?? [detail]} credits={credits} refreshError={refreshError} refreshing={refreshing} onRefresh={async () => {
+        await refreshRef.current;
+        await refreshInfluencers();
+        router.refresh();
+      }} onClose={() => setDetailId(null)} onRename={(id, nextName) => {
         setInfluencers((current) => current.map((item) => item.id === id ? { ...item, name: nextName } : item));
         router.refresh();
       }} /> : null}
@@ -503,106 +534,6 @@ export function InfluencerStudio({
 }
 
 /* ---------------- subcomponentes ---------------- */
-
-async function prepareReferenceImage(file: File): Promise<string> {
-  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-    throw new Error("Escolha uma imagem JPG, PNG ou WebP.");
-  }
-  if (!file.size || file.size > 10 * 1024 * 1024) throw new Error("A imagem deve ter até 10 MB.");
-  const url = URL.createObjectURL(file);
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const item = new window.Image();
-      const timeout = window.setTimeout(() => {
-        item.onload = null;
-        item.onerror = null;
-        item.src = "";
-        reject(new Error("Não foi possível abrir esta imagem. Escolha outro arquivo."));
-      }, 15_000);
-      item.onload = () => { window.clearTimeout(timeout); resolve(item); };
-      item.onerror = () => { window.clearTimeout(timeout); reject(new Error("A imagem está inválida ou corrompida. Escolha outro arquivo.")); };
-      item.src = url;
-    });
-    if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth * image.naturalHeight > 64_000_000) {
-      throw new Error("Esta imagem é muito grande para preparar. Envie uma versão menor.");
-    }
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Não foi possível preparar a imagem neste navegador.");
-    for (const maxSize of [1024, 800, 640, 512]) {
-      const scale = Math.min(1, maxSize / Math.max(image.naturalWidth, image.naturalHeight));
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      for (const quality of [0.86, 0.72, 0.58]) {
-        const result = canvas.toDataURL("image/jpeg", quality);
-        // Two references stay below the server action's 1 MB request limit.
-        if (result.length <= 400 * 1024) return result;
-      }
-    }
-    throw new Error("Não foi possível reduzir esta imagem. Escolha um arquivo menor.");
-  } finally { URL.revokeObjectURL(url); }
-}
-
-function ReferenceUpload({ label, previewLabel, value, disabled, onChange, onLoadingChange }: {
-  label: string;
-  previewLabel: string;
-  value: string | null;
-  disabled: boolean;
-  onChange: (value: string | null) => void;
-  onLoadingChange: (loading: boolean) => void;
-}) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const loadingRef = useRef(false);
-  const mounted = useRef(true);
-  const errorId = useId();
-  useEffect(() => {
-    mounted.current = true;
-    return () => { mounted.current = false; };
-  }, []);
-
-  async function pick(file: File) {
-    if (loadingRef.current || disabled) return;
-    loadingRef.current = true;
-    setLoading(true);
-    setError(null);
-    onLoadingChange(true);
-    try {
-      const result = await prepareReferenceImage(file);
-      if (mounted.current) onChange(result);
-    } catch (caught) {
-      if (mounted.current) setError(caught instanceof Error ? caught.message : "Não foi possível preparar a imagem.");
-    } finally {
-      loadingRef.current = false;
-      if (mounted.current) { setLoading(false); onLoadingChange(false); }
-    }
-  }
-
-  return <div className={styles.referenceUpload}>
-    <label className={`upload-box ${styles.uploadBox}`} data-disabled={disabled}>
-      <span className="optional">Opcional</span>
-      {loading ? <span className="spinner" aria-hidden="true" /> : value ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={value} alt={previewLabel} />
-      ) : <ImagePlus size={20} aria-hidden="true" />}
-      <b>{loading ? "Preparando imagem…" : value ? "Trocar imagem" : label}</b>
-      {!value && !loading ? <span className={styles.uploadHint}>JPG, PNG ou WebP · até 10 MB</span> : null}
-      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" aria-label={label}
-        disabled={disabled || loading} aria-describedby={error ? errorId : undefined}
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          event.currentTarget.value = "";
-          if (file) void pick(file);
-        }} />
-    </label>
-    <span className="sr-only" role="status">{loading ? "Preparando imagem" : ""}</span>
-    {value ? <button type="button" className="btn btn-sm btn-ghost" disabled={disabled || loading} onClick={() => { onChange(null); setError(null); }}>Remover imagem<span className="sr-only">: {previewLabel}</span></button> : null}
-    {error ? <p id={errorId} className={styles.uploadError} role="alert">{error}</p> : null}
-  </div>;
-}
 
 function PresetViewer({ preset, disabled, onClose, onRecreate }: {
   preset: Preset;
@@ -640,12 +571,14 @@ function PresetViewer({ preset, disabled, onClose, onRecreate }: {
 
 function InfluencerCard({
   influencer,
+  versionCount,
   onOpen,
   onDelete,
   onRetry,
   onUseMotion,
 }: {
   influencer: Influencer;
+  versionCount: number;
   onOpen: () => void;
   onDelete: () => Promise<void>;
   onRetry: (requestKey: string) => Promise<void>;
@@ -697,7 +630,7 @@ function InfluencerCard({
             </span>
             {!influencer.submissionUncertain ? <button type="button" className={`btn btn-sm btn-ghost ${detailStyles.cardAction}`} disabled={action !== null} onClick={() => { void runAction("retry"); }}>
               <RotateCcw size={14} />
-              {action === "retry" ? "Enviando…" : `Gerar novamente · ✦ ${SHEET_COST}`}
+              {action === "retry" ? "Enviando…" : `Gerar novamente · ✦ ${influencer.creditCost ?? (influencer.creationMode === "edit" ? INFLUENCER_EDIT_COST : influencer.creationMode === "prompt" ? INFLUENCER_PROMPT_COST : SHEET_COST)}`}
             </button> : null}
           </div>
         ) : (
@@ -731,7 +664,7 @@ function InfluencerCard({
       </div>
       <div className="body">
         <b>{influencer.name}</b>
-        <span>{date}</span>
+        <span>{versionCount ? `${versionCount + 1} versões` : date}</span>
       </div>
       {error ? <p className={styles.cardError} role="alert">{error}</p> : null}
     </div>

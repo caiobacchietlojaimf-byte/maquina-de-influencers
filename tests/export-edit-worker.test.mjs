@@ -71,6 +71,7 @@ const blobUrl = "https://assets.public.blob.vercel-storage.com/exports/test/genj
 
 function fixture(overrides = {}) {
   const downloads = [], uploads = [], deletes = [], ownerReads = [], splits = [];
+  const selectedImageUrl = overrides.imageUrl ?? imageUrl;
   const parts = [
     { bytes: Buffer.from("encoded first segment"), start: 0 },
     { bytes: Buffer.from("encoded second segment"), start: 8.5 },
@@ -106,7 +107,7 @@ function fixture(overrides = {}) {
     "@/lib/db": {
       getInfluencer: async (owner, id) => {
         ownerReads.push([owner, id]);
-        return owner === "owner" && id === "character" ? { id, name: "Meu Influencer", status: overrides.influencerStatus ?? "completed", imageUrl } : undefined;
+        return owner === "owner" && id === (overrides.influencerId ?? "character") ? { id, name: "Meu Influencer", status: overrides.influencerStatus ?? "completed", imageUrl: selectedImageUrl, ...(overrides.influencerId ? { rootInfluencerId: "character", variantLabel: "Jaqueta vermelha" } : {}) } : undefined;
       },
       getViral: async id => id === "viral" ? { id, title: "Supercar", playUrl: sourceUrl } : undefined,
     },
@@ -120,7 +121,7 @@ function fixture(overrides = {}) {
     } },
     "@/lib/video-media": { publicMediaUrl: value => value, readPublicVideo: async (url, limit, signal) => {
       downloads.push({ url, limit, signal });
-      assert.ok([sourceUrl, imageUrl].includes(url), "Only backend-resolved media may be downloaded");
+      assert.ok([sourceUrl, selectedImageUrl].includes(url), "Only backend-resolved media may be downloaded");
       if (url === sourceUrl) { overrides.afterDownload?.(); return original; }
       return png;
     } },
@@ -175,6 +176,16 @@ test("all reference kinds resolve on the backend and Wan exports an unsplit orig
     assert.equal([...files.keys()].some(name => name.startsWith("trechos/")), false);
     assert.ok(!files.get("config.json").toString().includes("owned-upload-token"));
   }
+});
+
+test("export packages the selected saved outfit instead of falling back to the original influencer", async () => {
+  const outfitUrl = "https://images.example/saved-red-jacket.png";
+  const f = fixture({ influencerId: "saved-outfit", imageUrl: outfitUrl });
+  const result = await f.exportCharacterEdit({ ...input, influencerId: "saved-outfit" });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(f.ownerReads, [["owner", "saved-outfit"]]);
+  assert.deepEqual(f.downloads.map(call => call.url), [sourceUrl, outfitUrl]);
+  assert.deepEqual(unzip(f.uploads[0].bytes).get("influencer.png"), png);
 });
 
 test("foreign influencers, expired uploads, non-AI discoveries and raw URLs cannot start a download or create a ZIP", async () => {

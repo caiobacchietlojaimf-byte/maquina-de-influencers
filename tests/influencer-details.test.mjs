@@ -33,7 +33,7 @@ test("rename validates input and sends only a name patch scoped to the authentic
   const writes = [];
   const actions = load("src/app/actions/influencers.ts", {
     "next/cache": { revalidatePath() {} },
-    "@/lib/influencer-generation": {}, "@/lib/prompt": {}, "@/lib/costs": {},
+    "@/lib/influencer-generation": {}, "@/lib/influencer-finalization": {}, "@/lib/prompt": {}, "@/lib/costs": {},
     "@/lib/auth": { requireUser: async () => ({ id: "owner" }) },
     "@/lib/db": { updateInfluencer: async (...args) => { writes.push(args); return args[0] === "missing" ? undefined : { name: args[1].name }; } },
   });

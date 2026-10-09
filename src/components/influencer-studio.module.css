@@ -2,6 +2,13 @@
 .studio > *, .studio :global(.builder-scroll) > * { min-width: 0; }
 .studio :global(.builder-scroll) { grid-template-columns: minmax(0, 1fr); }
 .studio :global(.input) { min-width: 0; max-width: 100%; }
+.creationModes { display: flex; gap: 4px; padding: 4px; margin: 0 14px 12px; border-radius: 12px; background: var(--s1); border: 1px solid var(--line); }
+.creationModes button { flex: 1; min-width: 0; border: 0; border-radius: 9px; padding: 10px 6px; background: transparent; color: var(--tx2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.creationModes button[aria-pressed="true"] { background: var(--tx); color: var(--bg); }
+.creationModes button:disabled { opacity: 0.6; }
+.promptInput { min-height: 108px; resize: vertical; line-height: 1.6; }
+.optionalLabel { margin-left: 7px; color: var(--tx3); font-size: 11px; font-weight: 400; }
+.studio textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .studio :is(button, a, input):focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 3px;

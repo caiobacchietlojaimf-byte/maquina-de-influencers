@@ -4,6 +4,7 @@ import { Clapperboard, Flame, Send, Users, Wand2 } from "lucide-react";
 import { requirePageUser } from "@/lib/auth";
 import { listInfluencers, listPosts, listVideos } from "@/lib/db";
 import { isConfigured } from "@/lib/platform";
+import { groupInfluencerVersions } from "@/lib/influencer-versions";
 
 export const metadata = { title: "Início" };
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ export default async function HomePage() {
           <div className="l">créditos disponíveis</div>
         </div>
         <div className="stat">
-          <div className="n">{influencers.length}</div>
+          <div className="n">{groupInfluencerVersions(influencers).length}</div>
           <div className="l">influencers criados</div>
         </div>
         <div className="stat">

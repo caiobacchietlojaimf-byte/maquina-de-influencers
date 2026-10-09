@@ -101,6 +101,12 @@
   },
   "decisions": [
     {
+      "scope": "Influencers / modos de criação e versões de roupa",
+      "decision": "Oferecer Formulário e Imagem + prompt no criador. Manter uma identidade por card em Meus Influencers e reunir original, roupas e correções salvas no gerenciador em tela cheia. Destacar a versão selecionada, Editar roupa, Corrigir detalhes e Criar vídeo com esta versão; recolher características e instruções em Ver mais detalhes. Cada edição salva outra imagem, com custo visível, preservando original e versões anteriores. Reutilizar botões, campos e tokens existentes nos temas claro e escuro.",
+      "source": "Pedido explícito do usuário para editar influencers prontos, guardar roupas para vídeos e oferecer criação simples por imagem e prompt",
+      "date": "2026-10-09"
+    },
+    {
       "scope": "Créditos e recargas",
       "decision": "Exibir Comprar créditos abaixo do saldo/barra e abrir recargas com a conversão fixa 10 créditos = US$1, preço PIX em reais e cotação identificada. Reutilizar a interface de pagamentos e separar os pedidos avulsos dos planos.",
       "source": "Pedido explícito do usuário para precificação dos créditos e atalho de compra",
