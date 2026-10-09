@@ -677,6 +677,7 @@ textarea.input {
 .app-sidebar {
   position: sticky;
   top: 0;
+  z-index: 30;
   height: 100dvh;
   width: 232px;
   display: flex;
@@ -686,7 +687,7 @@ textarea.input {
   border-right: 1px solid var(--line);
   background: var(--bg);
   transition: width 0.22s var(--ease);
-  overflow: hidden;
+  overflow: visible;
 }
 .app-sidebar[data-collapsed="true"] {
   width: 66px;
@@ -739,13 +740,8 @@ textarea.input {
   justify-content: center;
   padding: 0;
 }
-.app-sidebar[data-collapsed="true"] .credit-pill {
-  justify-content: center;
-  padding: 10px 0;
-}
 .app-sidebar[data-collapsed="true"] .user-row {
-  flex-direction: column;
-  gap: 8px;
+  justify-content: center;
   padding: 8px 0;
 }
 .nav-item {
@@ -775,24 +771,31 @@ textarea.input {
   margin-left: auto;
 }
 .sidebar-footer {
+  position: relative;
+  flex-shrink: 0;
   margin-top: auto;
   display: grid;
-  gap: 10px;
 }
-.credit-pill {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+.sidebar-credits {
+  flex-shrink: 0;
+  padding: 12px;
+  margin-bottom: 14px;
   border-radius: 12px;
   background: var(--s1);
   border: 1px solid var(--line);
   font-size: 13px;
 }
-.credit-pill b {
-  color: var(--accent-text);
+.sidebar-credits-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sidebar-credits-label span { color: var(--tx2); }
+.sidebar-credits-label strong {
+  color: var(--tx);
   font-variant-numeric: tabular-nums;
 }
+.sidebar-credits-bar { height: 5px; border-radius: 99px; margin-top: 10px; background: var(--accent); }
+.sidebar-credits-bar[data-empty="true"] { background: var(--s4); }
+.app-sidebar[data-collapsed="true"] .sidebar-credits { padding: 10px 3px; font-size: 10px; }
+.app-sidebar[data-collapsed="true"] .sidebar-credits-label { justify-content: center; }
+.app-sidebar[data-collapsed="true"] .sidebar-credits-bar { height: 4px; margin-top: 8px; }
 .user-row {
   display: flex;
   align-items: center;
@@ -801,6 +804,7 @@ textarea.input {
   border-radius: 12px;
 }
 .user-row .avatar {
+  flex-shrink: 0;
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -815,6 +819,7 @@ textarea.input {
   display: grid;
   line-height: 1.2;
   min-width: 0;
+  flex: 1;
 }
 .user-row .who b {
   font-size: 13px;
@@ -829,6 +834,21 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.profile-trigger { width: 100%; min-height: 48px; text-align: left; transition: background .15s var(--ease); }
+.profile-trigger:hover, .profile-trigger[aria-expanded="true"] { background: var(--s2); }
+.profile-trigger:focus-visible, .profile-action:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.profile-chevron { flex-shrink: 0; color: var(--tx3); transition: transform .15s var(--ease); }
+.profile-trigger[aria-expanded="true"] .profile-chevron { transform: rotate(180deg); }
+.profile-panel { position: absolute; bottom: calc(100% + 8px); left: 0; width: 100%; min-width: 208px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 90px); overflow-y: auto; padding: 6px; border: 1px solid var(--line-2); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-3); }
+.app-sidebar[data-collapsed="true"] .profile-panel { width: 240px; }
+.profile-heading { display: grid; gap: 4px; padding: 10px 10px 14px; border-bottom: 1px solid var(--line); }
+.profile-heading strong { font-size: 13px; }
+.profile-heading span { color: var(--tx3); font-size: 11px; overflow-wrap: anywhere; }
+.profile-options { display: grid; gap: 2px; padding-block: 6px; }
+.profile-action, .profile-panel .theme-toggle { display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: 100%; min-height: 42px; padding: 0 10px; border: 0; border-radius: 10px; color: var(--tx2); background: transparent; font-size: 13px; font-weight: 500; }
+.profile-action:hover, .profile-action[aria-current="page"], .profile-panel .theme-toggle:hover { background: var(--s2); color: var(--tx); }
+.profile-action svg, .profile-panel .theme-toggle svg { flex-shrink: 0; }
+.profile-logout { border-top: 1px solid var(--line); padding-top: 6px; }
 
 .app-main {
   min-width: 0;

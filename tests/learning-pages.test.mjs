@@ -35,6 +35,9 @@ test("written course materials are absent from the server HTML without an active
     assert.doesNotMatch(html, /Um personagem reconhecível precisa de poucas decisões fortes/);
     assert.doesNotMatch(html, /Modelo para adaptar/);
     assert.doesNotMatch(html, /<pre>/);
+    assert.match(html, /MÓDULO EXTRA · MAX/);
+    assert.match(html, /Em preparação/);
+    assert.match(html, /href="\/app\/criacao-ilimitada"/);
   }
 });
 
@@ -56,6 +59,8 @@ test("active Pro and Max plans render every written guide and exercise", async (
     assert.equal((html.match(/Seu exercício/g) ?? []).length, 5);
     assert.equal((html.match(/<pre>/g) ?? []).length, 5);
     assert.doesNotMatch(html, /Continue aprendendo no Pro ou Max/);
+    assert.match(html, /href="\/app\/criacao-ilimitada"/);
+    assert.match(html, /As aulas gravadas ainda não estão disponíveis/);
   }
 });
 
@@ -66,5 +71,6 @@ test("the future GPU course states its availability and never renders a fake les
     assert.match(html, /não inclui geração infinita no estúdio nem GPU gratuita/);
     assert.doesNotMatch(html, /<video|<iframe/);
     assert.equal(html.includes("O que você pode preparar agora"), plans.getUserEntitlements(user).unlimitedCreation);
+    assert.match(html, /href="\/app\/modulos"[^>]*>.*?Voltar aos módulos<\/a>/);
   }
 });

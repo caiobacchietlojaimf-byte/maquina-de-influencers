@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
-import { BookOpen, Clapperboard, CreditCard, Flame, Home, Infinity, LogOut, Menu, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { BookOpen, ChevronUp, Clapperboard, CreditCard, Flame, Home, LogOut, Menu, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
 
 import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
@@ -16,8 +16,6 @@ const ITEMS = [
   { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
   { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },
   { href: "/app/modulos", label: "Módulos", icon: BookOpen, badge: "Pro" },
-  { href: "/app/criacao-ilimitada", label: "Criação Ilimitada", icon: Infinity, badge: "Max" },
-  { href: "/app/planos", label: "Meu plano", icon: CreditCard },
 ] as const;
 
 const STORAGE_KEY = "mi-sidebar-collapsed";
@@ -37,6 +35,33 @@ export function AppSidebar({
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileId = useId();
+  const profileRoot = useRef<HTMLDivElement>(null);
+  const profileTrigger = useRef<HTMLButtonElement>(null);
+  const profilePanel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!profileOpen) return;
+    profilePanel.current?.querySelector<HTMLElement>("a, button")?.focus();
+    const outside = (event: Event) => {
+      if (event.target instanceof Node && !profileRoot.current?.contains(event.target)) setProfileOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setProfileOpen(false);
+      profileTrigger.current?.focus();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("focusin", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("focusin", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [profileOpen]);
 
   // Estado inicial: preferência salva; sem preferência, recolhe em telas estreitas.
   useEffect(() => {
@@ -61,6 +86,7 @@ export function AppSidebar({
   }, []);
 
   const toggle = () => {
+    setProfileOpen(false);
     setCollapsed((prev) => {
       try {
         localStorage.setItem(STORAGE_KEY, prev ? "0" : "1");
@@ -85,10 +111,15 @@ export function AppSidebar({
         </Link>
       </div>
 
+      <div className="sidebar-credits" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
+        <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong>{credits.toLocaleString("pt-BR")}</strong></div>
+        <div className="sidebar-credits-bar" data-empty={credits <= 0} aria-hidden="true" />
+      </div>
+
       <nav aria-label="Menu principal">
         {ITEMS.map((item) => {
           const active =
-            "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href) || (item.href === "/app/modulos" && pathname.startsWith("/app/criacao-ilimitada"));
           const Icon = item.icon;
           return (
             <Link
@@ -98,7 +129,7 @@ export function AppSidebar({
               data-active={active}
               aria-current={active ? "page" : undefined}
               aria-label={item.label}
-              onClick={() => { if (window.innerWidth < 760) setCollapsed(true); }}
+              onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}
               title={collapsed ? item.label : undefined}
             >
               <Icon size={18} />
@@ -109,29 +140,23 @@ export function AppSidebar({
             </Link>
           );
         })}
-        {isAdmin ? <Link href="/app/admin" className="nav-item" data-active={pathname.startsWith("/app/admin")} aria-label="Administração" title={collapsed ? "Administração" : undefined} onClick={() => { if (window.innerWidth < 760) setCollapsed(true); }}><ShieldCheck size={18} /><span data-hide={collapsed}>Administração</span></Link> : null}
       </nav>
 
-      <div className="sidebar-footer">
-        <ThemeToggle compact={collapsed} />
-        <div className="credit-pill" title={`${credits.toLocaleString("pt-BR")} créditos`}>
-          <span data-hide={collapsed}>Créditos</span>
-          <b>{collapsed ? "✦" : credits.toLocaleString("pt-BR")}</b>
-        </div>
-        <div className="user-row">
-          <div className="avatar" title={name}>
-            {initial}
+      <div className="sidebar-footer" ref={profileRoot}>
+        {profileOpen && <div id={profileId} className="profile-panel" ref={profilePanel}>
+          <div className="profile-heading"><strong>{name}</strong><span>{email}</span></div>
+          <div className="profile-options" aria-label="Opções do perfil">
+            <Link href="/app/planos" className="profile-action" aria-current={pathname.startsWith("/app/planos") ? "page" : undefined} onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}><CreditCard size={17} />Meu plano</Link>
+            {isAdmin && <Link href="/app/admin" className="profile-action" aria-current={pathname.startsWith("/app/admin") ? "page" : undefined} onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}><ShieldCheck size={17} />Administração</Link>}
+            <ThemeToggle />
           </div>
-          <div className="who" data-hide={collapsed}>
-            <b>{name}</b>
-            <span>{email}</span>
-          </div>
-          <form action={logout} style={{ marginLeft: collapsed ? 0 : "auto" }}>
-            <button type="submit" title="Sair" className="nav-item" style={{ height: 34, padding: "0 8px" }}>
-              <LogOut size={16} />
-            </button>
-          </form>
-        </div>
+          <form action={logout} className="profile-logout"><button type="submit" className="profile-action"><LogOut size={17} />Sair</button></form>
+        </div>}
+        <button type="button" className="user-row profile-trigger" ref={profileTrigger} aria-label={`Menu do perfil de ${name}`} aria-expanded={profileOpen} aria-controls={profileOpen ? profileId : undefined} title={collapsed ? name : undefined} onClick={() => setProfileOpen(open => !open)} onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); setProfileOpen(true); } }}>
+          <span className="avatar" aria-hidden="true">{initial}</span>
+          <span className="who" data-hide={collapsed}><b>{name}</b><span>{email}</span></span>
+          <ChevronUp size={16} className="profile-chevron" data-hide={collapsed} aria-hidden="true" />
+        </button>
       </div>
     </aside>
   );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen, Check, ChevronDown, Clock, Infinity, LockKeyhole } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, ChevronDown, Clock, Infinity, LockKeyhole } from "lucide-react";
 import styles from "./learning-pages.module.css";
 
 const modules = [
@@ -63,16 +63,25 @@ const modules = [
 export function LessonLibrary({ unlocked }: { unlocked: boolean }) {
   return <div className={styles.page}>
     <header className={styles.hero}><div><span className={styles.badge}><BookOpen size={14} /> PRO E MAX</span><h1>Módulos para criar melhor</h1><p>Guias práticos e exercícios originais para usar o estúdio com mais intenção, do personagem à revisão final.</p></div><Link href="/app/influencers" className="btn btn-ghost">Abrir criador <ArrowRight size={16} /></Link></header>
-    <div className={styles.intro}><BookOpen size={18} /><p>O conteúdo disponível aqui é escrito e pode ser aplicado agora. As futuras aulas gravadas sobre ComfyUI e GPU ficam na área Criação Ilimitada.</p></div>
+    <div className={styles.intro}><BookOpen size={18} /><p>Aplique os guias escritos agora. A trilha extra sobre ComfyUI e GPU está em preparação.</p></div>
     {!unlocked ? <><section className={styles.locked}><LockKeyhole size={24} /><h2>Continue aprendendo no Pro ou Max</h2><p>Os módulos completos estão incluídos nesses planos. Veja abaixo os assuntos e escolha seu plano para acessar os guias e exercícios.</p><Link href="/app/planos" className="btn btn-accent">Ver planos <ArrowRight size={16} /></Link></section><div className={styles.previewGrid}>{modules.map((module, index) => <article key={module.title}><span className={styles.number}>0{index + 1}</span><h2>{module.title}</h2><p>{module.description}</p></article>)}</div></> : <div className={styles.modules}>{modules.map((module, index) => <details key={module.title} className={styles.module} open={index === 0}><summary><span className={styles.number}>0{index + 1}</span><div><h2>{module.title}</h2><p>{module.description}</p></div><ChevronDown size={18} /></summary><div className={styles.body}>{module.paragraphs.map((text) => <p key={text}>{text}</p>)}<h3>Antes de seguir</h3><ul>{module.checklist.map((text) => <li key={text}>{text}</li>)}</ul><h3>Modelo para adaptar</h3><pre>{module.prompt}</pre><div className={styles.exercise}><strong>Seu exercício</strong>{module.exercise}</div></div></details>)}</div>}
+    <section className={styles.extraModule} aria-labelledby="extra-unlimited-title">
+      <div>
+        <div className={styles.extraBadges}><span className={styles.badge}>MÓDULO EXTRA · MAX</span><span className={`${styles.badge} ${styles.preparation}`}><Clock size={13} aria-hidden="true" />Em preparação</span></div>
+        <h2 id="extra-unlimited-title"><Infinity size={22} aria-hidden="true" />Criação Ilimitada</h2>
+        <p>Uma futura trilha sobre produção com ComfyUI e GPU própria ou alugada. As aulas gravadas ainda não estão disponíveis; o acesso ao módulo faz parte do plano Max.</p>
+      </div>
+      <Link href="/app/criacao-ilimitada" className="btn btn-ghost" aria-label="Conhecer o módulo Criação Ilimitada">Conhecer o módulo <ArrowRight size={16} aria-hidden="true" /></Link>
+    </section>
   </div>;
 }
 
 export function UnlimitedLearning({ unlocked }: { unlocked: boolean }) {
   return <div className={styles.page}>
-    <header className={styles.hero}><div><span className={styles.badge}><Infinity size={15} /> ÁREA MAX · EM PREPARAÇÃO</span><h1>Criação Ilimitada</h1><p>Uma futura trilha para entender a produção com ComfyUI e GPU própria ou alugada. Mais autonomia para montar seu processo, com custos e limites claros.</p></div></header>
-    <div className={styles.intro}><Clock size={19} /><p><strong>As aulas gravadas ainda não estão disponíveis.</strong> Não há data anunciada. O plano Max dá acesso a esta área; o nome não inclui geração infinita no estúdio nem GPU gratuita.</p></div>
-    {!unlocked ? <section className={styles.locked}><LockKeyhole size={24} /><h2>Uma área do plano Max</h2><p>Conheça o conteúdo planejado abaixo. Os módulos escritos do Pro já estão disponíveis; esta trilha de aulas gravadas está em preparação.</p><Link href="/app/planos" className="btn btn-accent">Conhecer o Max <ArrowRight size={16} /></Link></section> : <div className={styles.intro}><Check size={19} /><p>Seu plano libera esta área. Enquanto as aulas são preparadas, use os módulos escritos e organize as referências do seu projeto.</p></div>}
+    <Link href="/app/modulos" className={`btn btn-ghost ${styles.backLink}`}><ArrowLeft size={16} aria-hidden="true" />Voltar aos módulos</Link>
+    <header className={styles.hero}><div><span className={styles.badge}><Infinity size={15} /> MÓDULO MAX · EM PREPARAÇÃO</span><h1>Criação Ilimitada</h1><p>Uma futura trilha para entender a produção com ComfyUI e GPU própria ou alugada. Mais autonomia para montar seu processo, com custos e limites claros.</p></div></header>
+    <div className={styles.intro}><Clock size={19} /><p><strong>As aulas gravadas ainda não estão disponíveis.</strong> Não há data anunciada. O plano Max dá acesso a este módulo; o nome não inclui geração infinita no estúdio nem GPU gratuita.</p></div>
+    {!unlocked ? <section className={styles.locked}><LockKeyhole size={24} /><h2>Um módulo extra do plano Max</h2><p>Conheça o conteúdo planejado abaixo. Os módulos escritos do Pro já estão disponíveis; esta trilha de aulas gravadas está em preparação.</p><Link href="/app/planos" className="btn btn-accent">Conhecer o Max <ArrowRight size={16} /></Link></section> : <div className={styles.intro}><Check size={19} /><p>Seu acesso inclui este módulo. Enquanto as aulas são preparadas, use os módulos escritos e organize as referências do seu projeto.</p></div>}
     <div className={styles.roadmap}>{[
       ["Entender o fluxo", "O papel dos modelos, referências e etapas de um workflow visual no ComfyUI."],
       ["Preparar o ambiente", "Conceitos de GPU, memória, armazenamento e configuração antes de iniciar uma sessão."],
