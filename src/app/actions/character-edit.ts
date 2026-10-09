@@ -47,6 +47,8 @@ export async function generateCharacterEditAction(input: { quoteToken: string; a
     }));
     const prompt = typeof payloads[0]?.prompt === "string" ? payloads[0].prompt : buildCharacterEditPrompt(receipt.target, source.duration);
     const video: Video = { id: receipt.id, userId: user.id, influencerId: inf.id, kind: "viral", presetName: receipt.name, prompt, status: "queued", createdAt: Date.now(), creditCost, creditPricingVersion: CREDIT_PRICING_VERSION, edit: { model: config.model, provider: config.provider, sourceUrl: receipt.sourceUrl, imageUrl: inf.imageUrl, identityVersion: receipt.identityVersion, identity: receipt.identity, target: receipt.target, source, resolution: receipt.resolution, estimatedUsd: receipt.estimatedUsd, segments, seed: receipt.seed, ...(receipt.assembly ? { assembly: receipt.assembly } : {}) } };
+    video.edit!.sourceReference = receipt.sourceReference;
+    video.edit!.sourceSnapshot = receipt.sourceSnapshot;
     if (!await createVideoOnce(video)) return { id: video.id };
     if (!await reserveVideoCredits(user.id, creditCost)) { await updateVideo(video.id, { status: "failed", error: "Não foi possível reservar os créditos. Nenhuma chamada paga foi feita." }); return { error: "Créditos indisponíveis. Prepare novamente." }; }
     let providerRequestId: string | undefined;

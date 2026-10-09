@@ -2,6 +2,8 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { EditResolution, EditEngine, EditIdentityReferences } from "./character-edit";
 import type { VideoMetadata } from "./video-reference";
+import type { PublicationSource } from "./db";
+import type { PublicationReferenceSnapshot } from "./publication-context";
 export type EditReceipt = {
   id: string; userId: string; influencerId: string; imageUrl: string; sourceUrl: string;
   name: string; target: string; metadata: VideoMetadata; resolution: EditResolution;
@@ -9,6 +11,7 @@ export type EditReceipt = {
   creditCost?: number; creditPricingVersion?: string;
   engine?: EditEngine; seed?: number;
   identityVersion?: string; identity?: EditIdentityReferences;
+  sourceReference?: PublicationSource; sourceSnapshot?: PublicationReferenceSnapshot;
   assembly?: "overlap-v1";
   segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata }>;
 };

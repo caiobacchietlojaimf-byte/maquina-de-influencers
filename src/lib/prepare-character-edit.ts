@@ -17,6 +17,7 @@ import { ensureVideoToolsAvailable } from "@/lib/finalize-edit";
 import { splitContinuousEditSource } from "@/lib/edit-continuity";
 import { CREDIT_PRICING_VERSION, usdToCredits } from "@/lib/credit-pricing";
 import { EDIT_IDENTITY_VERSION, prepareCharacterIdentity } from "@/lib/prepare-character-identity";
+import { capturePublicationReference } from "@/lib/publication-context";
 export type PrepareOptions = { signal?: AbortSignal; onProgress?: (event: { type: "progress"; stage: string; message: string }) => void };
 
 export async function prepareCharacterEdit(input: { influencerId: string; source: EditSource; target?: string; targetMode?: EditTargetMode; resolution: EditResolution; engine?: EditEngine }, options: PrepareOptions = {}): Promise<{ quote: EditQuote } | { error: string }> {
@@ -53,6 +54,9 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
       const uploaded = readUploadedReference(source.token, user.id); url = uploaded.videoUrl; name = uploaded.name;
     }
     if (!url || !name) return { error: "Vídeo original não encontrado. Selecione ou envie outra referência." };
+    // Retain editorial provenance while dropping the signed upload credential.
+    const sourceReference = source.kind === "upload" ? { kind: "upload" as const } : source;
+    const sourceSnapshot = await capturePublicationReference(sourceReference);
     progress("download", "Baixando o vídeo original…");
     const bytes = await readPublicVideo(publicMediaUrl(url), undefined, options.signal);
     progress("inspect", "Conferindo duração, resolução e compatibilidade…");
@@ -84,7 +88,7 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
     if (engine.startsWith("fal-kling") && segments.length > 1) cost.costDetail += " Inclui o intervalo compartilhado entre os trechos para melhorar a continuidade.";
     const receipt = { id, userId: user.id, influencerId: inf.id, imageUrl: inf.imageUrl, identityVersion: EDIT_IDENTITY_VERSION, identity, sourceUrl, name, target, metadata, resolution: input.resolution, engine, segments, ...(engine.startsWith("fal-kling") ? { assembly: "overlap-v1" as const } : {}), seed: Math.floor(Math.random() * 2147483647), estimatedUsd: cost.estimatedUsd, creditCost: usdToCredits(cost.estimatedUsd), creditPricingVersion: CREDIT_PRICING_VERSION, expiresAt: Date.now() + 15 * 60000 };
     progress("ready", "Original conferido. Preparação concluída.");
-    return { quote: { token: signEditQuote(receipt), name, sourceUrl, metadata, resolution: receipt.resolution, engine, segmentCount: segments.length, costDetail: cost.costDetail, estimatedUsd: receipt.estimatedUsd, creditCost: receipt.creditCost, expiresAt: receipt.expiresAt } };
+    return { quote: { token: signEditQuote({ ...receipt, sourceReference, sourceSnapshot }), name, sourceUrl, metadata, resolution: receipt.resolution, engine, segmentCount: segments.length, costDetail: cost.costDetail, estimatedUsd: receipt.estimatedUsd, creditCost: receipt.creditCost, expiresAt: receipt.expiresAt } };
   } catch (error) {
     if (options.signal?.aborted) return { error: "Preparação cancelada ou limite de espera atingido. Nenhuma geração foi iniciada." };
     // Log only the processing phase/type, never reference URLs, prompts or credentials.

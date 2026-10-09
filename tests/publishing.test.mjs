@@ -110,7 +110,28 @@ test("Instagram publishes processed media and returns the actual permalink", asy
   );
   assert.equal(result.status, "posted");
   assert.equal(result.postedUrl, "https://www.instagram.com/reel/real/");
+  assert.equal(result.publishedMediaId, "media");
+  assert.notEqual(result.publishedMediaId, "container");
+  assert.ok(calls[1].includes("/media?fields=permalink"));
   assert.ok(calls[0].endsWith("/media_publish"));
+});
+
+test("Instagram keeps the published media ID when permalink lookup fails, without substituting the container", async () => {
+  const calls = [];
+  const api = loadTs("src/lib/social.ts", {}, {
+    fetch: async (url, options) => {
+      calls.push({ url, options });
+      if (calls.length === 1) return json({ id: "published-reel-id" });
+      return json({ error: { message: "private-provider-error" } }, 500);
+    },
+  });
+  const result = await api.instagramPublishContainer({ igUserId: "account", accessToken: "test" }, "upload-container-id");
+  assert.equal(result.status, "posted");
+  assert.equal(result.publishedMediaId, "published-reel-id");
+  assert.equal(result.postedUrl, undefined);
+  assert.equal(JSON.parse(calls[0].options.body).creation_id, "upload-container-id");
+  assert.ok(calls[1].url.includes("/published-reel-id?fields=permalink"));
+  assert.equal(calls.length, 2);
 });
 
 test("TikTok upload is pending until the provider confirms PUBLISH_COMPLETE", async () => {

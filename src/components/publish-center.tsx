@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { startTransition, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   CalendarClock,
   CheckCircle2,
@@ -18,6 +18,8 @@ import {
   Pencil,
   Copy,
   WandSparkles,
+  RefreshCw,
+  ChartNoAxesCombined,
   Film,
   AlertCircle,
 } from "lucide-react";
@@ -32,11 +34,12 @@ import {
   savePostDraftAction,
   schedulePostAction,
 } from "@/app/actions/posts";
+import { getInstagramPerformanceAction, preparePublicationAction } from "@/app/actions/publication-assistant";
+import type { InstagramPerformance, PublicationSuggestion } from "@/lib/publication-assistant-types";
 import type { Post, SocialPlatform } from "@/lib/db";
 import type { TikTokCreator } from "@/lib/social";
 import { displayDateTime } from "@/lib/display-date";
 import {
-  buildCaption,
   CAPTION_GOALS,
   CAPTION_LIMIT,
   inspectCaption,
@@ -83,6 +86,26 @@ const errorMessage = (caught: unknown) =>
     : "Não foi possível concluir. Tente novamente.";
 const isDemoPost = (post: Post) =>
   post.mode === "demo" || Boolean(post.postedUrl?.includes("demo-"));
+const SUGGESTION_SOURCES: Record<PublicationSuggestion["source"]["kind"], string> = {
+  "reference-caption": "Legenda da referência",
+  "reference-context": "Contexto da referência",
+  "video-context": "Contexto do vídeo",
+};
+
+type SuggestionRequestState = { session: number; request: number; captionRevision: number };
+
+/** A response may supply options after typing, but cannot overwrite a newer edit. */
+export function isCurrentPublicationSuggestion(sent: SuggestionRequestState, current: SuggestionRequestState): boolean {
+  return sent.session === current.session && sent.request === current.request;
+}
+export function canApplyPublicationSuggestion(sent: SuggestionRequestState, current: SuggestionRequestState, edited: boolean): boolean {
+  return isCurrentPublicationSuggestion(sent, current) && !edited && sent.captionRevision === current.captionRevision;
+}
+function captionAlternatives(suggestion: PublicationSuggestion) {
+  const options = [...suggestion.alternatives];
+  if (!options.some(option => option.caption === suggestion.caption)) options.unshift({ label: "Principal", caption: suggestion.caption });
+  return options.filter((option, index) => options.findIndex(other => other.caption === option.caption) === index).slice(0, 3);
+}
 
 export function PublishCenter({
   initialAccounts,
@@ -118,9 +141,19 @@ export function PublishCenter({
       ? preselectVideoId
       : (videos[0]?.id ?? ""),
   );
-  const [platform, setPlatform] = useState<SocialPlatform>("instagram");
+  const [platform, setPlatform] = useState<SocialPlatform>(() => initialAccounts.some(account => account.platform === "instagram" && account.status === "connected") ? "instagram" : initialAccounts.some(account => account.platform === "tiktok" && account.status === "connected") ? "tiktok" : "instagram");
   const [caption, setCaption] = useState("");
-  const [topic, setTopic] = useState("");
+  const [composerSession, setComposerSession] = useState(0);
+  const suggestionState = useRef<SuggestionRequestState>({ session: 0, request: 0, captionRevision: 0 });
+  const captionEdited = useRef(false);
+  const [suggestion, setSuggestion] = useState<PublicationSuggestion | null>(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [suggestionRefresh, setSuggestionRefresh] = useState(0);
+  const [performance, setPerformance] = useState<InstagramPerformance | null>(null);
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [performanceError, setPerformanceError] = useState<string | null>(null);
+  const [performanceRefresh, setPerformanceRefresh] = useState(0);
   const [goal, setGoal] = useState<CaptionGoal>("comments");
   const [timing, setTiming] = useState<"now" | "later">("now");
   const [when, setWhen] = useState("");
@@ -145,6 +178,8 @@ export function PublishCenter({
   const pickedAccount = accounts.find(
     (account) => account.platform === platform,
   );
+  const instagramAccount = accounts.find(account => account.platform === "instagram" && account.status === "connected");
+  const instagramConnectionKey = instagramAccount ? `${instagramAccount.username}:${instagramAccount.connectedAt}` : null;
   const review = inspectCaption(caption);
   const tiktokReady = Boolean(creator && privacy && tiktokConsent && (!commercial || ownBrand || paidBrand) && !(commercial && paidBrand && privacy === "SELF_ONLY"));
   const shownPosts = posts.filter(
@@ -192,6 +227,85 @@ export function PublishCenter({
       clearTimeout(timer);
     };
   }, [hasPending]);
+
+  useEffect(() => {
+    if (!composerOpen || !videoId) return;
+    const sent = { ...suggestionState.current, request: suggestionState.current.request + 1 };
+    suggestionState.current = sent;
+    let active = true;
+    setSuggestion(null);
+    setSuggestionError(null);
+    setSuggestionLoading(true);
+    const timer = setTimeout(() => {
+      if (!active || !isCurrentPublicationSuggestion(sent, suggestionState.current)) return;
+      active = false;
+      setSuggestionLoading(false);
+      setSuggestionError("A preparação da legenda demorou. Seu texto foi mantido. Tente novamente ou continue editando.");
+    }, 80_000);
+    startTransition(() => {
+      void preparePublicationAction({ videoId, platform, goal }).then(result => {
+        if (!active || !isCurrentPublicationSuggestion(sent, suggestionState.current)) return;
+        if ("error" in result) { setSuggestionError(result.error); return; }
+        if (result.suggestion.videoId !== videoId) { setSuggestionError("Não foi possível conferir a legenda deste vídeo. Tente novamente."); return; }
+        setSuggestion(result.suggestion);
+        if (canApplyPublicationSuggestion(sent, suggestionState.current, captionEdited.current)) setCaption(result.suggestion.caption);
+      }).catch(() => {
+        if (active && isCurrentPublicationSuggestion(sent, suggestionState.current)) setSuggestionError("Não foi possível preparar a legenda. Você pode editar o texto ou tentar novamente.");
+      }).finally(() => {
+        clearTimeout(timer);
+        if (active && isCurrentPublicationSuggestion(sent, suggestionState.current)) setSuggestionLoading(false);
+      });
+    });
+    return () => { active = false; clearTimeout(timer); };
+  }, [composerOpen, composerSession, videoId, platform, goal, suggestionRefresh]);
+
+  useEffect(() => {
+    if (!instagramConnectionKey) { setPerformance(null); setPerformanceError(null); setPerformanceLoading(false); return; }
+    let active = true;
+    setPerformance(null);
+    setPerformanceError(null);
+    setPerformanceLoading(true);
+    const timer = setTimeout(() => {
+      if (!active) return;
+      active = false;
+      setPerformanceLoading(false);
+      setPerformanceError("A consulta demorou. Atualize para tentar novamente.");
+    }, 80_000);
+    startTransition(() => {
+      void getInstagramPerformanceAction().then(result => {
+        if (active) setPerformance(result);
+      }).catch(() => {
+        if (active) setPerformanceError("Não foi possível consultar o desempenho agora.");
+      }).finally(() => {
+        clearTimeout(timer);
+        if (active) setPerformanceLoading(false);
+      });
+    });
+    return () => { active = false; clearTimeout(timer); };
+  }, [instagramConnectionKey, performanceRefresh]);
+
+  function closeComposer() {
+    suggestionState.current = { ...suggestionState.current, session: suggestionState.current.session + 1, request: suggestionState.current.request + 1 };
+    setComposerOpen(false);
+  }
+  function resetCaptionSession(edited: boolean) {
+    suggestionState.current = { session: suggestionState.current.session + 1, request: suggestionState.current.request + 1, captionRevision: suggestionState.current.captionRevision + 1 };
+    captionEdited.current = edited;
+    setComposerSession(suggestionState.current.session);
+    setSuggestion(null);
+    setSuggestionError(null);
+  }
+  function changeCaptionContext() {
+    suggestionState.current = { ...suggestionState.current, request: suggestionState.current.request + 1 };
+    setSuggestion(null);
+    setSuggestionError(null);
+    if (!captionEdited.current) setCaption("");
+  }
+  function editCaption(value: string) {
+    captionEdited.current = true;
+    suggestionState.current = { ...suggestionState.current, captionRevision: suggestionState.current.captionRevision + 1 };
+    setCaption(value);
+  }
 
   const refreshAccounts = async () => {
     const result = await getAccountsAction();
@@ -243,11 +357,13 @@ export function PublishCenter({
     }
   };
   const newPost = () => {
+    resetCaptionSession(false);
+    setPlatform(instagramAccount ? "instagram" : accounts.some(account => account.platform === "tiktok" && account.status === "connected") ? "tiktok" : "instagram");
+    setGoal("comments");
     requestKey.current = undefined;
     setCommercial(false); setOwnBrand(false); setPaidBrand(false); setTiktokConsent(false);
     setDraftId(undefined);
     setCaption("");
-    setTopic("");
     setWhen("");
     setTiming("now");
     setComposerError(null);
@@ -256,6 +372,8 @@ export function PublishCenter({
     setComposerOpen(true);
   };
   const editPost = (post: Post) => {
+    resetCaptionSession(true);
+    setGoal("comments");
     requestKey.current = undefined;
     setCommercial(false); setOwnBrand(false); setPaidBrand(false); setTiktokConsent(false);
     setDraftId(post.status === "draft" ? post.id : undefined);
@@ -264,12 +382,14 @@ export function PublishCenter({
     setCaption(post.caption);
     setWhen("");
     setTiming("now");
-    setTopic("");
     setMediaError(false);
     setComposerError(null);
     setComposerOpen(true);
   };
   const saveDraft = async () => {
+    // Keep the exact text being saved if an earlier suggestion finishes now.
+    captionEdited.current = true;
+    suggestionState.current = { ...suggestionState.current, captionRevision: suggestionState.current.captionRevision + 1 };
     setBusy(true);
     setComposerError(null);
     try {
@@ -288,7 +408,7 @@ export function PublishCenter({
         ...previous.filter((post) => post.id !== result.post.id),
       ]);
       setDraftId(result.post.id);
-      setComposerOpen(false);
+      closeComposer();
       setFilter("draft");
       setNotice("Rascunho salvo. Você pode continuar a edição quando quiser.");
     } catch (caught) {
@@ -298,6 +418,8 @@ export function PublishCenter({
     }
   };
   const schedule = async () => {
+    captionEdited.current = true;
+    suggestionState.current = { ...suggestionState.current, captionRevision: suggestionState.current.captionRevision + 1 };
     setComposerError(null);
     if (platform === "tiktok" && !tiktokReady) { setComposerError("Confira as opções do TikTok e aceite os termos antes de enviar."); return; }
     const scheduledAt =
@@ -326,7 +448,7 @@ export function PublishCenter({
         setComposerError(result.error);
         return;
       }
-      setComposerOpen(false);
+      closeComposer();
       setCaption("");
       setDraftId(undefined);
       requestKey.current = undefined;
@@ -425,6 +547,20 @@ export function PublishCenter({
           />
         </div>
       </section>
+      {instagramAccount ? <section className={styles.performance} aria-labelledby="performance-heading">
+        <div className={styles.performanceHead}><div><ChartNoAxesCombined size={17} /><h2 id="performance-heading">Desempenho no Instagram</h2><span>@{instagramAccount.username}</span></div><button type="button" className="btn btn-ghost btn-sm" disabled={performanceLoading || busy} onClick={() => setPerformanceRefresh(value => value + 1)} aria-label="Atualizar desempenho do Instagram"><RefreshCw size={14} />Atualizar</button></div>
+        {performanceLoading ? <p className={styles.performanceStatus} role="status"><span className="spinner" aria-hidden="true" />Consultando publicações…</p> : performanceError ? <p className={styles.help} role="status">{performanceError}</p> : performance ? <>
+          <p className={styles.help}>{performance.summary}</p>
+          {performance.status === "ready" && performance.posts.length ? <>
+            <div className={styles.performanceMetrics}>{([['likes', 'Curtidas'], ['comments', 'Comentários'], ['views', 'Visualizações']] as const).flatMap(([metric, label]) => {
+              const available = performance.posts.filter(post => typeof post[metric] === "number" && Number.isFinite(post[metric]));
+              if (!available.length || available.length !== performance.posts.length) return [];
+              return <div key={metric}><strong>{available.reduce((sum, post) => sum + post[metric]!, 0).toLocaleString("pt-BR")}</strong><span>{label}</span></div>;
+            })}<div><strong>{performance.posts.length.toLocaleString("pt-BR")}</strong><span>Publicações na amostra</span></div></div>
+            <details className={styles.performanceDetails}><summary>Ver publicações e observações</summary><div className={styles.performancePosts}>{performance.posts.slice(0, 5).map(post => <div key={post.id}><p>{post.caption || "Publicação sem legenda"}</p><div>{([['likes', 'curtidas'], ['comments', 'comentários'], ['views', 'visualizações']] as const).map(([metric, label]) => typeof post[metric] === "number" && Number.isFinite(post[metric]) ? <span key={metric}>{post[metric]!.toLocaleString("pt-BR")} {label}</span> : null)}{post.permalink && /^https:\/\//.test(post.permalink) ? <a href={post.permalink} target="_blank" rel="noreferrer">Abrir<ExternalLink size={11} /></a> : null}</div></div>)}</div>{performance.recommendations.length ? <ul>{performance.recommendations.slice(0, 3).map(item => <li key={item}>{item}</li>)}</ul> : null}</details>
+          </> : null}
+        </> : null}
+      </section> : null}
       <section aria-labelledby="queue-heading">
         <div className={styles.sectionHead}>
           <div>
@@ -614,7 +750,7 @@ export function PublishCenter({
       {composerOpen ? (
         <PublishDialog
           titleId="composer-title"
-          onClose={() => !busy && setComposerOpen(false)}
+          onClose={() => !busy && closeComposer()}
           wide
         >
           <h2 id="composer-title">
@@ -633,6 +769,7 @@ export function PublishCenter({
                     className="input"
                     value={videoId}
                     onChange={(event) => {
+                      if (event.target.value !== videoId) changeCaptionContext();
                       setVideoId(event.target.value);
                       setMediaError(false);
                     }}
@@ -658,7 +795,7 @@ export function PublishCenter({
                     type="button"
                     aria-pressed={platform === "instagram"}
                     data-active={platform === "instagram"}
-                    onClick={() => setPlatform("instagram")}
+                    onClick={() => { if (platform !== "instagram") changeCaptionContext(); setPlatform("instagram"); }}
                   >
                     <Camera size={15} />
                     Instagram Reels
@@ -667,7 +804,7 @@ export function PublishCenter({
                     type="button"
                     aria-pressed={platform === "tiktok"}
                     data-active={platform === "tiktok"}
-                    onClick={() => setPlatform("tiktok")}
+                    onClick={() => { if (platform !== "tiktok") changeCaptionContext(); setPlatform("tiktok"); }}
                   >
                     <Music4 size={15} />
                     TikTok
@@ -705,65 +842,6 @@ export function PublishCenter({
                   </>}
                 </fieldset>
               ) : null}
-              <details className={styles.assistant}>
-                <summary>
-                  <WandSparkles size={16} />
-                  Ajuda para escrever a legenda
-                </summary>
-                <div className={styles.assistantBody}>
-                  <p className={styles.help}>
-                    Uma base editável com gancho, contexto, uma ação e hashtags.
-                    Use os detalhes reais da sua cena.
-                  </p>
-                  <div className="field">
-                    <label htmlFor="pub-topic">O que acontece no vídeo?</label>
-                    <input
-                      id="pub-topic"
-                      className="input"
-                      placeholder="Ex.: meu personagem dança na praia ao pôr do sol"
-                      value={topic}
-                      maxLength={300}
-                      onChange={(event) => setTopic(event.target.value)}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="pub-goal">Objetivo da publicação</label>
-                    <select
-                      id="pub-goal"
-                      className="input"
-                      value={goal}
-                      onChange={(event) =>
-                        setGoal(event.target.value as CaptionGoal)
-                      }
-                    >
-                      {Object.entries(CAPTION_GOALS).map(([value, item]) => (
-                        <option key={value} value={value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    disabled={!topic.trim()}
-                    onClick={() =>
-                      setCaption(
-                        buildCaption({
-                          topic,
-                          goal,
-                          character: pickedVideo?.characterName,
-                        }),
-                      )
-                    }
-                  >
-                    <WandSparkles size={14} />
-                    {caption
-                      ? "Substituir pela base de legenda"
-                      : "Montar base da legenda"}
-                  </button>
-                </div>
-              </details>
               <div className="field">
                 <div className={styles.labelRow}>
                   <label htmlFor="pub-caption">3. Legenda</label>
@@ -776,12 +854,16 @@ export function PublishCenter({
                     Copiar
                   </button>
                 </div>
+                <div className={styles.suggestionStatus} role="status">
+                  {suggestionLoading ? <><span className="spinner" aria-hidden="true" />Preparando legenda…</> : suggestionError ? <><span>{suggestionError}</span><button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setSuggestionRefresh(value => value + 1)}><RefreshCw size={13} />Tentar novamente</button></> : suggestion ? <><WandSparkles size={14} /><span>{caption === suggestion.caption ? "Legenda pronta para revisar" : "Sugestões prontas · seu texto foi mantido"}</span>{caption !== suggestion.caption ? <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => editCaption(suggestion.caption)}>Aplicar sugestão</button> : null}</> : null}
+                </div>
+                {suggestion ? <div className={styles.captionVariants} role="group" aria-label="Variações da legenda">{captionAlternatives(suggestion).map((alternative, index) => <button type="button" key={`${index}-${alternative.label}`} className="chip" aria-pressed={caption === alternative.caption} data-active={caption === alternative.caption} disabled={busy} onClick={() => editCaption(alternative.caption)}>{alternative.label}</button>)}</div> : null}
                 <textarea
                   id="pub-caption"
                   className={`input ${styles.captionInput}`}
                   value={caption}
-                  onChange={(event) => setCaption(event.target.value)}
-                  placeholder="Comece com uma frase que desperte curiosidade.\n\nConte o contexto da cena na voz do seu personagem.\n\nTermine com uma pergunta específica ou uma única ação."
+                  onChange={(event) => editCaption(event.target.value)}
+                  placeholder={suggestionLoading ? "Preparando a legenda com o contexto deste vídeo…" : "A legenda do vídeo aparece aqui. Você pode editar antes de publicar."}
                   aria-describedby="pub-caption-review"
                 />
                 <div id="pub-caption-review" className={styles.captionMeta}>
@@ -810,6 +892,18 @@ export function PublishCenter({
                   </p>
                 )}
               </div>
+              <details className={styles.assistant}>
+                <summary><WandSparkles size={15} />Contexto e objetivo</summary>
+                <div className={styles.assistantBody}>
+                  <div className="field"><label htmlFor="pub-goal">Objetivo da publicação</label><select id="pub-goal" className="input" value={goal} disabled={busy} onChange={(event) => { if (event.target.value !== goal) changeCaptionContext(); setGoal(event.target.value as CaptionGoal); }}>{Object.entries(CAPTION_GOALS).map(([value, item]) => <option key={value} value={value}>{item.label}</option>)}</select></div>
+                  {suggestion ? <>
+                    <p className={styles.help}>{SUGGESTION_SOURCES[suggestion.source.kind]}: {suggestion.source.title}</p>
+                    {suggestion.keywords.length ? <div className={styles.keywords} aria-label="Palavras-chave da legenda">{suggestion.keywords.map(keyword => <span key={keyword}>{keyword}</span>)}</div> : null}
+                    {suggestion.source.url && /^https:\/\//.test(suggestion.source.url) ? <a className={styles.sourceLink} href={suggestion.source.url} target="_blank" rel="noreferrer"><ExternalLink size={12} />Ver referência</a> : null}
+                    {suggestion.notice ? <p className={styles.help}>{suggestion.notice}</p> : null}
+                  </> : null}
+                </div>
+              </details>
               <div className="field">
                 <label>4. Quando publicar</label>
                 <div className="mode-tabs">

@@ -10,6 +10,7 @@ import { PublishCenter } from "@/components/publish-center";
 
 export const metadata = { title: "Publicar" };
 export const dynamic = "force-dynamic";
+export const maxDuration = 90;
 
 export default async function PublicarPage({
   searchParams,
@@ -37,9 +38,8 @@ export default async function PublicarPage({
             Publicar <span style={{ color: "var(--accent-text)" }}>& Agendar</span>
           </h1>
           <p className="sub">
-            Prepare seus Reels e TikToks com os personagens de IA: vídeo,
-            legenda e horário em um só lugar. Salve rascunhos e revise tudo
-            antes de publicar.
+            Escolha o vídeo e receba a legenda pronta. Revise, publique ou
+            agende e acompanhe o desempenho do seu Instagram.
           </p>
         </div>
       </div>

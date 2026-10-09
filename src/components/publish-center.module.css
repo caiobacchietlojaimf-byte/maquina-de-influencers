@@ -125,6 +125,36 @@
 .help a {
   color: var(--accent-text);
 }
+.suggestionStatus { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--tx2); font-size: 12px; line-height: 1.5; }
+.suggestionStatus:empty { display: none; }
+.suggestionStatus > span:not(:global(.spinner)) { flex: 1 1 180px; }
+.suggestionStatus > svg { color: var(--accent-text); flex-shrink: 0; }
+.suggestionStatus :global(.spinner), .performanceStatus :global(.spinner) { width: 14px; height: 14px; flex-shrink: 0; }
+.captionVariants { display: flex; flex-wrap: wrap; gap: 6px; }
+.captionVariants > button { font-size: 11px; padding: 6px 10px; }
+.keywords { display: flex; flex-wrap: wrap; gap: 6px; }
+.keywords > span { font-size: 11px; color: var(--tx2); padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.sourceLink { display: inline-flex; align-items: center; gap: 5px; color: var(--accent-text); font-size: 12px; width: fit-content; }
+.performance { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--s1); }
+.performanceHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.performanceHead > div { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.performanceHead svg { color: var(--accent-text); flex-shrink: 0; }
+.performanceHead h2 { font-size: 14px; margin: 0; }
+.performanceHead span { font-size: 12px; color: var(--tx3); overflow-wrap: anywhere; }
+.performanceHead > button { flex-shrink: 0; }
+.performanceStatus { display: flex; gap: 8px; align-items: center; color: var(--tx2); font-size: 12px; }
+.performanceMetrics { display: flex; flex-wrap: wrap; gap: 18px 30px; margin-top: 16px; }
+.performanceMetrics > div { display: grid; gap: 3px; }
+.performanceMetrics strong { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.performanceMetrics span { font-size: 11px; color: var(--tx2); }
+.performanceDetails { margin-top: 16px; }
+.performanceDetails summary { cursor: pointer; font-size: 12px; color: var(--tx2); }
+.performancePosts { display: grid; gap: 12px; margin-top: 14px; }
+.performancePosts > div { border-top: 1px solid var(--line); padding-top: 12px; }
+.performancePosts p { color: var(--tx2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0 0 6px; }
+.performancePosts > div > div { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; color: var(--tx3); font-size: 11px; }
+.performancePosts a { display: inline-flex; align-items: center; gap: 4px; color: var(--accent-text); }
+.performanceDetails ul { padding-left: 16px; margin: 14px 0 0; font-size: 12px; line-height: 1.7; color: var(--tx2); }
 .assistant {
   border: 1px solid var(--line-2);
   border-radius: 12px;
@@ -274,7 +304,12 @@
   gap: 12px;
 }
 .center button:focus-visible,
+.center summary:focus-visible,
+.center a:focus-visible,
 .dialog button:focus-visible,
+.dialog input:focus-visible,
+.dialog select:focus-visible,
+.dialog textarea:focus-visible,
 .dialog summary:focus-visible,
 .dialog a:focus-visible {
   outline: 2px solid var(--accent);
@@ -310,6 +345,9 @@
   .queueActions span {
     display: none;
   }
+  .performance { padding: 14px; }
+  .performanceHead { align-items: flex-start; }
+  .performanceHead > div { align-items: flex-start; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dialog {

@@ -239,6 +239,35 @@ test("media_publish has a persisted boundary before the request and is called on
   await f.api.publisherTick(); assert.equal(f.calls.filter(v => v === "publish").length, 1);
 });
 
+test("confirmed Instagram media ID is saved separately from the upload container for future insights", async () => {
+  const f = publisherFixture({
+    post: { providerId: "upload-container-id" },
+    social: { instagramPublishContainer: async (_account, container) => {
+      assert.equal(container, "upload-container-id");
+      return { status: "posted", publishedMediaId: "published-media-id", postedUrl: "https://www.instagram.com/reel/actual/" };
+    } },
+  });
+  await f.api.publisherTick();
+  assert.equal(f.state().status, "posted");
+  assert.equal(f.state().providerId, "upload-container-id");
+  assert.equal(f.state().publishedMediaId, "published-media-id");
+  assert.equal(f.state().postedUrl, "https://www.instagram.com/reel/actual/");
+  assert.ok(f.calls[0].publishStartedAt, "Existing persisted publication boundary must remain intact");
+});
+
+test("a published container without a returned media ID cannot invent one or erase a previously known ID", async () => {
+  for (const publishedMediaId of [undefined, "known-media-id"]) {
+    const f = publisherFixture({
+      post: { providerId: "container-only", publishedMediaId },
+      social: { instagramContainerStatus: async () => ({ status: "posted" }) },
+    });
+    await f.api.publisherTick();
+    assert.equal(f.state().status, "posted");
+    assert.equal(f.state().publishedMediaId, publishedMediaId);
+    assert.ok(!f.calls.includes("publish"));
+  }
+});
+
 test("ambiguous Instagram publication polls the original container without republishing", async () => {
   const f = publisherFixture({ post: { providerId: "container", publishStartedAt: Date.now() - 10000 } });
   await f.api.publisherTick();

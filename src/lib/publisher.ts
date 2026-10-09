@@ -73,7 +73,7 @@ async function processPost(initial: Post): Promise<void> {
       await savePostWork(post, stale ? { status: "failed", publicationUncertain: true, error: UNCERTAIN } : { nextAttemptAt: Date.now() + 60_000, error: post.publishStartedAt ? "Aguardando confirmação da publicação pela rede." : undefined });
       return;
     }
-    await savePostWork(post, { status: result.status === "posted" ? "posted" : "failed", postedAt: result.status === "posted" ? Date.now() : undefined, postedUrl: result.postedUrl, error: result.error, publicationUncertain: false });
+    await savePostWork(post, { status: result.status === "posted" ? "posted" : "failed", postedAt: result.status === "posted" ? Date.now() : undefined, postedUrl: result.postedUrl, ...(result.publishedMediaId ? { publishedMediaId: result.publishedMediaId } : {}), error: result.error, publicationUncertain: false });
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "Não foi possível consultar a rede.";
     if (post.providerId && (caught instanceof SocialApiError && (caught.retryable || caught.uncertain))) {

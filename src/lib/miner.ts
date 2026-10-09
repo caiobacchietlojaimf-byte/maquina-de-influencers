@@ -80,11 +80,13 @@ function toViral(item: TikwmItem): Omit<Viral, "id"> | null {
   const playUrl = mediaUrl(item.play || item.hdplay);
   const handle = item.author?.unique_id ?? "";
   if (!videoId || !/^\d+$/.test(videoId) || !playUrl || item.images?.length || count(item.duration) === 0) return null;
+  const title = typeof item.title === "string" ? item.title.trim() : "";
   return {
     source: "tiktok", videoId,
     pageUrl: `https://www.tiktok.com/@${encodeURIComponent(handle || "_")}/video/${videoId}`,
     playUrl, coverUrl: mediaUrl(item.origin_cover || item.cover),
-    title: (item.title || "").trim() || "Sem legenda", authorName: item.author?.nickname || handle || "Criador",
+    title: title || "Sem legenda", authorName: item.author?.nickname || handle || "Criador",
+    ...(title ? { sourceCaption: title.slice(0, 2200), sourceCaptionOrigin: "provider-title" as const } : {}),
     authorHandle: handle, duration: count(item.duration), views: count(item.play_count), likes: count(item.digg_count),
     comments: count(item.comment_count), shares: count(item.share_count),
     ...(item.music_info?.title ? { musicTitle: item.music_info.title } : {}),

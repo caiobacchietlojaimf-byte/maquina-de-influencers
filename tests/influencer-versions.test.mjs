@@ -59,6 +59,7 @@ test("video preparation freezes the selected outfit ID and image in its signed q
       return identity;
     } },
     "@/lib/credit-pricing": { usdToCredits: usd => usd * 10, CREDIT_PRICING_VERSION: "test" },
+    "@/lib/publication-context": { capturePublicationReference: async () => ({ referenceKind: "preset", keywords: [] }) },
   }).prepareCharacterEdit;
   const input = { influencerId: "outfit", engine: "fal-kling-pro", resolution: "auto", targetMode: "main", source: { kind: "preset", id: "preset" } };
   assert.ok("quote" in await prepare(input));

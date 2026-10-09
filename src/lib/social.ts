@@ -134,7 +134,7 @@ export async function tiktokPublish(account: SocialAccount, input: { videoUrl: s
   if (typeof id !== "string" || !id) throw new SocialApiError("O TikTok não confirmou o identificador do envio.", true);
   return id;
 }
-export type PublishResult = { status: "pending" | "ready" | "posted" | "failed"; postedUrl?: string; error?: string };
+export type PublishResult = { status: "pending" | "ready" | "posted" | "failed"; postedUrl?: string; publishedMediaId?: string; error?: string };
 export async function tiktokPostStatus(account: SocialAccount, publishId: string): Promise<PublishResult> {
   const result = await api(`${TT}/post/publish/status/fetch/`, { method: "POST", headers: headers(account), body: JSON.stringify({ publish_id: publishId }) });
   const data = result.data as { status?: string; publicaly_available_post_id?: Array<string | number> } | undefined;
@@ -161,5 +161,5 @@ export async function instagramPublishContainer(account: SocialAccount, containe
   if (typeof data.id !== "string") throw new SocialApiError("O Instagram não confirmou a publicação.", true);
   const permalink = await api(`${graph(account)}/${encodeURIComponent(data.id)}?fields=permalink`, { headers: headers(account) }).catch(() => ({}));
   const url = "permalink" in permalink ? permalink.permalink : undefined;
-  return { status: "posted", ...(typeof url === "string" && /^https:\/\/(www\.)?instagram\.com\//.test(url) ? { postedUrl: url } : {}) };
+  return { status: "posted", publishedMediaId: data.id, ...(typeof url === "string" && /^https:\/\/(www\.)?instagram\.com\//.test(url) ? { postedUrl: url } : {}) };
 }

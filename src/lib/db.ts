@@ -7,6 +7,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { VideoMetadata } from "./video-reference";
 import type { PlanGrant, PlanId } from "./plans";
 import type { EditIdentityReferences } from "./character-edit";
+import type { PublicationReferenceSnapshot } from "./publication-context";
+import type { PublicationSuggestion } from "./publication-assistant-types";
 
 /* Camada de dados com dois drivers e a MESMA API assíncrona:
    - Supabase (Postgres) quando SUPABASE_URL + SUPABASE_KEY + MI_DB_SECRET
@@ -27,6 +29,7 @@ export type User = {
   creditPurchases?: Record<string, { credits: number; grantedAt: number; revoked?: boolean }>;
   suspendedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
+  captionRequests?: number[];
   createdAt: number;
 };
 
@@ -72,6 +75,12 @@ export type Influencer = {
 
 export type VideoKind = "motion" | "viral" | "custom";
 
+export type CaptionCacheEntry = {
+  fingerprint: string; claimId: string; startedAt: number; resultUrl: string;
+  state: "pending" | "ready"; suggestion?: PublicationSuggestion;
+};
+export type PublicationSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset"; id: string } | { kind: "upload" };
+
 export type Video = {
   creditCost?: number;
   creditPricingVersion?: string;
@@ -87,12 +96,15 @@ export type Video = {
   requestId?: string;
   resultUrl?: string;
   thumbnailUrl?: string;
+  captionRevision?: string;
+  captionCache?: Record<string, CaptionCacheEntry>;
   error?: string;
   createdAt: number;
   edit?: {
     model: string; sourceUrl: string; imageUrl: string; target: string;
     provider?: "fal" | "higgsfield"; seed?: number;
     identityVersion?: string; identity?: EditIdentityReferences;
+    sourceReference?: PublicationSource; sourceSnapshot?: PublicationReferenceSnapshot;
     assembly?: "overlap-v1";
     segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata; requestId?: string; resultUrl?: string }>;
     source: VideoMetadata;
@@ -113,6 +125,9 @@ export type Viral = {
   playUrl: string;
   coverUrl: string;
   title: string;
+  /** Text actually returned by the provider; may be an excerpt, never a seeded scene label. */
+  sourceCaption?: string;
+  sourceCaptionOrigin?: "provider-title";
   authorName: string;
   authorHandle: string;
   duration: number;
@@ -171,6 +186,8 @@ export type Post = {
   /** Frozen when scheduled so reconnecting an account cannot publish a demo. */
   mode?: "demo" | "live";
   providerId?: string;
+  /** Actual published media ID; providerId remains the upload container ID. */
+  publishedMediaId?: string;
   accountId?: string;
   accountUserId?: string;
   requestKey?: string;
@@ -724,6 +741,67 @@ export async function reserveVideoCredits(userId: string, cost: number): Promise
   });
 }
 
+/** Bounds automatic caption spend without touching the user's credit balance. */
+export async function reserveCaptionRequest(userId: string, now = Date.now()): Promise<boolean> {
+  return mutateCredits(userId, user => {
+    if (user.suspendedAt) return false;
+    const recent = (user.captionRequests ?? []).filter(time => Number.isFinite(time) && time > now - 86_400_000);
+    if (recent.length >= 200 || recent.filter(time => time > now - 3_600_000).length >= 40) return false;
+    user.captionRequests = [...recent, now];
+    return true;
+  });
+}
+
+/** The cache lives in the owned video's JSON, so two workers cannot pay twice. */
+async function mutateVideoCaptions<T>(userId: string, id: string, change: (video: Video) => T): Promise<T | undefined> {
+  const sb = remote();
+  const usable = (video: Video | undefined): video is Video => Boolean(video && !video.deletedAt && video.status === "completed" && video.resultUrl);
+  if (!sb) return mutate(db => {
+    const current = db.videos.find(video => video.id === id && video.userId === userId);
+    if (!usable(current)) return;
+    const value = change(current);
+    current.captionRevision = randomUUID();
+    return value;
+  });
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const current = await getVideo(userId, id);
+    if (!usable(current)) return;
+    const next = { ...current, captionCache: { ...current.captionCache } };
+    const value = change(next);
+    next.captionRevision = randomUUID();
+    let query = sb.from("mi_videos").update({ data: next }).eq("id", id).eq("user_id", userId)
+      .eq("data->>status", "completed").eq("data->>resultUrl", current.resultUrl!).is("data->>deletedAt", null);
+    query = current.captionRevision ? query.eq("data->>captionRevision", current.captionRevision) : query.is("data->>captionRevision", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("preparar legenda", error);
+    if (data?.length) return value;
+  }
+  throw new Error("A preparação foi atualizada. Tente novamente.");
+}
+
+export async function claimVideoCaption(userId: string, id: string, slot: string, fingerprint: string, expectedResultUrl?: string): Promise<{ claimed: boolean; entry: CaptionCacheEntry } | undefined> {
+  if (!/^(instagram|tiktok):(comments|shares|saves|follows)$/.test(slot) || !/^[a-f0-9]{64}$/.test(fingerprint)) throw new Error("Preparação inválida.");
+  return mutateVideoCaptions(userId, id, video => {
+    if (expectedResultUrl && video.resultUrl !== expectedResultUrl) return;
+    const prior = video.captionCache?.[slot];
+    // Never evict work for the same media. A genuinely replaced media URL gets
+    // a new claim; its previous finalizer cannot pass the claimId comparison.
+    if (prior && prior.resultUrl === video.resultUrl && (prior.fingerprint === fingerprint || prior.state === "pending")) return { claimed: false, entry: prior };
+    const entry: CaptionCacheEntry = { fingerprint, claimId: randomUUID(), state: "pending", startedAt: Date.now(), resultUrl: video.resultUrl! };
+    video.captionCache = { ...video.captionCache, [slot]: entry };
+    return { claimed: true, entry };
+  });
+}
+
+export async function finishVideoCaption(userId: string, id: string, slot: string, claimId: string, suggestion: PublicationSuggestion): Promise<boolean> {
+  return Boolean(await mutateVideoCaptions(userId, id, video => {
+    const entry = video.captionCache?.[slot];
+    if (!entry || entry.claimId !== claimId || entry.state !== "pending" || suggestion.videoId !== id || entry.resultUrl !== video.resultUrl) return false;
+    video.captionCache = { ...video.captionCache, [slot]: { ...entry, state: "ready", suggestion } };
+    return true;
+  }));
+}
+
 export async function claimVideoFinalization(video: Video): Promise<boolean> {
   if (video.finalizationStartedAt && Date.now() - video.finalizationStartedAt < 300000) return false;
   const patch = { ...video, finalizationStartedAt: Date.now() };
@@ -758,11 +836,27 @@ export async function updateVideoFromPoll(snapshot: Video, patch: Partial<Video>
 }
 
 export async function updateVideo(id: string, patch: Partial<Video>): Promise<Video | undefined> {
-  if (remote()) return patchEntity<Video>("mi_videos", id, patch);
+  const sb = remote();
+  if (sb) {
+    // Share the caption revision so a concurrent deletion/update cannot erase a
+    // paid request claim or be resurrected by its delayed completion.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const current = await getVideoById(id);
+      if (!current) return;
+      const next = { ...current, ...patch, captionRevision: randomUUID() };
+      let query = sb.from("mi_videos").update({ data: next }).eq("id", id);
+      query = current.captionRevision ? query.eq("data->>captionRevision", current.captionRevision) : query.is("data->>captionRevision", null);
+      const { data, error } = await query.select("id");
+      if (error) fail("atualizar vídeo", error);
+      if (data?.length) return next;
+    }
+    throw new Error("O vídeo foi atualizado. Tente novamente.");
+  }
   return mutate((db) => {
     const video = db.videos.find((v) => v.id === id);
     if (!video) return undefined;
     Object.assign(video, patch);
+    video.captionRevision = randomUUID();
     return video;
   });
 }

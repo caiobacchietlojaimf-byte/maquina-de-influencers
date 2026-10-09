@@ -101,6 +101,7 @@ function fixture(overrides = {}) {
     } },
     "@/lib/platform": { isConfigured: () => true, PlatformError, submitGeneration: async (...args) => { submissions.push(args); if (overrides.failure) throw new PlatformError(overrides.failure); return { requestId: "provider-request" }; } },
     "@/lib/credit-pricing": pricing,
+    "@/lib/publication-context": { capturePublicationReference: async source => ({ referenceKind: source.kind, sourceTitle: "Editorial reference", keywords: [] }) },
     "@/lib/prepare-character-identity": { EDIT_IDENTITY_VERSION: "identity-v1", prepareCharacterIdentity: async (influencer, _metadata, _engine, _id, signal) => {
       signal?.throwIfAborted();
       if (overrides.identityFailure) throw new Error("Não foi possível preparar a identidade.");
@@ -120,6 +121,10 @@ test("catalog, discovery, presets and owned uploads all prepare a frozen origina
     assert.equal(prepared.quote.metadata.duration, metadata.duration);
     assert.equal(prepared.quote.estimatedUsd, 12.26);
     assert.equal(prepared.quote.creditCost, 123);
+    const savedReceipt = quotes.readEditQuote(prepared.quote.token, "owner");
+    assert.deepEqual(JSON.parse(JSON.stringify(savedReceipt.sourceReference)), source.kind === "upload" ? { kind: "upload" } : source);
+    assert.equal(savedReceipt.sourceSnapshot.sourceTitle, "Editorial reference");
+    assert.ok(!JSON.stringify(savedReceipt.sourceReference).includes("owned-upload"));
     assert.deepEqual(f.snapshots.at(-1)[1], original);
   }
   assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0);

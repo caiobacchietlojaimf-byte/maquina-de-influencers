@@ -1,0 +1,77 @@
+import "server-only";
+
+import { createHash } from "node:crypto";
+import { claimVideoCaption, finishVideoCaption, getInfluencer, getVideo, reserveCaptionRequest, type SocialPlatform } from "./db";
+import { resolvePublicationContext } from "./publication-context";
+import { generatePublicationCaption, CAPTION_PROVIDER_VERSION } from "./caption-provider";
+import { getInstagramPerformance } from "./instagram-performance";
+import { publicationFallback } from "./publication-fallback";
+import type { CaptionGoal } from "./publish-caption";
+import type { PublicationSuggestion } from "./publication-assistant-types";
+
+export type PreparationInput = { videoId: string; platform: SocialPlatform; goal?: CaptionGoal };
+type Result = { suggestion: PublicationSuggestion } | { error: string };
+const FALLBACK_NOTICE = "Rascunho preparado pelo contexto da referência. A análise visual não ficou disponível; confira a cena antes de publicar.";
+
+/** Authentication belongs to the action; ownership is rechecked here before data or paid work. */
+export async function preparePublication(userId: string, input: PreparationInput): Promise<Result> {
+  if (!input || typeof input.videoId !== "string" || input.videoId.length > 100 || !/^[a-zA-Z0-9_-]+$/.test(input.videoId)
+    || !["instagram", "tiktok"].includes(input.platform) || !["comments", "shares", "saves", "follows"].includes(input.goal ?? "comments")) return { error: "Selecione um vídeo e uma rede válidos." };
+  const goal = input.goal ?? "comments";
+  const video = await getVideo(userId, input.videoId);
+  if (!video || video.userId !== userId || video.deletedAt || video.status !== "completed" || !video.resultUrl) return { error: "Selecione um vídeo pronto da sua conta." };
+  const influencer = video.influencerId ? await getInfluencer(userId, video.influencerId, true) : undefined;
+  const context = await resolvePublicationContext(userId, video, influencer);
+  const fingerprint = createHash("sha256").update(JSON.stringify({
+    version: CAPTION_PROVIDER_VERSION, resultUrl: video.resultUrl, context, platform: input.platform, goal,
+    configured: Boolean(process.env.FAL_KEY?.trim()),
+  })).digest("hex");
+  const slot = `${input.platform}:${goal}`;
+  const claim = await claimVideoCaption(userId, video.id, slot, fingerprint, video.resultUrl);
+  if (!claim) return { error: "O vídeo não está mais disponível." };
+  if (claim.entry.resultUrl !== video.resultUrl) return { error: "O vídeo foi alterado. Sua análise anterior não será usada." };
+  if (!claim.claimed) {
+    if (claim.entry.state === "ready" && claim.entry.suggestion) return { suggestion: claim.entry.suggestion };
+    // Another request already owns the paid call. Wait for its result, never submit twice.
+    const deadline = Date.now() + 48_000;
+    do {
+      const current = await getVideo(userId, video.id);
+      if (!current || current.deletedAt || current.status !== "completed" || current.resultUrl !== video.resultUrl) return { error: "O vídeo foi alterado. Selecione-o novamente." };
+      const entry = current.captionCache?.[slot];
+      if (entry?.claimId !== claim.entry.claimId) return { error: "A preparação mudou. Abra a publicação novamente." };
+      if (entry.state === "ready" && entry.suggestion) return { suggestion: entry.suggestion };
+      if (Date.now() - entry.startedAt > 90_000) {
+        const suggestion = publicationFallback(video.id, context, goal, FALLBACK_NOTICE);
+        if (await finishVideoCaption(userId, video.id, slot, entry.claimId, suggestion)) return { suggestion };
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } while (Date.now() < deadline);
+    return { error: "A legenda ainda está sendo preparada. Abra a publicação novamente em instantes; sua edição foi preservada." };
+  }
+  let suggestion = publicationFallback(video.id, context, goal, FALLBACK_NOTICE);
+  try {
+    if (process.env.FAL_KEY?.trim() && await reserveCaptionRequest(userId)) {
+      const performance = input.platform === "instagram" ? await getInstagramPerformance(userId) : undefined;
+      const comparable = performance?.status === "ready" ? performance.posts.filter(post => Number.isSafeInteger(post.likes) && post.likes! >= 0 && Number.isSafeInteger(post.comments) && post.comments! >= 0) : [];
+      const current = await getVideo(userId, video.id);
+      if (!current || current.deletedAt || current.status !== "completed" || current.resultUrl !== video.resultUrl) return { error: "O vídeo mudou durante a preparação. Selecione-o novamente." };
+      const result = await generatePublicationCaption({
+        userId, video, context, goal, platform: input.platform,
+        ...(performance && comparable.length >= 3 ? { performanceContext: {
+          sampleSize: comparable.length, summary: performance.summary, recommendations: performance.recommendations,
+          bestPosts: comparable.slice(0, 3).map(({ caption, likes, comments }) => ({ caption, likes, comments })),
+        } } : {}),
+      });
+      suggestion = {
+        ...suggestion, method: "ai", notice: undefined, caption: result.caption,
+        alternatives: result.alternatives.map((caption, index) => ({ label: `Variação ${index + 2}`, caption })),
+        keywords: result.keywords, hashtags: result.hashtags, generatedAt: Date.now(),
+      };
+    }
+  } catch {
+    // Persist the fallback after uncertain provider failures too. Reopening the
+    // composer must not silently resubmit a billable analysis.
+  }
+  if (!await finishVideoCaption(userId, video.id, slot, claim.entry.claimId, suggestion)) return { error: "O vídeo mudou durante a preparação. Sua legenda atual foi preservada." };
+  return { suggestion };
+}
