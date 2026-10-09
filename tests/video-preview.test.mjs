@@ -62,7 +62,7 @@ test("gallery requests only actual result covers and keeps originals and segment
 });
 
 /** Exercise component event handlers and timeout cleanup without browser/network media. */
-function harness(exportName, input = props) {
+function harness(exportName, input = props, imageState = () => ({ complete: false, naturalWidth: 0 })) {
   let cursor = 0;
   let timerId = 0;
   let tree;
@@ -94,6 +94,8 @@ function harness(exportName, input = props) {
   const inner = component[exportName](input);
   function render() {
     cursor = 0; tree = inner.type(inner.props);
+    const image = walk(tree, element => element.type === "img")[0];
+    if (image?.props.ref) image.props.ref.current = imageState(image.props.src);
     const player = walk(tree, element => element.type === "video")[0];
     if (player && player.key !== previousVideoKey) {
       const element = { paused: 0, removed: [], loaded: 0, focused: 0, pause() { this.paused++; }, removeAttribute(name) { this.removed.push(name); }, load() { this.loaded++; }, focus() { this.focused++; } };
@@ -112,6 +114,7 @@ function harness(exportName, input = props) {
     event(type, name) { const element = find(item => item.type === type)[0]; assert.ok(element, `Missing ${type}`); element.props[name](); render(); },
     fire(ms) { for (const [id, timer] of [...timers]) if (timer.ms === ms) { timers.delete(id); timer.callback(); } render(); },
     state: () => tree.props["data-state"],
+    coverLoaded: () => tree.props["data-loaded"],
     unmount() { slots.forEach(slot => slot?.cleanup?.()); },
   };
 }
@@ -192,4 +195,32 @@ test("unmounting a failed cover cancels queued retries", () => {
   assert.equal(ui.timers.size, 1);
   ui.unmount();
   assert.equal(ui.timers.size, 0);
+});
+
+test("a cached cover loaded before hydration becomes visible without receiving onLoad", () => {
+  const ui = harness("VideoCover", props, () => ({ complete: true, naturalWidth: 360 }));
+  ui.render();
+  assert.equal(ui.coverLoaded(), true);
+  assert.equal(ui.find(element => element.props.role === "img").length, 0, "The Film fallback must disappear");
+  assert.equal(ui.find(element => element.type === "img").length, 1);
+  assert.equal(ui.timers.size, 0);
+  ui.unmount();
+});
+
+test("a cached image is detected after the cover retry changes its source", () => {
+  const ui = harness("VideoCover", props, source => ({ complete: source.includes("retry="), naturalWidth: source.includes("retry=") ? 360 : 0 }));
+  assert.equal(ui.coverLoaded(), false);
+  ui.event("img", "onError");
+  ui.fire(1500); ui.render();
+  assert.equal(ui.coverLoaded(), true);
+  assert.equal(ui.find(element => element.props.role === "img").length, 0);
+  ui.unmount();
+});
+
+test("a completed but broken image never becomes a visible cover", () => {
+  const ui = harness("VideoCover", props, () => ({ complete: true, naturalWidth: 0 }));
+  ui.render();
+  assert.equal(ui.coverLoaded(), false);
+  assert.equal(ui.find(element => element.props.role === "img").length, 1);
+  ui.unmount();
 });

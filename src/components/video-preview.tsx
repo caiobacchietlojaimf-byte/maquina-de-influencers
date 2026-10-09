@@ -22,9 +22,17 @@ function VideoCoverImage({ videoId, thumbnailUrl, title, className, fit = "cover
   const [source, setSource] = useState(thumbnailUrl || endpoint);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  const image = useRef<HTMLImageElement>(null);
   const retries = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  useEffect(() => {
+    // Cached images can finish before hydration attaches the load handler.
+    if (image.current?.complete && image.current.naturalWidth > 0) {
+      setLoaded(true);
+      setFailed(false);
+    }
+  }, [source]);
 
   function retryCover() {
     setLoaded(false);
@@ -41,6 +49,7 @@ function VideoCoverImage({ videoId, thumbnailUrl, title, className, fit = "cover
   return <div className={`${styles.cover} ${className ?? ""}`} data-loaded={loaded}>
     {!loaded ? <span className={styles.coverFallback} role="img" aria-label={failed ? `Capa indisponível: ${title}` : `Vídeo: ${title}`}><Film size={28} strokeWidth={1.3} aria-hidden="true" /></span> : null}
     {source && !failed ? <img
+      ref={image}
       src={source}
       alt={`Capa de ${title}`}
       loading="lazy"
