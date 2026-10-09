@@ -9,6 +9,8 @@ import type { Video } from "@/lib/db";
 import { editModelLabel } from "@/lib/character-edit";
 import { canFinalizeExistingEdit, finalizeEditClient } from "@/lib/finalize-edit-client";
 import { displayDate } from "@/lib/display-date";
+import { VideoPreview } from "@/components/video-preview";
+import styles from "./videos-gallery.module.css";
 
 const FILTERS = [
   { id: "all", label: "Todos" },
@@ -114,20 +116,17 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
 
       <div className="history-grid">
         {list.map((video) => (
-          <div key={video.id} className="gen-card">
+          <div key={video.id} className={`gen-card ${styles.card}`}>
             <div className="media" style={{ aspectRatio: "9 / 12" }}>
               {finalizing.has(video.id) ? (
                 <div className="pending skeleton" role="status"><span className="spinner" /><span className="hint">Finalizando vídeo e áudio…</span></div>
               ) : (video.status === "completed" || video.status === "review") && video.resultUrl ? (
-                <video
+                <VideoPreview
+                  videoId={video.id}
                   src={video.resultUrl}
-                  poster={video.thumbnailUrl}
-                  controls
+                  thumbnailUrl={video.thumbnailSourceUrl === video.resultUrl ? video.thumbnailUrl : undefined}
                   loop
-                  playsInline
-                  preload="metadata"
-                  style={{ objectFit: "contain" }}
-                  aria-label={`${video.status === "completed" ? "Vídeo completo" : "Resultado para revisão"}: ${video.presetName ?? "Vídeo"}`}
+                  title={`${video.status === "completed" ? "Vídeo completo" : "Resultado para revisão"}: ${video.presetName ?? "Vídeo"}`}
                 />
               ) : video.status === "failed" || video.status === "review" ? (
                 <div className="pending">
@@ -202,7 +201,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
               {finalizationErrors[video.id] && finalizationErrors[video.id] !== video.error && <p role="alert" style={{ color: "var(--danger)" }}>{finalizationErrors[video.id]}</p>}
               <details>
                 <summary style={{ cursor: "pointer" }}>Comparar com o original</summary>
-                <video src={video.edit.sourceUrl} controls playsInline preload="none" style={{ width: "100%", marginTop: 8 }} aria-label={`Original de ${video.presetName ?? "vídeo"}`} />
+                <VideoPreview src={video.edit.sourceUrl} className={styles.inlinePreview} title={`Original de ${video.presetName ?? "vídeo"}`} />
                 <p>{video.edit.target}</p>
               </details>
               {video.edit.segments && video.edit.segments.length > 1 && <details>
@@ -210,7 +209,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
                 <p style={{ color: "var(--tx2)", marginTop: 8, lineHeight: 1.5 }}>Estes são os arquivos separados recebidos da IA. O áudio original é restaurado no vídeo completo após a finalização.</p>
                 {video.edit.segments.map((part, index) => <div key={part.sourceUrl} style={{ marginTop: 8 }}>
                   <p>Trecho {index + 1} · {part.source.duration.toFixed(2)}s{part.requestId ? ` · Pedido ${part.requestId}` : ""}</p>
-                  {part.resultUrl && <video src={part.resultUrl} controls playsInline preload="none" style={{ width: "100%" }} aria-label={`Resultado do trecho ${index + 1}`} />}
+                  {part.resultUrl && <VideoPreview src={part.resultUrl} className={styles.inlinePreview} title={`Resultado do trecho ${index + 1}`} />}
                 </div>)}
               </details>}
             </div>}

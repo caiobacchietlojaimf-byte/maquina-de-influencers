@@ -64,6 +64,7 @@ function editor() {
       if (id === "react/jsx-runtime" || id === "lucide-react") return require(id);
       if (id === "next/navigation") return { useRouter: () => ({ refresh() {} }) };
       if (id === "@/lib/publish-caption") return captionModule.exports;
+      if (id === "./video-preview" || id === "./instagram-post-insights") return {};
       if (id === "@/app/actions/publication-assistant") return {
         preparePublicationAction(input) { const call = { input, ...deferred() }; prepareCalls.push(call); return call.promise; },
         improvePublicationAction(input) { const call = { input, ...deferred() }; improveCalls.push(call); return call.promise; },

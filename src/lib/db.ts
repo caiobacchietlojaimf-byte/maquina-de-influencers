@@ -30,6 +30,7 @@ export type User = {
   suspendedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   captionRequests?: number[];
+  thumbnailWorkers?: Record<string, { claimId: string; expiresAt: number }>;
   createdAt: number;
 };
 
@@ -99,6 +100,9 @@ export type Video = {
   requestId?: string;
   resultUrl?: string;
   thumbnailUrl?: string;
+  /** Only a thumbnail bound to this result was extracted from the generated video. */
+  thumbnailSourceUrl?: string;
+  thumbnailJob?: { claimId: string; sourceUrl: string; startedAt: number; state: "processing" | "failed"; retryAfter?: number };
   captionRevision?: string;
   captionCache?: Record<string, CaptionCacheEntry>;
   error?: string;
@@ -847,6 +851,73 @@ export async function updateVideoFromPoll(snapshot: Video, patch: Partial<Video>
   const { data, error } = await query.select("id");
   if (error) fail("atualizar consulta de vídeo", error);
   return Boolean(data?.length);
+}
+
+/** Distributed thumbnail capacity; these leases never change the credit balance. */
+export async function reserveVideoThumbnailWorker(userId: string, videoId: string, claimId: string, now = Date.now()): Promise<boolean> {
+  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(videoId) || !/^[a-zA-Z0-9_-]{1,100}$/.test(claimId)) return false;
+  return mutateCredits(userId, user => {
+    const active = Object.fromEntries(Object.entries(user.thumbnailWorkers ?? {}).filter(([, lease]) => lease.expiresAt > now));
+    user.thumbnailWorkers = active;
+    if (user.suspendedAt || active[videoId] || Object.keys(active).length >= 2) return false;
+    active[videoId] = { claimId, expiresAt: now + 90_000 };
+    return true;
+  });
+}
+
+export async function releaseVideoThumbnailWorker(userId: string, videoId: string, claimId: string): Promise<void> {
+  await mutateCredits(userId, user => {
+    if (user.thumbnailWorkers?.[videoId]?.claimId === claimId) delete user.thumbnailWorkers[videoId];
+  });
+}
+
+async function mutateVideoThumbnail(userId: string, id: string, sourceUrl: string, change: (video: Video) => boolean): Promise<boolean> {
+  const usable = (video: Video | undefined): video is Video => Boolean(video && video.userId === userId && !video.deletedAt && ["completed", "review"].includes(video.status) && video.resultUrl === sourceUrl);
+  const sb = remote();
+  if (!sb) return mutate(db => {
+    const current = db.videos.find(video => video.id === id && video.userId === userId);
+    if (!usable(current) || !change(current)) return false;
+    current.captionRevision = randomUUID();
+    return true;
+  });
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const current = await getVideo(userId, id);
+    if (!usable(current)) return false;
+    const next = { ...current };
+    if (!change(next)) return false;
+    next.captionRevision = randomUUID();
+    let query = sb.from("mi_videos").update({ data: next }).eq("id", id).eq("user_id", userId)
+      .eq("data->>status", current.status).eq("data->>resultUrl", sourceUrl).is("data->>deletedAt", null);
+    query = current.captionRevision ? query.eq("data->>captionRevision", current.captionRevision) : query.is("data->>captionRevision", null);
+    const { data, error } = await query.select("id");
+    if (error) fail("salvar capa", error);
+    if (data?.length) return true;
+  }
+  return false;
+}
+
+export async function claimVideoThumbnail(userId: string, id: string, sourceUrl: string, claimId: string, now = Date.now()): Promise<boolean> {
+  return mutateVideoThumbnail(userId, id, sourceUrl, video => {
+    if (video.thumbnailUrl && video.thumbnailSourceUrl === sourceUrl) return false;
+    const prior = video.thumbnailJob;
+    if (prior?.sourceUrl === sourceUrl && ((prior.state === "processing" && prior.startedAt > now - 90_000) || (prior.state === "failed" && (prior.retryAfter ?? 0) > now))) return false;
+    video.thumbnailJob = { claimId, sourceUrl, startedAt: now, state: "processing" };
+    return true;
+  });
+}
+
+/** A late frame extraction can neither resurrect a video nor overwrite a newer result. */
+export async function finishVideoThumbnail(userId: string, id: string, sourceUrl: string, claimId: string, thumbnailUrl?: string, now = Date.now()): Promise<boolean> {
+  return mutateVideoThumbnail(userId, id, sourceUrl, video => {
+    const job = video.thumbnailJob;
+    if (job?.claimId !== claimId || job.sourceUrl !== sourceUrl || job.state !== "processing") return false;
+    if (thumbnailUrl) {
+      video.thumbnailUrl = thumbnailUrl;
+      video.thumbnailSourceUrl = sourceUrl;
+      video.thumbnailJob = undefined;
+    } else video.thumbnailJob = { ...job, state: "failed", retryAfter: now + 60_000 };
+    return true;
+  });
 }
 
 export async function updateVideo(id: string, patch: Partial<Video>): Promise<Video | undefined> {

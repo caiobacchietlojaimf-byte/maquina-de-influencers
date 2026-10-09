@@ -1,0 +1,84 @@
+.cover, .preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--s1);
+}
+.coverFallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--tx3);
+}
+.coverImage, .player {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.coverImage { opacity: 0; }
+.cover[data-loaded="true"] .coverImage { opacity: 1; }
+.preview[data-state="loading"] .player { opacity: 0; }
+.playButton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--tx);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.playLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 16px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+.playButton:hover .playLabel { color: var(--accent-text); border-color: var(--accent-text); }
+.loading {
+  position: absolute;
+  inset: auto 12px 44px;
+  margin: auto;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--tx2);
+  font-size: 11px;
+  text-align: center;
+  pointer-events: none;
+}
+.failure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  background: var(--panel);
+  color: var(--tx2);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.failure p { margin: 0; }
+.failure a { color: var(--accent-text); text-underline-offset: 3px; }
+.playButton:focus-visible, .player:focus-visible, .failure button:focus-visible, .failure a:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: -4px;
+}

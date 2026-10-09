@@ -13,6 +13,7 @@ vm.runInNewContext(code, {
   module, exports: module.exports,
   require(id) {
     if (id === "react" || id === "react/jsx-runtime" || id === "lucide-react") return require(id);
+    if (id === "./video-preview" || id === "./instagram-post-insights") return {};
     if (id.startsWith("@/") || id.startsWith("next/") || id.endsWith(".css")) return {};
     throw new Error(`Unexpected dependency: ${id}`);
   },

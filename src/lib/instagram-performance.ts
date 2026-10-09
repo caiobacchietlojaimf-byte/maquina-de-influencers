@@ -1,20 +1,24 @@
 import "server-only";
 
-import { getSocialAccount, listPosts, type SocialAccount } from "./db";
+import { getSocialAccount, listPosts, type Post, type SocialAccount } from "./db";
 import { freshSocialAccount } from "./social";
 import { openSocialToken } from "./social-token";
-import type { InstagramPerformance } from "./publication-assistant-types";
+import type { InstagramPerformance, InstagramPostInsights, InstagramPostMetric } from "./publication-assistant-types";
 
 const GRAPH = "https://graph.instagram.com/v24.0";
 const BASIC = "instagram_business_basic";
 const INSIGHTS = "instagram_business_manage_insights";
-const MEDIA_FIELDS = "id,caption,permalink,timestamp,like_count,comments_count,media_type,media_product_type";
+// media_product_type is documented only for Facebook Login, not Instagram Login.
+const MEDIA_FIELDS = "id,caption,permalink,timestamp,like_count,comments_count,media_type";
+const POST_FIELDS = "id,owner,permalink,like_count,comments_count,media_type";
 const INSIGHT_METRICS = ["views", "reach", "saved", "shares"] as const;
 const CACHE_MS = 5 * 60_000;
 const MAX_CACHE = 100;
 const MAX_RESPONSE_BYTES = 1_048_576;
 const cache = new Map<string, { until: number; result: InstagramPerformance }>();
 const pending = new Map<string, Promise<InstagramPerformance>>();
+const postCache = new Map<string, { until: number; result: InstagramPostInsights }>();
+const postPending = new Map<string, Promise<InstagramPostInsights>>();
 type PerformancePost = InstagramPerformance["posts"][number];
 type ObjectValue = Record<string, unknown>;
 
@@ -39,9 +43,10 @@ function safePermalink(value: unknown): string | undefined {
 function mediaPost(value: unknown): PerformancePost | undefined {
   const item = object(value);
   // Feed videos and carousels have different distribution; compare confirmed Reels.
-  if (!item || !numericId(item.id) || item.media_product_type !== "REELS") return;
+  if (!item || !numericId(item.id)) return;
   const likes = count(item.like_count), comments = count(item.comments_count);
   const permalink = safePermalink(item.permalink);
+  if (item.media_type !== "VIDEO" || !permalink || !new URL(permalink).pathname.startsWith("/reel/")) return;
   const time = typeof item.timestamp === "string" ? Date.parse(item.timestamp) : NaN;
   return {
     id: item.id, caption: typeof item.caption === "string" ? item.caption.slice(0, 2200) : "",
@@ -206,4 +211,141 @@ export async function getInstagramPerformance(userId: string): Promise<Instagram
     cache.set(key, { until: Date.now() + (result.status === "ready" ? CACHE_MS : 30_000), result });
     return structuredClone(result);
   } finally { if (pending.get(key) === work) pending.delete(key); }
+}
+
+function postResult(postId: string, status: InstagramPostInsights["status"], message: string): InstagramPostInsights {
+  return { postId, status, checkedAt: Date.now(), metrics: {}, metricsAvailable: [], message };
+}
+function accountIdentity(account: SocialAccount): string | undefined {
+  const id = account.providerUserId ?? account.igUserId;
+  if (!numericId(id) || (account.igUserId && account.igUserId !== id)) return;
+  return id;
+}
+function sameConnection(current: SocialAccount, stored: SocialAccount): boolean {
+  return current.userId === stored.userId && current.id === stored.id && current.platform === "instagram"
+    && current.oauthProvider === "instagram" && current.status === "connected" && current.connectedAt === stored.connectedAt
+    && Boolean(accountIdentity(current)) && accountIdentity(current) === accountIdentity(stored);
+}
+function boundPost(post: Post | undefined, userId: string, account: SocialAccount): post is Post {
+  return Boolean(post && post.userId === userId && !post.deletedAt && post.platform === "instagram" && post.status === "posted"
+    && post.mode === "live" && post.accountId === account.id && Boolean(accountIdentity(account)) && post.accountUserId === accountIdentity(account));
+}
+function permalinkKey(value: unknown): string | undefined {
+  const link = safePermalink(value);
+  return link ? new URL(link).pathname.replace(/\/$/, "") : undefined;
+}
+function mediaOwner(media: ObjectValue): string | undefined {
+  const owner = media.owner;
+  const id = typeof owner === "string" ? owner : object(owner)?.id;
+  return numericId(id) ? id : undefined;
+}
+function boundMedia(media: ObjectValue, accountId: string, expectedId?: string): boolean {
+  return numericId(media.id) && (!expectedId || media.id === expectedId) && mediaOwner(media) === accountId;
+}
+
+/** Legacy posts have no media ID: only an exact permalink in the verified account's media edge can resolve it. */
+async function legacyMedia(post: Post, accountId: string, bearer: string, signal: AbortSignal): Promise<ObjectValue | undefined> {
+  const target = permalinkKey(post.postedUrl);
+  if (!target) return;
+  let after: string | undefined;
+  const cursors = new Set<string>();
+  for (let page = 0; page < 3; page++) {
+    const response = await graphRead(`${accountId}/media`, { fields: POST_FIELDS, limit: "50", ...(after ? { after } : {}) }, bearer, signal);
+    if (!Array.isArray(response.data)) throw new GraphReadError();
+    const matching = response.data.slice(0, 50).map(object).find(media => media && boundMedia(media, accountId) && permalinkKey(media.permalink) === target);
+    if (matching) return matching;
+    const paging = object(response.paging), cursor = object(paging?.cursors)?.after;
+    // Never follow the provider-supplied next URL or accept an unbounded cursor.
+    if (!paging?.next || typeof cursor !== "string" || !cursor || cursor.length > 2048 || /[\u0000-\u0020\u007f]/u.test(cursor) || cursors.has(cursor)) return;
+    cursors.add(cursor); after = cursor;
+  }
+}
+
+async function readPostInsights(post: Post, stored: SocialAccount): Promise<InstagramPostInsights> {
+  const account = await freshSocialAccount(stored);
+  if (!sameConnection(account, stored) || !account.scopes?.includes(BASIC)) throw new GraphReadError();
+  const accountId = accountIdentity(account)!;
+  const bearer = openSocialToken(account.accessToken, `${account.userId}:instagram`);
+  const signal = AbortSignal.timeout(10_000);
+  const me = await graphRead("me", { fields: "user_id,username" }, bearer, signal);
+  if (String(me.user_id ?? "") !== accountId) throw new GraphReadError();
+  let media: ObjectValue | undefined;
+  if (post.publishedMediaId) {
+    if (!numericId(post.publishedMediaId)) throw new GraphReadError();
+    media = await graphRead(post.publishedMediaId, { fields: POST_FIELDS }, bearer, signal);
+    // A successful /me check alone does not authorize a different public media object.
+    if (!boundMedia(media, accountId, post.publishedMediaId)) throw new GraphReadError();
+  } else {
+    media = await legacyMedia(post, accountId, bearer, signal);
+    if (!media) return postResult(post.id, "unavailable", "Esta publicação antiga não foi localizada entre as 150 mídias recentes da conta. Não foi possível confirmar suas métricas.");
+  }
+  const mediaId = media.id as string, metrics: InstagramPostInsights["metrics"] = {};
+  const likes = count(media.like_count), comments = count(media.comments_count);
+  if (likes !== undefined) metrics.likes = likes;
+  if (comments !== undefined) metrics.comments = comments;
+  const hasInsights = account.scopes.includes(INSIGHTS);
+  if (hasInsights) {
+    // Separate optional reads retain supported metrics when another metric is unavailable.
+    // https://developers.facebook.com/docs/instagram-platform/reference/instagram-media/insights/
+    await Promise.allSettled(INSIGHT_METRICS.map(async name => {
+      const response = await graphRead(`${mediaId}/insights`, { metric: name, period: "lifetime" }, bearer, signal);
+      if (!Array.isArray(response.data)) return;
+      const metric = response.data.map(object).find(item => item?.name === name);
+      const values = Array.isArray(metric?.values) ? metric.values : [];
+      const value = count(object(metric?.total_value)?.value ?? object(values[0])?.value);
+      if (value !== undefined) metrics[name] = value;
+    }));
+  }
+  const metricsAvailable = (["likes", "comments", ...INSIGHT_METRICS] as InstagramPostMetric[]).filter(name => metrics[name] !== undefined);
+  const permalink = safePermalink(media.permalink);
+  return {
+    postId: post.id, status: "ready", checkedAt: Date.now(), mediaId, metrics, metricsAvailable,
+    ...(permalink ? { permalink } : {}), ...(!hasInsights ? { requiredScope: INSIGHTS } : {}),
+    message: !hasInsights
+      ? "A conexão atual permite consultar curtidas e comentários; contagens indisponíveis ficam em branco. Visualizações, alcance, salvamentos e compartilhamentos precisam da permissão de insights do Instagram."
+      : metricsAvailable.length < 6 ? "A Meta ainda não disponibilizou todas as métricas. Contagens ausentes ficam em branco; os dados podem levar até 48 horas para atualizar."
+        : "Métricas orgânicas desta publicação, informadas pelo Instagram. Os dados podem levar até 48 horas para atualizar.",
+  };
+}
+
+/** Owner-only, on-demand reads. No creation, publishing, scope changes or client-supplied provider IDs. */
+export async function getInstagramPostInsights(userId: string, postId: string): Promise<InstagramPostInsights> {
+  if (typeof postId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(postId)) return postResult("", "unavailable", "Selecione uma publicação válida.");
+  let post: Post | undefined, stored: SocialAccount | undefined;
+  try {
+    post = (await listPosts(userId)).find(item => item.id === postId && item.userId === userId);
+    if (!post || post.deletedAt || post.platform !== "instagram" || post.status !== "posted" || post.mode !== "live") return postResult(postId, "unavailable", "As métricas ficam disponíveis para publicações concluídas no Instagram da sua conta.");
+    stored = await getSocialAccount(userId, "instagram");
+    if (!stored || stored.userId !== userId || stored.platform !== "instagram" || stored.status !== "connected") return postResult(postId, "disconnected", "Conecte a conta do Instagram usada nesta publicação para consultar as métricas.");
+    if (stored.oauthProvider !== "instagram" || !boundPost(post, userId, stored)) return postResult(postId, "unavailable", "Esta publicação pertence a outra conexão do Instagram. Reconecte a conta usada ao publicar.");
+  } catch { return postResult(postId, "unavailable", "Não foi possível consultar esta publicação agora. Tente novamente mais tarde."); }
+  const account = stored, selected = post;
+  const key = JSON.stringify([userId, account.id, accountIdentity(account), account.connectedAt, [...account.scopes ?? []].sort(), postId, selected.publishedMediaId ?? null, selected.postedUrl ?? null]);
+  const now = Date.now();
+  for (const [cacheKey, item] of postCache) if (item.until <= now) postCache.delete(cacheKey);
+  const cached = postCache.get(key);
+  if (cached) return structuredClone(cached.result);
+  const inflight = postPending.get(key);
+  if (inflight) return structuredClone(await inflight);
+  if (postPending.size >= MAX_CACHE) return postResult(postId, "unavailable", "As consultas estão ocupadas agora. Tente novamente em instantes.");
+  const work = (async () => {
+    try {
+      const result = await readPostInsights(selected, account);
+      // Do not return stale metrics if the post was removed or the connection changed while awaiting Meta.
+      const latestAccount = await getSocialAccount(userId, "instagram");
+      const latest = (await listPosts(userId)).find(item => item.id === postId && item.userId === userId);
+      if (!latestAccount || !sameConnection(latestAccount, account) || !boundPost(latest, userId, latestAccount)
+        || latest.publishedMediaId !== selected.publishedMediaId || latest.postedUrl !== selected.postedUrl) {
+        return postResult(postId, "unavailable", "A publicação ou a conta conectada mudou durante a consulta. Abra os detalhes novamente.");
+      }
+      return result;
+    } catch { return postResult(postId, "unavailable", "O Instagram não disponibilizou as métricas desta publicação agora. Confira a conexão e tente novamente mais tarde."); }
+  })();
+  postPending.set(key, work);
+  try {
+    const result = await work;
+    while (postCache.size >= MAX_CACHE) postCache.delete(postCache.keys().next().value!);
+    postCache.set(key, { until: Date.now() + (result.status === "ready" ? 120_000 : 30_000), result });
+    return structuredClone(result);
+  } finally { if (postPending.get(key) === work) postPending.delete(key); }
 }

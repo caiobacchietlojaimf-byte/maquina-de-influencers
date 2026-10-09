@@ -55,7 +55,7 @@ export default async function PublicarPage({
           id: v.id,
           name: v.presetName ?? "Vídeo",
           resultUrl: v.resultUrl!,
-          thumbnailUrl: v.thumbnailUrl,
+          thumbnailUrl: v.thumbnailSourceUrl === v.resultUrl ? v.thumbnailUrl : undefined,
           kind: v.kind,
           characterName: influencers.find(
             (influencer) => influencer.id === v.influencerId,

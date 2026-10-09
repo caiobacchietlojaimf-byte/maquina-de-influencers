@@ -61,7 +61,7 @@ test("missing, demo and foreign-owned connections do not fetch or open credentia
 });
 
 test("basic scope reads confirmed Reels with GET/bearer and ranks real likes plus comments only", async () => {
-  const f = fixture({ state: { media: [reel(1), reel(9, { media_product_type: "FEED" }), reel(0), reel(3), reel(1)] } });
+  const f = fixture({ state: { media: [reel(1), reel(9, { media_product_type: "FEED", permalink: "https://www.instagram.com/p/code9/" }), reel(0), reel(3), reel(1)] } });
   const result = await f.get("owner");
   assert.equal(result.status, "ready"); assert.equal(result.sampleSize, 3);
   assert.deepEqual(result.posts.map(post => post.id), ["10003", "10001", "10000"]);
@@ -78,7 +78,7 @@ test("basic scope reads confirmed Reels with GET/bearer and ranks real likes plu
   }
   const media = f.state.calls[1].url;
   assert.equal(media.searchParams.get("limit"), "20");
-  assert.equal(media.searchParams.get("fields"), "id,caption,permalink,timestamp,like_count,comments_count,media_type,media_product_type");
+  assert.equal(media.searchParams.get("fields"), "id,caption,permalink,timestamp,like_count,comments_count,media_type");
   assert.doesNotMatch(JSON.stringify(result), /private-token|sealed-owner/);
 });
 
@@ -99,9 +99,8 @@ test("Instagram-owned permalinks only, finite counters only, and no chasing supp
     paging: { next: "https://attacker.example/private" },
   }) });
   const result = await f.get("owner");
-  assert.equal(result.posts.find(post => post.id === "10001").permalink, undefined);
-  assert.equal(result.posts.find(post => post.id === "10001").likes, undefined);
-  assert.equal(result.posts.find(post => post.id === "10002").permalink, undefined);
+  assert.equal(result.posts.find(post => post.id === "10001"), undefined);
+  assert.equal(result.posts.find(post => post.id === "10002"), undefined);
   assert.equal(result.posts.find(post => post.id === "10003").permalink, "https://www.instagram.com/reel/code3/");
   assert.equal(f.state.calls.length, 2);
 });

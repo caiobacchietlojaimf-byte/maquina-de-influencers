@@ -366,3 +366,10 @@
     animation: none;
   }
 }
+.publicationCard { align-items: flex-start; }
+.publicationCard > :global(.thumb) { margin-top: 2px; }
+@media (max-width: 600px) {
+  .publicationCard { flex-wrap: wrap; }
+  .publicationCard > :global(.info) { min-width: 0; flex-basis: calc(100% - 76px); }
+  .publicationCard > :global(.q-actions) { margin-left: 72px; }
+}

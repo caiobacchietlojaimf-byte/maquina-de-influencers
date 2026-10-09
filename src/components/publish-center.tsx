@@ -49,6 +49,8 @@ import {
   type CaptionGoal,
 } from "@/lib/publish-caption";
 import styles from "./publish-center.module.css";
+import { VideoCover } from "./video-preview";
+import { InstagramPostInsights } from "./instagram-post-insights";
 
 type MiniAccount = {
   platform: SocialPlatform;
@@ -703,18 +705,12 @@ export function PublishCenter({
               return (
                 <article
                   key={post.id}
-                  className="queue-card"
+                  className={`queue-card ${styles.publicationCard}`}
                   data-status={post.status}
                 >
                   <div className="thumb">
                     {video ? (
-                      <video
-                        src={video.resultUrl}
-                        poster={video.thumbnailUrl}
-                        muted
-                        playsInline
-                        preload="none"
-                      />
+                      <VideoCover videoId={video.id} thumbnailUrl={video.thumbnailUrl} title={video.name} />
                     ) : (
                       <Film size={20} />
                     )}
@@ -751,6 +747,9 @@ export function PublishCenter({
                     {post.error ? (
                       <p className={styles.error}>{post.error}</p>
                     ) : null}
+                    {post.status === "posted" && post.platform === "instagram" && !demo && (
+                      <InstagramPostInsights key={`${post.id}:${instagramConnectionKey}`} postId={post.id} />
+                    )}
                   </div>
                   <div className={`q-actions ${styles.queueActions}`}>
                     {post.status === "draft" || (post.status === "failed" && !post.publicationUncertain) ? (
