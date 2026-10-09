@@ -43,11 +43,11 @@ O receptor exige `X-SyncPay-Signature` HMAC-SHA256 sobre `timestamp.rawBody`, ja
 
 Fontes: [API Sync Pay](https://syncpay.apidog.io/), [consulta V2](https://syncpay.apidog.io/consultar-transa%C3%A7%C3%A3o-v2-43538562e0), [assinatura de webhook](https://blog.syncpayments.com.br/ajuda/webhooks-syncpay-eventos-pagamento/).
 
-## Instagram — configuração pendente
+## Instagram — validação da conexão pendente
 
-App Meta: `2156021122019663`; produto Instagram Login: `2216110872297651`. O ID do produto Instagram foi configurado no servidor. A Meta exigiu redigitar a senha pessoal para mostrar o segredo; o processo foi cancelado sem alterar credenciais.
+App Meta: `2156021122019663`; produto Instagram Login: `2216110872297651`. Em 09/10/2026, o proprietário cadastrou `ID_INSTAGRAM` e `SECRET_INSTAGRAM` no ambiente Production da Vercel; a presença foi conferida sem ler os valores. Informou também ter salvo o redirect e habilitado as duas permissões como “Pronto para teste”. Isso ainda não comprova aprovação para clientes nem publicação real.
 
-- Guardar a chave específica do produto em `INSTAGRAM_APP_SECRET`.
+- O servidor aceita o par `ID_INSTAGRAM` / `SECRET_INSTAGRAM` com prioridade. Sem esse par, aceita `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET`. Um par novo incompleto bloqueia a conexão; nunca combina ID de um par com segredo de outro. As variáveis são exclusivas do servidor. Após alterá-las na Vercel, implantar novamente para aplicá-las.
 - Configurar redirect exato `https://maquina-de-influencers.vercel.app/api/oauth/instagram/callback`.
 - Usar somente `instagram_business_basic` e `instagram_business_content_publish` para o fluxo atual. Não adicionar permissões de mensagens, anúncios ou WhatsApp por conveniência.
 - Conectar conta profissional autorizada/testadora e validar conteúdo com autorização antes de publicar para clientes.

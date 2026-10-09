@@ -72,6 +72,85 @@ test("Instagram authorization uses its own app ID and only profile/publish permi
   assert.ok(!url.href.includes("server-secret"));
 });
 
+test("Instagram credentials accept complete aliases or legacy credentials and trim each pair", () => {
+  for (const [env, expected] of [
+    [{ ID_INSTAGRAM: " alias-app ", SECRET_INSTAGRAM: " alias-secret \n" }, { appId: "alias-app", appSecret: "alias-secret" }],
+    [{ INSTAGRAM_APP_ID: " legacy-app ", INSTAGRAM_APP_SECRET: " legacy-secret \n" }, { appId: "legacy-app", appSecret: "legacy-secret" }],
+    [{ ID_INSTAGRAM: " ", SECRET_INSTAGRAM: "\n", INSTAGRAM_APP_ID: "legacy-app", INSTAGRAM_APP_SECRET: "legacy-secret" }, { appId: "legacy-app", appSecret: "legacy-secret" }],
+    [{ ID_INSTAGRAM: "alias-app", SECRET_INSTAGRAM: "alias-secret", INSTAGRAM_APP_ID: "legacy-app", INSTAGRAM_APP_SECRET: "legacy-secret" }, { appId: "alias-app", appSecret: "alias-secret" }],
+    [{ ID_INSTAGRAM: "alias-app", SECRET_INSTAGRAM: "alias-secret", INSTAGRAM_APP_ID: "incomplete-legacy" }, { appId: "alias-app", appSecret: "alias-secret" }],
+  ]) {
+    const load = loader({ env });
+    const config = load("src/lib/instagram-config.ts").instagramCredentials();
+    assert.equal(config.appId, expected.appId); assert.equal(config.appSecret, expected.appSecret);
+    assert.equal(load("src/lib/social.ts").instagramOAuthConfigured(), true);
+  }
+});
+
+test("partial Instagram aliases fail closed without mixing or silently falling back to another app", async () => {
+  const legacy = { INSTAGRAM_APP_ID: "legacy-app", INSTAGRAM_APP_SECRET: "legacy-secret" };
+  for (const env of [
+    {}, { INSTAGRAM_APP_ID: "legacy-app" }, { INSTAGRAM_APP_SECRET: "legacy-secret" },
+    { INSTAGRAM_APP_ID: " ", INSTAGRAM_APP_SECRET: "legacy-secret" },
+    { INSTAGRAM_APP_ID: "legacy-app", INSTAGRAM_APP_SECRET: " \n" },
+    { ID_INSTAGRAM: "alias-app" }, { SECRET_INSTAGRAM: "alias-secret" },
+    { ID_INSTAGRAM: "alias-app", INSTAGRAM_APP_SECRET: "legacy-secret" },
+    { INSTAGRAM_APP_ID: "legacy-app", SECRET_INSTAGRAM: "alias-secret" },
+    { ...legacy, ID_INSTAGRAM: "alias-app" }, { ...legacy, SECRET_INSTAGRAM: "alias-secret" },
+    { ...legacy, ID_INSTAGRAM: "alias-app", SECRET_INSTAGRAM: " \n" },
+    { ...legacy, ID_INSTAGRAM: " \n", SECRET_INSTAGRAM: "alias-secret" },
+    { META_APP_ID: "facebook-app", META_APP_SECRET: "facebook-secret" },
+  ]) {
+    let requests = 0;
+    const load = loader({ env, globals: { fetch: () => { requests++; assert.fail("An incomplete credential pair cannot reach Instagram"); } } });
+    assert.equal(load("src/lib/instagram-config.ts").instagramCredentials(), null);
+    const social = load("src/lib/social.ts");
+    assert.equal(social.instagramOAuthConfigured(), false);
+    assert.throws(() => social.instagramAuthorizeUrl("nonce"), /configur/);
+    await assert.rejects(() => social.instagramExchangeCode("fake-auth-code"), /configur/);
+    assert.equal(requests, 0);
+  }
+  const noEncryption = loader({ env: { ID_INSTAGRAM: "alias-app", SECRET_INSTAGRAM: "alias-secret", SOCIAL_TOKEN_SECRET: "" } })("src/lib/social.ts");
+  assert.equal(noEncryption.instagramOAuthConfigured(), false);
+  assert.throws(() => noEncryption.instagramAuthorizeUrl("nonce"), /configur/);
+});
+
+test("Instagram authorization and code exchange consistently use the selected complete credential pair", async () => {
+  for (const [credentials, appId, appSecret] of [
+    [{ ID_INSTAGRAM: " alias-app ", SECRET_INSTAGRAM: " alias-private ", INSTAGRAM_APP_ID: "legacy-app", INSTAGRAM_APP_SECRET: "legacy-private" }, "alias-app", "alias-private"],
+    [{ INSTAGRAM_APP_ID: " legacy-app ", INSTAGRAM_APP_SECRET: " legacy-private " }, "legacy-app", "legacy-private"],
+  ]) {
+    const calls = [];
+    const social = loader({ env: { ...credentials, PUBLIC_BASE_URL: "https://app.example" }, globals: { fetch: async (url, init) => {
+      calls.push({ url: new URL(url), init });
+      if (calls.length === 1) return json({ access_token: "fixture-short", user_id: "123", permissions: ["instagram_business_basic", "instagram_business_content_publish"] });
+      if (calls.length === 2) return json({ access_token: "fixture-long", expires_in: 5184000 });
+      if (calls.length === 3) return json({ user_id: "123", username: "fixture-creator" });
+      assert.fail("Unexpected OAuth request");
+    } } })("src/lib/social.ts");
+    const authorization = new URL(social.instagramAuthorizeUrl("fixture-state"));
+    assert.equal(authorization.searchParams.get("client_id"), appId);
+    assert.equal(authorization.searchParams.get("state"), "fixture-state");
+    assert.equal(authorization.searchParams.has("client_secret"), false);
+    assert.ok(!authorization.href.includes("private"));
+    assert.equal(authorization.searchParams.get("redirect_uri"), "https://app.example/api/oauth/instagram/callback");
+    const connection = await social.instagramExchangeCode("fixture-auth-code");
+    assert.equal(calls.length, 3);
+    assert.equal(calls[0].url.href, "https://api.instagram.com/oauth/access_token");
+    assert.equal(calls[0].init.method, "POST");
+    assert.equal(calls[0].init.body.get("client_id"), appId);
+    assert.equal(calls[0].init.body.get("client_secret"), appSecret);
+    assert.equal(calls[0].init.body.get("code"), "fixture-auth-code");
+    assert.equal(calls[0].init.body.get("redirect_uri"), authorization.searchParams.get("redirect_uri"));
+    assert.equal(calls[1].url.origin, "https://graph.instagram.com");
+    assert.equal(calls[1].url.searchParams.get("client_secret"), appSecret);
+    assert.equal(calls[1].url.searchParams.get("access_token"), "fixture-short");
+    assert.equal(calls[2].init.headers.Authorization, "Bearer fixture-long");
+    assert.equal(connection.accessToken, "fixture-long"); assert.equal(connection.username, "fixture-creator");
+    assert.equal(connection.oauthProvider, "instagram");
+  }
+});
+
 test("tokens are ciphertext on disk and refresh cannot resurrect a disconnected account", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "mi-social-test-"));
   try {

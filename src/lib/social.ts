@@ -1,6 +1,7 @@
 import "server-only";
 import { getSocialAccount, refreshSocialAccountTokens, type SocialAccount, type TikTokPostOptions } from "./db";
 import { openSocialToken, socialTokenConfigured } from "./social-token";
+import { instagramCredentials } from "./instagram-config";
 
 const TT = "https://open.tiktokapis.com/v2";
 const VERSION = "v24.0";
@@ -14,14 +15,15 @@ export function publicBaseUrl(): string {
   return url.origin;
 }
 export function instagramOAuthConfigured(): boolean {
-  return Boolean(process.env.INSTAGRAM_APP_ID && process.env.INSTAGRAM_APP_SECRET && socialTokenConfigured());
+  return Boolean(instagramCredentials() && socialTokenConfigured());
 }
 export function tiktokOAuthConfigured(): boolean {
   return Boolean(process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET && socialTokenConfigured());
 }
 export function instagramAuthorizeUrl(state: string): string {
-  if (!instagramOAuthConfigured()) throw new Error("A conexão oficial com o Instagram ainda não está configurada.");
-  return `https://www.instagram.com/oauth/authorize?${new URLSearchParams({ client_id: process.env.INSTAGRAM_APP_ID!, redirect_uri: `${publicBaseUrl()}/api/oauth/instagram/callback`, response_type: "code", scope: IG_SCOPES.join(","), state, enable_fb_login: "0", force_authentication: "1" })}`;
+  const credentials = instagramCredentials();
+  if (!credentials || !socialTokenConfigured()) throw new Error("A conexão oficial com o Instagram ainda não está configurada.");
+  return `https://www.instagram.com/oauth/authorize?${new URLSearchParams({ client_id: credentials.appId, redirect_uri: `${publicBaseUrl()}/api/oauth/instagram/callback`, response_type: "code", scope: IG_SCOPES.join(","), state, enable_fb_login: "0", force_authentication: "1" })}`;
 }
 export function tiktokAuthorizeUrl(state: string): string {
   if (!tiktokOAuthConfigured()) throw new Error("A conexão oficial com o TikTok ainda não está configurada.");
@@ -58,8 +60,9 @@ function requiredString(value: unknown): string {
 }
 type Connection = Pick<SocialAccount, "accessToken" | "refreshToken" | "expiresAt" | "refreshExpiresAt" | "providerUserId" | "scopes" | "username" | "igUserId" | "oauthProvider">;
 export async function instagramExchangeCode(code: string): Promise<Connection> {
-  if (!instagramOAuthConfigured()) throw new Error("Instagram ainda não configurado.");
-  const short = await api("https://api.instagram.com/oauth/access_token", { method: "POST", body: new URLSearchParams({ client_id: process.env.INSTAGRAM_APP_ID!, client_secret: process.env.INSTAGRAM_APP_SECRET!, grant_type: "authorization_code", redirect_uri: `${publicBaseUrl()}/api/oauth/instagram/callback`, code }) });
+  const credentials = instagramCredentials();
+  if (!credentials || !socialTokenConfigured()) throw new Error("Instagram ainda não configurado.");
+  const short = await api("https://api.instagram.com/oauth/access_token", { method: "POST", body: new URLSearchParams({ client_id: credentials.appId, client_secret: credentials.appSecret, grant_type: "authorization_code", redirect_uri: `${publicBaseUrl()}/api/oauth/instagram/callback`, code }) });
   const shortToken = requiredString(short.access_token);
   let granted = Array.isArray(short.permissions) ? short.permissions.filter((p): p is string => typeof p === "string") : [];
   if (!granted.length) {
@@ -67,7 +70,7 @@ export async function instagramExchangeCode(code: string): Promise<Connection> {
     granted = Array.isArray(permissions.data) ? permissions.data.filter((p: unknown): p is { permission: string; status: string } => Boolean(p && typeof p === "object" && typeof (p as { permission?: unknown }).permission === "string" && (p as { status?: unknown }).status === "granted")).map((p) => p.permission) : [];
   }
   if (!IG_SCOPES.every((scope) => granted.includes(scope))) throw new Error("Autorize o acesso ao perfil e a publicação para conectar sua conta.");
-  const long = await api(`https://graph.instagram.com/access_token?${new URLSearchParams({ grant_type: "ig_exchange_token", client_secret: process.env.INSTAGRAM_APP_SECRET!, access_token: shortToken })}`);
+  const long = await api(`https://graph.instagram.com/access_token?${new URLSearchParams({ grant_type: "ig_exchange_token", client_secret: credentials.appSecret, access_token: shortToken })}`);
   const accessToken = requiredString(long.access_token);
   const profile = await api(`https://graph.instagram.com/${VERSION}/me?fields=user_id,username`, { headers: { Authorization: `Bearer ${accessToken}` } });
   const igUserId = String(profile.user_id || short.user_id || "");
