@@ -111,7 +111,7 @@ export function AppSidebar({
         </Link>
       </div>
 
-      <div className="sidebar-credits" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
+      <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
         <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong>{credits.toLocaleString("pt-BR")}</strong></div>
         <div className="sidebar-credits-bar" data-empty={credits <= 0} aria-hidden="true" />
       </div>
