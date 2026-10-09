@@ -207,3 +207,48 @@ export async function prepareCharacterIdentityMedia(bytes: Buffer, options: Char
     throw invalid();
   }
 }
+
+/** A single full-body studio shot leaves the face at ~5% of the frame, so Kling
+ * rebuilt the source actor's face under a pasted moustache and read hair as a
+ * beanie. Crop the head into its own view; only on a clean white background
+ * with one clearly separated silhouette, otherwise return nothing. */
+export async function headCloseUp(bytes: Buffer, signal?: AbortSignal): Promise<Buffer | undefined> {
+  assertInput(bytes);
+  try {
+    const normalizedPipeline = image(bytes).autoOrient().flatten({ background: WHITE }).removeAlpha().toColourspace("srgb");
+    const normalized = await operation(normalizedPipeline, () => normalizedPipeline.png().toBuffer({ resolveWithObject: true }), signal);
+    const { width, height } = normalized.info;
+    if (height < 600 || width / height > 1.05) return;
+    const sampler = image(normalized.data).resize({ width: 512, height: 512, fit: "inside", withoutEnlargement: true }).removeAlpha().raw();
+    const { data, info } = await operation(sampler, () => sampler.toBuffer({ resolveWithObject: true }), signal);
+    const sw = info.width, sh = info.height, ch = info.channels;
+    if (ch !== 3) return;
+    const ink = (x: number, y: number) => { const p = (y * sw + x) * ch; return Math.min(data[p], data[p + 1], data[p + 2]) < 225; };
+    let edge = 0, edgeInk = 0;
+    for (let x = 0; x < sw; x++) { edge++; if (ink(x, 0)) edgeInk++; }
+    for (let y = 0; y < sh; y++) { edge += 2; if (ink(0, y)) edgeInk++; if (ink(sw - 1, y)) edgeInk++; }
+    if (edgeInk / edge > 0.03) return;
+    const rowInk = (y: number) => { let n = 0; for (let x = 0; x < sw; x++) if (ink(x, y)) n++; return n; };
+    let top = 0; while (top < sh && rowInk(top) < 2) top++;
+    let bottom = sh - 1; while (bottom > top && rowInk(bottom) < 2) bottom--;
+    const subject = bottom - top;
+    if (subject < sh * 0.55) return;
+    const band = Math.max(4, Math.round(subject * 0.12));
+    let xmin = sw, xmax = -1;
+    for (let y = top; y < top + band; y++) for (let x = 0; x < sw; x++) if (ink(x, y)) { xmin = Math.min(xmin, x); xmax = Math.max(xmax, x); }
+    const headWidth = xmax - xmin;
+    if (headWidth <= 0 || headWidth > sw * 0.45) return;
+    const scale = width / sw;
+    const side = Math.round(Math.max(subject * 0.24, headWidth * 1.9) * scale);
+    const centerX = (xmin + xmax) / 2 * scale, centerY = (top + subject * 0.1) * scale;
+    const left = Math.round(Math.min(Math.max(0, centerX - side / 2), Math.max(0, width - side)));
+    const crop = { left, top: Math.max(0, Math.round(centerY - side * 0.45)), width: Math.min(side, width), height: 0 };
+    crop.height = Math.min(side, height - crop.top);
+    if (crop.width < 120 || crop.height < 120) return;
+    return pngBuffer(image(normalized.data).extract(crop).resize({ width: 1024, height: 1024, fit: "contain", background: WHITE, kernel: "lanczos3" }), signal);
+  } catch (error) {
+    signal?.throwIfAborted();
+    if (error instanceof Error && error.message.startsWith("A ")) throw error;
+    return;
+  }
+}

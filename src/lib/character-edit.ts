@@ -17,6 +17,8 @@ export type EditTargetMode = "main" | "manual";
 export type EditIdentityReferences = {
   strategy: "sheet-panels" | "single-image";
   frontalUrl?: string;
+  /** Where the face view came from: a sheet panel, a head crop or a gallery sheet. */
+  frontalSource?: "sheet" | "head-crop" | "gallery-sheet";
   appearanceUrl: string;
   wanUrl?: string;
 };
@@ -102,14 +104,19 @@ export function buildCharacterEditPrompt(target: string, duration: number, refer
   const normalizedTarget = normalizeCharacterEditTarget(target);
   if (!Number.isFinite(duration) || duration <= 0) throw new Error("A duração do vídeo é inválida. Prepare novamente.");
   const appearanceLabel = options.appearanceLabel ?? referenceLabel;
+  // Each rule answers a defect seen in delivered videos: hair rendered as a
+  // beanie, a moustache pasted on the source actor's face, a long coat turned
+  // into a vest or a metallic one, and burned-in captions erased.
   return checkCharacterEditPromptLength([
     "Perform a localized character replacement in the SOURCE VIDEO, the authoritative scene and timeline.",
     `Target exactly ONE person: ${JSON.stringify(normalizedTarget)}. Track that same person throughout. Do not replace any other person.`,
-    `Use ${referenceLabel} as the exact facial identity: facial proportions, eye shape/color, nose, mouth, jaw, hairline, skin tone and defining facial hair. Never blend with or retain the source actor's facial identity.`,
-    `Use ${appearanceLabel} for the same character's body proportions, clothing, fit, colors and accessories. Never copy reference backgrounds, poses or framing.`,
-    "Transfer source expressions, gaze and mouth motion without transferring source facial geometry. Maintain identity through head turns, profiles, blur and occlusions; no face morphing, flicker or substitutions.",
-    `Preserve the entire ${duration.toFixed(3)}-second timeline, aspect ratio, composition, cuts, camera motion, gestures, choreography and timing. Match source lighting, perspective and shadows. Do not shorten, loop, retime or insert shots.`,
-    "Keep all other people, animals, objects, products, logos, captions, subtitles and backgrounds unchanged. Preserve the source audio. Return the edited video, not a still image.",
+    `FACE: ${referenceLabel} is the exact identity. Rebuild the whole head from it: face shape, eyes, brows, nose, mouth, teeth, jaw, skin tone. Never keep the source actor's face under new hair or facial hair. Facial hair grows naturally from the skin with matching light and shadow, never flat or pasted on. Highest fidelity in close-ups and frontal views.`,
+    "HAIR: copy the reference hairstyle exactly: cut, fringe, volume, colour and hairline. Hair stays hair, never a hat, cap, beanie or helmet; add no headwear absent from the reference.",
+    `OUTFIT: ${appearanceLabel} defines body proportions and the complete outfit. Keep every garment's cut, length, sleeves, fit, colour, material and finish (matte leather stays matte, velvet stays velvet) and its accessories, identical in every frame. Never copy reference backgrounds, poses or framing.`,
+    "MOTION: transfer the source performer's expressions, gaze, lip sync, gestures, choreography and hand contact with objects. Keep hands and anatomy correct; no morphing or flicker through turns, blur or occlusion.",
+    `SCENE: preserve the entire ${duration.toFixed(3)}-second timeline, aspect ratio, composition, cuts, camera motion and timing. Match source lighting, color and grain. Do not shorten, loop, retime or insert shots.`,
+    "TEXT: burned-in captions, subtitles, stickers, emojis and logos belong to the source frame. Keep them exactly: same words, font, position and timing.",
+    "Keep all other people, animals, objects, products and backgrounds unchanged. Preserve the source audio. Return the edited video, not a still image.",
     ...(options.continuous ? ["This is a temporally ordered excerpt of the same source video. Preserve any existing cuts. Keep exact screen position, body scale, distance, identity and outfit at both ends. Continue the action without a new entrance, pose, framing reset or ending."] : []),
   ].join("\n"));
 }

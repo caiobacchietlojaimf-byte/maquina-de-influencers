@@ -2,10 +2,10 @@ import "server-only";
 import { put } from "@vercel/blob";
 import { getInfluencer, type Influencer } from "./db";
 import { publicMediaUrl, readPublicVideo } from "./video-media";
-import { prepareCharacterIdentityMedia } from "./character-identity-media";
+import { headCloseUp, prepareCharacterIdentityMedia } from "./character-identity-media";
 import type { EditEngine, EditIdentityReferences } from "./character-edit";
 
-export const EDIT_IDENTITY_VERSION = "identity-v1";
+export const EDIT_IDENTITY_VERSION = "identity-v2";
 
 /** Provenance identifies a sheet layout, never a different version's face/outfit. */
 async function hasSheetLayout(influencer: Influencer, signal?: AbortSignal): Promise<boolean> {
@@ -26,10 +26,21 @@ async function hasSheetLayout(influencer: Influencer, signal?: AbortSignal): Pro
 export async function readCharacterIdentity(influencer: Influencer, video: { width: number; height: number }, signal?: AbortSignal) {
   if (!influencer.imageUrl || influencer.status !== "completed") throw new Error("Selecione uma versão pronta do influencer.");
   const image = await readPublicVideo(publicMediaUrl(influencer.imageUrl), 25 * 1024 * 1024, signal);
-  const identity = await prepareCharacterIdentityMedia(image, {
-    knownTwoPanelSheet: await hasSheetLayout(influencer, signal),
-    videoWidth: video.width, videoHeight: video.height, signal,
-  });
+  const sheetLayout = await hasSheetLayout(influencer, signal);
+  const identity = await prepareCharacterIdentityMedia(image, { knownTwoPanelSheet: sheetLayout, videoWidth: video.width, videoHeight: video.height, signal });
+  if (identity.frontal) return { image, identity: { ...identity, frontalSource: "sheet" as const } };
+  // Kling needs a dedicated face view. The selected image itself is preferred:
+  // a gallery sheet may predate an edit that changed hair or facial hair.
+  const head = await headCloseUp(image, signal);
+  if (head) return { image, identity: { ...identity, strategy: "sheet-panels" as const, frontal: head, frontalSource: "head-crop" as const } };
+  if (sheetLayout) {
+    for (const url of (influencer.gallery ?? []).slice(0, 3)) {
+      try {
+        const sheet = await prepareCharacterIdentityMedia(await readPublicVideo(publicMediaUrl(url), 25 * 1024 * 1024, signal), { knownTwoPanelSheet: true, videoWidth: video.width, videoHeight: video.height, signal });
+        if (sheet.frontal) return { image, identity: { ...identity, strategy: "sheet-panels" as const, frontal: sheet.frontal, frontalSource: "gallery-sheet" as const } };
+      } catch { signal?.throwIfAborted(); }
+    }
+  }
   return { image, identity };
 }
 
@@ -48,5 +59,5 @@ export async function prepareCharacterIdentity(influencer: Influencer, video: { 
   }
   const appearanceUrl = await store("appearance", identity.appearance);
   const frontalUrl = identity.frontal ? await store("frontal", identity.frontal) : undefined;
-  return { strategy: identity.strategy, appearanceUrl, ...(frontalUrl ? { frontalUrl } : {}) };
+  return { strategy: identity.strategy, appearanceUrl, ...(frontalUrl ? { frontalUrl, frontalSource: "frontalSource" in identity ? identity.frontalSource : "sheet" } : {}) };
 }
