@@ -1,9 +1,9 @@
 export type PlanId = "starter" | "pro" | "max";
 export type Plan = { id: PlanId; name: string; priceMonthlyBRL: number; creditsMonthly: number; summary: string; features: string[]; highlighted?: boolean };
 export const PLAN_CATALOG: Plan[] = [
-  { id: "starter", name: "Starter", priceMonthlyBRL: 97, creditsMonthly: 1500, summary: "Seu primeiro personagem, suas primeiras criações.", features: ["1.500 créditos", "Criador de influencers", "Catálogo de referências", "Geração e exportação de vídeos"] },
-  { id: "pro", name: "Pro", priceMonthlyBRL: 197, creditsMonthly: 3500, summary: "Crie com mais frequência e desenvolva sua estratégia.", highlighted: true, features: ["3.500 créditos", "Tudo do Starter", "Módulos de estratégia e produção", "Guias para organizar suas publicações"] },
-  { id: "max", name: "Max", priceMonthlyBRL: 397, creditsMonthly: 7500, summary: "Mais créditos e acesso à próxima etapa da produção.", features: ["7.500 créditos", "Tudo do Pro", "Área Criação Ilimitada", "Aulas sobre GPU e ComfyUI quando disponíveis"] },
+  { id: "starter", name: "Starter", priceMonthlyBRL: 97, creditsMonthly: 100, summary: "Seu primeiro personagem, suas primeiras criações.", features: ["100 créditos · equivalente a US$10", "Criador de influencers", "Catálogo de referências", "Geração e exportação de vídeos"] },
+  { id: "pro", name: "Pro", priceMonthlyBRL: 197, creditsMonthly: 250, summary: "Crie com mais frequência e desenvolva sua estratégia.", highlighted: true, features: ["250 créditos · equivalente a US$25", "Tudo do Starter", "Módulos de estratégia e produção", "Guias para organizar suas publicações"] },
+  { id: "max", name: "Max", priceMonthlyBRL: 397, creditsMonthly: 500, summary: "Mais créditos e acesso à próxima etapa da produção.", features: ["500 créditos · equivalente a US$50", "Tudo do Pro", "Área Criação Ilimitada", "Aulas sobre GPU e ComfyUI quando disponíveis"] },
 ];
 export const PLAN_DAYS = 30;
 export const PLAN_RANK: Record<PlanId, number> = { starter: 1, pro: 2, max: 3 };

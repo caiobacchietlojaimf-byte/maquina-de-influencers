@@ -38,6 +38,17 @@ function cleanup(directory) {
 const json = body => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 const paymentEnv = { SYNCPAY_CLIENT_ID: "fixture-id", SYNCPAY_CLIENT_SECRET: "fixture-secret", SYNCPAY_WEBHOOK_SECRET: "fixture-webhook" };
 
+test("credit checkout capability fails closed when the settlement migration is missing", async () => {
+  const local = loader()("src/lib/commerce.ts");
+  assert.equal(await local.creditTopupsReady(), true);
+  for (const [response, expected] of [[{ data: true, error: null }, true], [{ data: null, error: { code: "PGRST202" } }, false], [{ data: "true", error: null }, false]]) {
+    const commerce = loader({ mocks: { "./server-db": { serverDb: () => ({ rpc: async name => { assert.equal(name, "mi_credit_topups_ready"); return response; } }) } } })("src/lib/commerce.ts");
+    assert.equal(await commerce.creditTopupsReady(), expected);
+  }
+  const unavailable = loader({ mocks: { "./server-db": { serverDb: () => { throw new Error("unavailable"); } } } })("src/lib/commerce.ts");
+  assert.equal(await unavailable.creditTopupsReady(), false);
+});
+
 test("concurrent paid/refunded notifications cannot resurrect a refunded order in the local driver", async () => {
   for (const sequence of [["refunded", "paid"], ["paid", "refunded"]]) {
     const directory = mkdtempSync(path.join(tmpdir(), "mi-commerce-test-"));
@@ -67,6 +78,62 @@ test("a failed generation refund preserves the remaining debt from a refunded pl
     assert.equal((await db.findUserById(user.id)).credits, -6000);
     assert.equal(await db.adjustCredits(user.id, 1000), -5000);
     assert.equal(await db.reserveVideoCredits(user.id, 1000), false);
+  } finally { cleanup(directory); }
+});
+
+const topup = userId => ({ id: orderId, userId, kind: "credits", packId: "credits-100", credits: 100, usdAmountCents: 1000, usdBrlRate: 5.1256, exchangeRateDate: "2026-10-09", amountCents: 5126, status: "creating", createdAt: 1, updatedAt: 1 });
+test("credit purchases settle once without adding or renewing plan access", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-commerce-test-"));
+  try {
+    const load = loader({ env: { DATA_DIR: directory } }), db = load("src/lib/db.ts"), commerce = load("src/lib/commerce.ts");
+    const plans = load("src/lib/plans.ts");
+    const user = await db.createUser({ name: "Fixture", email: "test@example.invalid", passwordHash: "disabled", salt: "disabled", credits: 7 });
+    await commerce.createOrderOnce(topup(user.id));
+    await commerce.attachPayment(orderId, { status: "pending", referenceId: reference });
+    await Promise.all(Array.from({ length: 8 }, () => commerce.settleOrder(reference, "paid", 5126)));
+    await commerce.settleOrder(reference, "pending", 5126);
+    await commerce.settleOrder(reference, "failed", 5126);
+    const paidUser = await db.findUserById(user.id);
+    assert.equal(paidUser.credits, 107);
+    assert.equal(paidUser.planGrants, undefined);
+    assert.equal(plans.getUserEntitlements(paidUser).modules, false);
+    assert.equal(Object.keys(paidUser.creditPurchases).length, 1);
+    assert.equal(paidUser.creditPurchases[orderId].credits, 100);
+    assert.equal((await commerce.getOrder(orderId)).status, "paid");
+
+    await db.grantPlanCredits(user.id, "existing-plan", "max", 500, 1000);
+    const before = JSON.stringify((await db.findUserById(user.id)).planGrants);
+    assert.equal(await db.reserveVideoCredits(user.id, 600), true);
+    await Promise.all(["refunded", "refunded", "paid"].map(status => commerce.settleOrder(reference, status, 5126)));
+    const refundedUser = await db.findUserById(user.id);
+    assert.equal(refundedUser.credits, -93);
+    assert.equal(JSON.stringify(refundedUser.planGrants), before);
+    assert.equal(refundedUser.creditPurchases[orderId].revoked, true);
+    assert.equal(await db.adjustCredits(user.id, 5), -88);
+  } finally { cleanup(directory); }
+});
+
+test("a credit refund received before payment cannot later grant credits", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-commerce-test-"));
+  try {
+    const load = loader({ env: { DATA_DIR: directory } }), db = load("src/lib/db.ts"), commerce = load("src/lib/commerce.ts");
+    const user = await db.createUser({ name: "Fixture", email: "test@example.invalid", passwordHash: "disabled", salt: "disabled", credits: 3 });
+    await commerce.createOrderOnce(topup(user.id));
+    await commerce.attachPayment(orderId, { status: "pending", referenceId: reference });
+    await Promise.all(["refunded", "paid", "paid"].map(status => commerce.settleOrder(reference, status, 5126)));
+    assert.equal((await db.findUserById(user.id)).credits, 3);
+    assert.equal((await commerce.getOrder(orderId)).status, "refunded");
+  } finally { cleanup(directory); }
+});
+
+test("credit purchases reject inconsistent dollar ratios, converted prices and plan entitlements", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-commerce-test-"));
+  try {
+    const commerce = loader({ env: { DATA_DIR: directory } })("src/lib/commerce.ts");
+    for (const patch of [{ credits: 101 }, { usdAmountCents: 500 }, { amountCents: 5125 }, { planId: "max" }, { usdBrlRate: 0 }, { usdBrlRate: Infinity }, { packId: "" }, { exchangeRateDate: "" }, { kind: "fake" }]) {
+      await assert.rejects(commerce.createOrderOnce({ ...topup("user"), ...patch }));
+    }
+    assert.equal((await commerce.listOrders()).length, 0);
   } finally { cleanup(directory); }
 });
 
@@ -114,10 +181,11 @@ test("admin authorization depends on server allowlist, never a client/user role 
 
 test("checkout ignores client prices/credits and only submits a request key once", async () => {
   let stored, paidCalls = 0;
+  const starter = loader()("src/lib/plans.ts").getPlan("starter");
   const api = loader({ mocks: {
     "@/lib/auth": { requireUser: async () => ({ id: "user", email: "fixture@example.invalid" }) },
     "@/lib/commerce": { getSystemSettings: async () => ({ checkoutEnabled: true }), getOrder: async () => stored, createOrderOnce: async order => { stored = order; return { order, created: true }; }, attachPayment: async (_id, patch) => stored = { ...stored, ...patch } },
-    "@/lib/syncpay": { isUuid: value => /^[\w-]{36}$/.test(value), validCpf: () => true, syncPayConfigured: () => true, createPix: async order => { paidCalls++; assert.equal(order.amountCents, 9700); assert.equal(order.credits, 1500); return { referenceId: reference, pixCode: "fixture-pix" }; } },
+    "@/lib/syncpay": { isUuid: value => /^[\w-]{36}$/.test(value), validCpf: () => true, syncPayConfigured: () => true, createPix: async order => { paidCalls++; assert.equal(order.amountCents, starter.priceMonthlyBRL * 100); assert.equal(order.credits, starter.creditsMonthly); return { referenceId: reference, pixCode: "fixture-pix" }; } },
     "@/lib/rate-limit": { rateLimit: async () => true },
   } })("src/app/actions/billing.ts");
   const form = new FormData();

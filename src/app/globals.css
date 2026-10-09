@@ -793,9 +793,14 @@ textarea.input {
 }
 .sidebar-credits-bar { height: 5px; border-radius: 99px; margin-top: 10px; background: var(--accent); }
 .sidebar-credits-bar[data-empty="true"] { background: var(--s4); }
+.sidebar-buy-credits { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 36px; margin-top: 10px; padding: 6px; border-radius: 8px; color: var(--accent-text); background: var(--accent-08); font-size: 12px; font-weight: 600; line-height: 1.4; }
+.sidebar-buy-credits svg { flex-shrink: 0; }
+.sidebar-buy-credits:hover, .sidebar-buy-credits[aria-current="page"] { background: var(--accent-14); }
+.sidebar-buy-credits:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .app-sidebar[data-collapsed="true"] .sidebar-credits { padding: 10px 3px; font-size: 10px; }
 .app-sidebar[data-collapsed="true"] .sidebar-credits-label { justify-content: center; }
 .app-sidebar[data-collapsed="true"] .sidebar-credits-bar { height: 4px; margin-top: 8px; }
+.app-sidebar[data-collapsed="true"] .sidebar-buy-credits { min-height: 38px; margin-top: 8px; padding: 4px; }
 .user-row {
   display: flex;
   align-items: center;

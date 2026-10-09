@@ -26,7 +26,7 @@ async function fixture(t, options = {}) {
     'next/cache': { revalidatePath() {} }, '@/lib/auth': { requireUser: async () => snapshot },
     '@/lib/db': { ...db, getInfluencer: async () => ({ id: 'character', status: 'completed', imageUrl: 'https://media.example/person.jpg' }), adjustCredits: async (...args) => { refunds.push(args); return db.adjustCredits(...args); } },
     '@/data/viral-effects': { getViralEffect: id => id === 'effect' ? { id, name: 'Effect', description: 'Description', thumbnail: 'https://media.example/poster.jpg' } : undefined },
-    '@/lib/prompt': { buildViralPrompt: () => 'Use the requested effect' }, '@/lib/costs': { VIDEO_COST: 1000 },
+    '@/lib/prompt': { buildViralPrompt: () => 'Use the requested effect' }, '@/lib/costs': load('src/lib/costs.ts'), '@/lib/credit-pricing': load('src/lib/credit-pricing.ts'),
     '@/lib/platform': { PlatformError, isConfigured: () => options.configured !== false, TERMINAL_STATUSES: new Set(), submitGeneration: async (...args) => { submits.push(args); if (options.error) throw options.error; return { requestId: 'provider-' + submits.length }; } },
     '@/lib/finalize-edit': {}, '@/lib/reconcile-fal-video': {},
   });
@@ -42,7 +42,8 @@ test('an unconfigured viral generator fails before storing a fake request or cha
 test('same request key across simultaneous viral actions is charged and submitted only once', async t => {
   const f = await fixture(t);
   const results = await Promise.all([f.actions.createViralVideoAction(input), f.actions.createViralVideoAction(input)]);
-  assert.equal(results[0].id, results[1].id); assert.equal(f.submits.length, 1); assert.equal(await f.balance(), 2000);
+  assert.equal(results[0].id, results[1].id); assert.equal(f.submits.length, 1); assert.equal(await f.balance(), 2993);
+  assert.equal((await f.db.getVideo(f.user.id, results[0].id)).creditCost, 7);
   const changed = await f.actions.createViralVideoAction({ ...input, extraPrompt: 'different' });
   assert.ok(changed.error); assert.equal(f.submits.length, 1);
   assert.equal(await f.db.deleteVideo(f.user.id, results[0].id), false);
@@ -52,7 +53,7 @@ test('same request key across simultaneous viral actions is charged and submitte
 });
 
 test('concurrent distinct requests cannot overspend a stale balance snapshot', async t => {
-  const f = await fixture(t, { credits: 1000 });
+  const f = await fixture(t, { credits: 7 });
   const results = await Promise.all([f.actions.createViralVideoAction(input), f.actions.createViralVideoAction({ ...input, requestKey: '22222222-2222-4222-8222-222222222222' })]);
   assert.equal(results.filter(r => r.id).length, 1); assert.equal(f.submits.length, 1); assert.equal(await f.balance(), 0);
 });
@@ -70,7 +71,7 @@ test('timeouts and unknown transport errors preserve the uncertain request witho
     const result = await f.actions.createViralVideoAction(input);
     assert.ok(result.id); assert.equal((await f.db.getVideo(f.user.id, result.id)).status, 'review');
     assert.equal((await f.actions.createViralVideoAction(input)).id, result.id);
-    assert.equal(f.submits.length, 1); assert.equal(f.refunds.length, 0); assert.equal(await f.balance(), 2000);
+    assert.equal(f.submits.length, 1); assert.equal(f.refunds.length, 0); assert.equal(await f.balance(), 2993);
   }
 });
 

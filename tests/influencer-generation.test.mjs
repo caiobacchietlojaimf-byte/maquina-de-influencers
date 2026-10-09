@@ -71,7 +71,7 @@ test('real influencer endpoint receives selected traits and separate public iden
     assert.equal(body.batch_size,undefined); assert.equal(body.model,undefined);
     const records=await f.actions.pollInfluencersAction();
     assert.equal(records[0].imageUrl,'https://cdn.example.com/generated.png'); assert.equal(records[0].status,'completed');
-    assert.equal((await f.db.findUserById(f.user.id)).credits,9875);
+    assert.equal((await f.db.findUserById(f.user.id)).credits,9999);
     assert.equal((await f.actions.pollInfluencersAction())[0].imageUrl,records[0].imageUrl);
   }finally{f.close();}
 });
@@ -90,7 +90,7 @@ test('concurrent equal request keys submit and debit once; changed payload canno
   try{
     const [a,b]=await Promise.all([f.actions.createInfluencerAction(input),f.actions.createInfluencerAction(input)]);
     assert.equal(a.id,b.id);assert.equal(f.requests.length,1);
-    assert.equal((await f.db.findUserById(f.user.id)).credits,9875);
+    assert.equal((await f.db.findUserById(f.user.id)).credits,9999);
     assert.match((await f.actions.createInfluencerAction({...input,name:'Different'})).error,/já foi utilizado/);
     assert.equal(f.requests.length,1);
   }finally{f.close();}
@@ -106,7 +106,7 @@ test('confirmed failures refund exactly once even across concurrent polls; retry
     const [r1,r2]=await Promise.all([f.actions.retryInfluencerAction(a.id,key),f.actions.retryInfluencerAction(a.id,key)]);
     assert.ok(r1.id);assert.equal(r1.id,r2.id);
     assert.equal(f.requests.filter(r=>r.init.method==='POST').length,2);
-    assert.equal((await f.db.findUserById(f.user.id)).credits,9875);
+    assert.equal((await f.db.findUserById(f.user.id)).credits,9999);
   }finally{f.close();}
 });
 
@@ -128,7 +128,7 @@ test('ambiguous submit is retained without a second paid POST or automatic refun
     await f.actions.createInfluencerAction(input);
     assert.ok((await f.actions.retryInfluencerAction(record.id,'a8a3d7c7-2046-4692-9f80-4167a97a9a71')).error);
     await f.actions.pollInfluencersAction();
-    assert.equal(f.requests.length,1);assert.equal((await f.db.findUserById(f.user.id)).credits,9875);
+    assert.equal(f.requests.length,1);assert.equal((await f.db.findUserById(f.user.id)).credits,9999);
   }finally{f.close();}
 });
 

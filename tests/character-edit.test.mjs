@@ -14,10 +14,10 @@ function load(file, mocks = {}, globals = {}) {
   vm.runInNewContext(code, { module, exports: module.exports, require: id => id === "server-only" ? {} : id in mocks ? mocks[id] : require(id), process: { env: { AUTH_SECRET: "test-character-edit-secret" } }, Buffer, URL, AbortSignal, ...globals });
   return module.exports;
 }
-const media = load("src/lib/video-reference.ts"), edit = load("src/lib/character-edit.ts"), quotes = load("src/lib/edit-quote.ts");
+const media = load("src/lib/video-reference.ts"), edit = load("src/lib/character-edit.ts"), quotes = load("src/lib/edit-quote.ts"), pricing = load("src/lib/credit-pricing.ts");
 const original = readFileSync(new URL("../public/reel-videos/Dd_qcXdgsdb.mp4", import.meta.url));
 const metadata = media.mp4Metadata(original);
-const receipt = { id: "edit-1", userId: "owner", influencerId: "character", imageUrl: "https://images.example/character.jpg", sourceUrl: "https://media.example/original.mp4", name: "Original", target: "homem de casaco roxo no centro", metadata, resolution: "720p", estimatedUsd: edit.estimateEditUsd(metadata.duration, "720p"), expiresAt: Date.now() + 600000 };
+const receipt = { id: "edit-1", userId: "owner", influencerId: "character", imageUrl: "https://images.example/character.jpg", sourceUrl: "https://media.example/original.mp4", name: "Original", target: "homem de casaco roxo no centro", metadata, resolution: "720p", estimatedUsd: edit.estimateEditUsd(metadata.duration, "720p"), creditCost: 123, creditPricingVersion: pricing.CREDIT_PRICING_VERSION, expiresAt: Date.now() + 600000 };
 
 test("the actual 17-second source meets Object Swap requirements and cost rounds input seconds up", () => {
   assert.ok(metadata.duration > 17 && metadata.duration < 18);
@@ -45,6 +45,17 @@ test("quotes bind the user, selected subject, source, resolution and price; tamp
   assert.throws(() => quotes.readEditQuote(quotes.signEditQuote({ ...receipt, expiresAt: 0 }), "owner"));
 });
 
+test("credit conversion preserves 10 credits per dollar and safely rounds whole-credit debits", () => {
+  assert.equal(pricing.CREDITS_PER_USD, 10);
+  for (const [usd, credits] of [[0.05, 1], [0.1, 1], [0.63, 7], [1, 10], [1.1, 11], [2.05, 21], [3.03, 31], [12.26, 123], [20.43, 205]]) {
+    assert.equal(pricing.usdToCredits(usd), credits);
+    assert.equal(pricing.creditsToUsd(credits), credits / 10);
+  }
+  assert.equal(pricing.creditsToUsd(0), 0);
+  for (const invalid of [NaN, Infinity, -1, 0, "1", Number.MAX_VALUE]) assert.throws(() => pricing.usdToCredits(invalid));
+  for (const invalid of [NaN, Infinity, 0.5, "10", Number.MAX_VALUE]) assert.throws(() => pricing.creditsToUsd(invalid));
+});
+
 function fixture(overrides = {}) {
   const rows = new Map(), submissions = [], falSubmissions = [], charges = [], snapshots = [], splitCalls = [];
   const sourceMetadata = overrides.metadata ?? metadata;
@@ -65,7 +76,7 @@ function fixture(overrides = {}) {
   class PlatformError extends Error { constructor(status) { super("Provider failed"); this.status = status; } }
   class FalError extends Error { constructor(status) { super("Fal provider failed"); this.status = status; } }
   const mocks = {
-    "next/cache": { revalidatePath() {} }, "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: 8000 }) },
+    "next/cache": { revalidatePath() {} }, "@/lib/auth": { requireUser: async () => ({ id: "owner", credits: overrides.credits ?? 8000 }) },
     "@vercel/blob": { put: async (...args) => {
       snapshots.push(args);
       const index = parts.findIndex(part => part.bytes === args[1]);
@@ -87,7 +98,7 @@ function fixture(overrides = {}) {
       return { requestId: `fal-request-${falSubmissions.length}` };
     } },
     "@/lib/platform": { isConfigured: () => true, PlatformError, submitGeneration: async (...args) => { submissions.push(args); if (overrides.failure) throw new PlatformError(overrides.failure); return { requestId: "provider-request" }; } },
-    "@/lib/costs": { VIDEO_COST: 1000 },
+    "@/lib/credit-pricing": pricing,
   };
   const preparation = load("src/lib/prepare-character-edit.ts", mocks);
   const actions = load("src/app/actions/character-edit.ts", { ...mocks, "@/lib/prepare-character-edit": preparation });
@@ -100,6 +111,7 @@ test("catalog, discovery, presets and owned uploads all prepare a frozen origina
     const prepared = await f.actions.prepareCharacterEditAction({ influencerId: "character", source, target: receipt.target, resolution: "720p" });
     assert.equal(prepared.quote.metadata.duration, metadata.duration);
     assert.equal(prepared.quote.estimatedUsd, 12.26);
+    assert.equal(prepared.quote.creditCost, 123);
     assert.deepEqual(f.snapshots.at(-1)[1], original);
   }
   assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 0);
@@ -150,6 +162,9 @@ test("confirmed quote submits Object Swap once with original video + character i
   assert.equal(f.submissions.length, 0);
   const results = await Promise.all([f.actions.generateCharacterEditAction({ quoteToken: token, acceptedEstimate: true }), f.actions.generateCharacterEditAction({ quoteToken: token, acceptedEstimate: true })]);
   assert.equal(results[0].id, receipt.id); assert.equal(f.submissions.length, 1); assert.equal(f.charges.length, 1);
+  assert.deepEqual(f.charges[0], ["owner", 123]);
+  assert.equal(f.rows.get(receipt.id).creditCost, 123);
+  assert.equal(f.rows.get(receipt.id).creditPricingVersion, pricing.CREDIT_PRICING_VERSION);
   const [model, input] = f.submissions[0];
   assert.equal(model, "higgsfield/genjutsu/object-swap/v1.0");
   assert.equal(input.video_url, receipt.sourceUrl); assert.equal(input.image_urls[0], receipt.imageUrl);
@@ -157,6 +172,32 @@ test("confirmed quote submits Object Swap once with original video + character i
   assert.ok(input.prompt.includes(receipt.target)); assert.ok(input.prompt.includes("not a still image"));
   assert.ok(!input.prompt.includes("Invent musicians on a white backdrop"));
   assert.equal(f.rows.get(receipt.id).edit.model, model);
+});
+
+test("old and inconsistent credit quotes require a fresh preparation before any debit or submission", async () => {
+  for (const changed of [
+    { creditPricingVersion: undefined, creditCost: undefined },
+    { creditPricingVersion: "old-version" },
+    { creditCost: 1 },
+    { creditCost: 123.5 },
+  ]) {
+    const f = fixture();
+    const result = await f.actions.generateCharacterEditAction({ quoteToken: quotes.signEditQuote({ ...receipt, ...changed }), acceptedEstimate: true });
+    assert.match(result.error, /Prepare a troca novamente/);
+    assert.equal(f.rows.size, 0); assert.equal(f.charges.length, 0); assert.equal(f.submissions.length, 0);
+  }
+  const existing = fixture({ db: { getVideo: async () => ({ id: receipt.id, creditCost: 1000, status: "processing" }) } });
+  const result = await existing.actions.generateCharacterEditAction({ quoteToken: quotes.signEditQuote({ ...receipt, creditPricingVersion: undefined, creditCost: undefined }), acceptedEstimate: true });
+  assert.equal(result.id, receipt.id); assert.equal(existing.charges.length, 0); assert.equal(existing.submissions.length, 0);
+});
+
+test("generation checks the accepted per-model credit price rather than the former fixed video cost", async () => {
+  const enough = fixture({ credits: 123 });
+  assert.equal((await enough.actions.generateCharacterEditAction({ quoteToken: quotes.signEditQuote(receipt), acceptedEstimate: true })).id, receipt.id);
+  assert.deepEqual(enough.charges[0], ["owner", 123]);
+  const short = fixture({ credits: 122 });
+  assert.match((await short.actions.generateCharacterEditAction({ quoteToken: quotes.signEditQuote(receipt), acceptedEstimate: true })).error, /123/);
+  assert.equal(short.charges.length, 0); assert.equal(short.submissions.length, 0);
 });
 
 test("automatic targeting is frozen on the server and submitted without a manual description", async () => {
@@ -188,6 +229,8 @@ test("provider refusals never fall back to Kling; unknown acceptance is marked f
     assert.equal(f.submissions.length, 1);
     assert.equal(f.rows.get(receipt.id).status, failure === 403 ? "failed" : "review");
     assert.equal(f.charges.length, failure === 403 ? 2 : 1);
+    assert.deepEqual(f.charges[0], ["owner", 123]);
+    if (failure === 403) assert.deepEqual(f.charges[1], ["owner", 123]);
   }
 });
 
@@ -206,6 +249,7 @@ test("a signed Wan quote routes once to fal Replace with the original video and 
   assert.ok(prepared.quote, prepared.error);
   assert.equal(prepared.quote.engine, "fal-wan");
   assert.equal(prepared.quote.segmentCount, 1); assert.equal(prepared.quote.estimatedUsd, 2.05);
+  assert.equal(prepared.quote.creditCost, 21);
   assert.equal(f.falSubmissions.length, 0); assert.equal(f.charges.length, 0); assert.equal(f.splitCalls.length, 0);
   const frozen = quotes.readEditQuote(prepared.quote.token, "owner");
   assert.equal(frozen.engine, "fal-wan"); assert.equal(frozen.metadata.frameCount, 409);
@@ -215,6 +259,7 @@ test("a signed Wan quote routes once to fal Replace with the original video and 
   ]);
   assert.equal(results[0].id, frozen.id); assert.equal(results[1].id, frozen.id);
   assert.equal(f.falSubmissions.length, 1); assert.equal(f.submissions.length, 0); assert.equal(f.charges.length, 1);
+  assert.deepEqual(f.charges[0], ["owner", 21]);
   const [model, input] = f.falSubmissions[0];
   assert.equal(model, "fal-ai/wan/v2.2-14b/animate/replace");
   assert.equal(input.video_url, prepared.quote.sourceUrl); assert.equal(input.image_url, receipt.imageUrl);
@@ -272,6 +317,8 @@ test("Kling prepares and prices the complete 17-second original as two reference
     assert.equal(frozen.segments.reduce((sum, part) => sum + part.source.duration, 0), metadata.duration);
     const result = await f.actions.generateCharacterEditAction({ quoteToken: prepared.quote.token, acceptedEstimate: true });
     assert.equal(result.id, frozen.id); assert.equal(f.charges.length, 1); assert.equal(f.falSubmissions.length, 2); assert.equal(f.submissions.length, 0);
+    assert.equal(prepared.quote.creditCost, pricing.usdToCredits(price));
+    assert.deepEqual(f.charges[0], ["owner", prepared.quote.creditCost]);
     for (const [index, [submittedModel, input]] of f.falSubmissions.entries()) {
       assert.equal(submittedModel, model); assert.equal(input.video_url, frozen.segments[index].sourceUrl);
       assert.equal(input.image_urls[0], receipt.imageUrl); assert.equal(input.keep_audio, true);
@@ -329,6 +376,8 @@ test("fal failures never fall back to Higgsfield and only a definite first-reque
     const frozen = quotes.readEditQuote(prepared.quote.token, "owner");
     assert.equal(f.rows.get(frozen.id).status, falFailure === 422 ? "failed" : "review");
     assert.equal(f.charges.length, falFailure === 422 ? 2 : 1);
+    assert.deepEqual(f.charges[0], ["owner", 21]);
+    if (falFailure === 422) assert.deepEqual(f.charges[1], ["owner", 21]);
     assert.equal(f.falSubmissions.length, 1); assert.equal(f.submissions.length, 0);
     await f.actions.generateCharacterEditAction({ quoteToken: prepared.quote.token, acceptedEstimate: true });
     assert.equal(f.falSubmissions.length, 1); assert.equal(f.submissions.length, 0);

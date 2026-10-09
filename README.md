@@ -12,7 +12,7 @@ A esteira completa dentro de um sistema só:
 | Área | O que faz |
 | --- | --- |
 | **Landing page** | Visual Higgsfield: fundo quase preto, acento lima `#d1fe17`, Space Grotesk |
-| **Login / Cadastro** | Conta com e-mail e senha (scrypt + cookie HMAC httpOnly), 10.000 créditos iniciais |
+| **Login / Cadastro** | Conta com e-mail e senha (scrypt + cookie HMAC httpOnly), saldo inicial configurado no servidor (padrão zero) |
 | **Início** | Esteira dos 4 passos, créditos, contadores e atalhos |
 | **Vídeos Virais** | **Mineração real do TikTok**: feed de tendências por região (BR/US/ES/JP) com views, likes, música e download sem marca d'água; import por link do TikTok ou .mp4 direto; galeria curada de efeitos virais; duplicação em um clique |
 | **Influencers** | Clone do AI Influencer Studio: 9 tipos de personagem, 18 grupos de traços (150+ opções), dado de sorteio, galeria Explorar com presets oficiais e botão Recriar, aba Movimento com presets Genjutsu |
@@ -152,7 +152,7 @@ data/db.json                banco local (criado em runtime, fora do git)
 
 - **Banco**: arquivo JSON com escrita atômica — zero dependências. Troque por
   Postgres/SQLite quando escalar.
-- **Créditos**: ficha ✦ 125, vídeo ✦ 1000 (`src/lib/costs.ts`).
+- **Créditos**: 10 créditos = US$1; personagem ✦ 1, efeito de 5s ✦ 7, edição conforme orçamento assinado (`src/lib/credit-pricing.ts`, `src/lib/costs.ts`). Recargas avulsas em `/app/creditos`, via PIX com cotação PTAX; [operação e ativação](docs/mvp-operations.md).
 - **Catálogo é a fonte da verdade**: ids idênticos aos da API da Higgsfield.
 
 ## Stack

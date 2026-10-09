@@ -24,7 +24,8 @@ export function validCpf(input: string) {
 export async function createPix(order: Order, customer: { name: string; cpf: string; email: string; phone: string }) {
   const base = process.env.PUBLIC_BASE_URL;
   if (!base || new URL(base).protocol !== "https:") throw new Error("Checkout indisponível");
-  const response = await fetch(`${ORIGIN}/api/partner/v1/cash-in`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(25000), cache: "no-store", headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ amount: order.amountCents/100, description: `Máquina de Influencers — ${order.planId} — ${order.id}`, webhook_url: `${new URL(base).origin}/api/payments/syncpay/webhook`, client: customer }) });
+  const item = order.kind === "credits" ? `${order.credits} créditos` : order.planId;
+  const response = await fetch(`${ORIGIN}/api/partner/v1/cash-in`, { method: "POST", redirect: "error", signal: AbortSignal.timeout(25000), cache: "no-store", headers: { Authorization: `Bearer ${await token()}`, "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ amount: order.amountCents/100, description: `Máquina de Influencers — ${item} — ${order.id}`, webhook_url: `${new URL(base).origin}/api/payments/syncpay/webhook`, client: customer }) });
   if (!response.ok) throw new Error(response.status === 422 ? "Confira os dados de cobrança. Se persistir, entre em contato com o suporte." : "Não foi possível confirmar a criação do PIX. Confira este pedido antes de tentar novamente.");
   const body = await response.json();
   if (!isUuid(body.identifier) || typeof body.pix_code !== "string" || body.pix_code.length < 20 || body.pix_code.length > 4096) throw new Error("O gateway não retornou um PIX válido. Aguarde a conferência deste pedido.");

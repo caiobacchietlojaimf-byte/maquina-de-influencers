@@ -70,6 +70,7 @@ function load(file, mocks = {}) {
 }
 const dates = load("src/lib/display-date.ts");
 const plans = load("src/lib/plans.ts");
+const creditPacks = load("src/lib/credit-packs.ts", { "./credit-pricing": load("src/lib/credit-pricing.ts") });
 const timestamp = Date.parse("2026-10-09T01:30:00.000Z");
 const link = ({ href, children, ...props }) => React.createElement("a", { href, ...props }, children);
 const { VideosGallery } = load("src/components/videos-gallery.tsx", {
@@ -83,6 +84,7 @@ const { BillingCenter } = load("src/components/billing-center.tsx", {
   "next/link": link,
   "next/navigation": { useRouter: () => ({ refresh() {} }) },
   "@/lib/plans": plans,
+  "@/lib/credit-packs": creditPacks,
   "@/lib/display-date": dates,
   "@/app/actions/billing": {},
   "./commerce.module.css": {},

@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, LoaderCircle, Mail, RotateCcw } from "lucide-react";
 import { PLAN_CATALOG, getPlan, type PlanId } from "@/lib/plans";
-import { createCheckoutAction, refreshPaymentAction } from "@/app/actions/billing";
+import { CREDIT_PACKS, type CreditPurchaseQuote } from "@/lib/credit-packs";
+import { createCheckoutAction, createCreditCheckoutAction, refreshPaymentAction } from "@/app/actions/billing";
 import type { Order } from "@/lib/commerce";
 import { displayDate } from "@/lib/display-date";
 import styles from "./commerce.module.css";
@@ -16,18 +17,28 @@ const statusLabel: Record<Order["status"], string> = {
 };
 const unresolved = (order: Order) => ["creating", "pending", "review"].includes(order.status);
 const money = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const dollar = (cents: number) => `US$ ${(cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const orderLabel = (order: Order) => order.planId ? getPlan(order.planId)?.name ?? "Plano" : `${order.credits.toLocaleString("pt-BR")} créditos`;
+const exchangeDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.split("-").reverse().join("/") : "data indisponível";
+const DEFAULT_PACK = CREDIT_PACKS.find(pack => pack.credits === 100)!.id;
 
-export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan, supportEmail }: {
+export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan, supportEmail, mode = "plan", creditQuote = null }: {
   name: string;
   orders: Order[];
   enabled: boolean;
   currentPlan: PlanId | null;
   initialPlan?: PlanId;
   supportEmail?: string;
+  mode?: "plan" | "credits";
+  creditQuote?: CreditPurchaseQuote | null;
 }) {
   const router = useRouter();
+  const creditMode = mode === "credits";
   const navigationPlan = initialPlan ?? currentPlan ?? "pro";
   const [planId, setPlanId] = useState<PlanId>(navigationPlan);
+  const [packId, setPackId] = useState(DEFAULT_PACK);
+  const [rejectedQuoteToken, setRejectedQuoteToken] = useState<string | null>(null);
+  const [refreshingQuote, startQuoteRefresh] = useTransition();
   const [requestKey, setRequestKey] = useState("");
   const [updates, setUpdates] = useState<Record<string, Order>>({});
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(() => orders.find(unresolved)?.id ?? null);
@@ -55,7 +66,11 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
   const current = history.find(order => order.id === selectedOrderId) ?? history.find(unresolved);
   const selectedPlan = current?.planId ?? planId;
   const plan = getPlan(selectedPlan)!;
-  const controlsLocked = Boolean(current) || pending || refreshingId !== null || uncertain;
+  const selectedPackId = current ? CREDIT_PACKS.find(pack => pack.credits === current.credits)?.id : packId;
+  const pack = CREDIT_PACKS.find(item => item.id === packId)!;
+  const quoteReady = Boolean(creditQuote?.token && creditQuote.token !== rejectedQuoteToken && Number.isFinite(creditQuote.usdBrlRate) && creditQuote.usdBrlRate > 0);
+  const packPrice = quoteReady ? Math.round(pack.usdAmountCents * creditQuote!.usdBrlRate) / 100 : null;
+  const controlsLocked = Boolean(current) || pending || refreshingId !== null || uncertain || refreshingQuote;
 
   function renewNonce(): boolean {
     try {
@@ -92,15 +107,25 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
 
   async function checkout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy.current || current || !enabled || !nonce.current) return;
+    if (busy.current || current || !enabled || !nonce.current || refreshingQuote) return;
+    if (creditMode && !uncertainPayload.current && (!quoteReady || Date.now() >= creditQuote!.expiresAt)) {
+      if (creditQuote?.token) setRejectedQuoteToken(creditQuote.token);
+      setError("A cotação está indisponível ou expirou. Atualize a cotação antes de gerar o PIX.");
+      return;
+    }
     const payload = uncertainPayload.current ?? new FormData(event.currentTarget);
-    payload.set("requestKey", nonce.current);
-    payload.set("planId", planId);
+    if (!uncertainPayload.current) {
+      payload.set("requestKey", nonce.current);
+      if (creditMode) {
+        payload.set("packId", packId);
+        payload.set("quoteToken", creditQuote!.token);
+      } else payload.set("planId", planId);
+    }
     busy.current = true;
     setPending(true);
     setError(null);
     try {
-      const result = await createCheckoutAction(null, payload);
+      const result = await (creditMode ? createCreditCheckoutAction : createCheckoutAction)(null, payload);
       if (!mounted.current) return;
       if (result?.order) {
         remember(result.order);
@@ -110,6 +135,13 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
         if (result.order.status === "paid") router.refresh();
       } else {
         // Keep the nonce on every error: an order may already exist server-side.
+        if (creditMode && result?.quoteExpired) {
+          // The server only returns this flag after confirming that this nonce
+          // has no order. A new quote can safely reuse the same request key.
+          setRejectedQuoteToken(String(payload.get("quoteToken") ?? ""));
+          uncertainPayload.current = null;
+          setUncertain(false);
+        }
         setError(result?.error ?? "Não foi possível confirmar a solicitação. Tente novamente.");
       }
     } catch {
@@ -162,7 +194,14 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
     setError(null);
     setCopied(false);
     setPlanId(navigationPlan);
+    setPackId(DEFAULT_PACK);
     requestAnimationFrame(() => firstPlan.current?.focus());
+  }
+
+  function refreshQuote() {
+    if (controlsLocked || busy.current) return;
+    setError(null);
+    startQuoteRefresh(() => { router.refresh(); });
   }
 
   async function copyPix() {
@@ -178,7 +217,23 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
   }
 
   return <div className={styles.wrap}>
-    <div className={styles.planGrid} role="group" aria-label="Escolher plano">
+    {creditMode ? <>
+      <div className={styles.creditIntro}><h2>10 créditos = US$1</h2><p>Adicione saldo para criar, sem alterar seu plano. Os créditos entram após a confirmação do PIX.</p></div>
+      <div className={styles.creditGrid} role="group" aria-label="Escolher pacote de créditos">
+        {CREDIT_PACKS.map((item, index) => <button ref={index === 0 ? firstPlan : undefined} type="button" key={item.id}
+          aria-pressed={selectedPackId === item.id} disabled={controlsLocked}
+          className={`${styles.plan} ${selectedPackId === item.id ? styles.selected : ""}`}
+          onClick={() => { if (!busy.current && !controlsLocked) { setPackId(item.id); setError(null); } }}>
+          <span className={styles.eyebrow}>{item.credits.toLocaleString("pt-BR")} créditos</span>
+          <strong className={styles.price}>{dollar(item.usdAmountCents)}</strong>
+          <span className={styles.muted}>{quoteReady ? `${money(Math.round(item.usdAmountCents * creditQuote!.usdBrlRate) / 100)} no PIX` : "Aguardando cotação em reais"}</span>
+        </button>)}
+      </div>
+      <div className={`${styles.notice} ${styles.quoteNotice}`} aria-busy={refreshingQuote}>
+        <p>{quoteReady ? <>Cotação de {exchangeDate(creditQuote!.exchangeRateDate)}: US$ 1 = R$ {creditQuote!.usdBrlRate.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}. O PIX é emitido em reais.</> : "A cotação em reais ainda não está disponível. Atualize para conferir o valor antes de pagar."}</p>
+        <button type="button" className="btn btn-ghost" disabled={controlsLocked} onClick={refreshQuote}><RotateCcw size={16} aria-hidden="true" />{refreshingQuote ? "Atualizando cotação…" : "Atualizar cotação"}</button>
+      </div>
+    </> : <><div className={styles.planGrid} role="group" aria-label="Escolher plano">
       {PLAN_CATALOG.map((item, index) => <button ref={index === 0 ? firstPlan : undefined} type="button" key={item.id}
         aria-pressed={selectedPlan === item.id} disabled={controlsLocked}
         className={`${styles.plan} ${selectedPlan === item.id ? styles.selected : ""}`}
@@ -188,22 +243,22 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
         <span>{item.summary}</span><ul>{item.features.map(feature => <li key={feature}><Check size={15} aria-hidden="true" />{feature}</li>)}</ul>
       </button>)}
     </div>
-    <p className={styles.muted}>Valores de lançamento em definição. Pagamento único via PIX, renovação manual. Os créditos são adicionados após a confirmação. Aulas gravadas de Criação Ilimitada ainda não disponíveis; GPU e serviços externos têm custos próprios.</p>
-    {!enabled ? <div className={styles.notice}>Checkout em preparação. Você já pode conhecer a plataforma; os pagamentos serão liberados após a configuração da Sync Pay.</div> : null}
+    <p className={styles.muted}>Valores de lançamento em definição. Pagamento único via PIX, renovação manual. Os créditos são adicionados após a confirmação. Aulas gravadas de Criação Ilimitada ainda não disponíveis; GPU e serviços externos têm custos próprios.</p></>}
+    {!enabled ? <div className={styles.notice}>Checkout em configuração. Os pagamentos ainda não estão disponíveis.</div> : null}
     {enabled || current ? <section className={styles.panel} aria-busy={pending || refreshingId !== null}>
       {!current ? <form onSubmit={checkout} className={styles.form}>
-        <h2>Começar com {plan.name}</h2>
-        <input type="hidden" name="planId" value={planId} /><input type="hidden" name="requestKey" value={requestKey} />
+        <h2>{creditMode ? `Adicionar ${pack.credits.toLocaleString("pt-BR")} créditos` : `Começar com ${plan.name}`}</h2>
+        {creditMode ? <><input type="hidden" name="packId" value={packId} /><input type="hidden" name="quoteToken" value={creditQuote?.token ?? ""} /></> : <input type="hidden" name="planId" value={planId} />}<input type="hidden" name="requestKey" value={requestKey} />
         <label>Nome completo<input name="name" defaultValue={name} autoComplete="name" required minLength={3} maxLength={120} disabled={pending || uncertain} /></label>
         <label>CPF<input name="cpf" autoComplete="off" inputMode="numeric" required maxLength={14} disabled={pending || uncertain} /></label>
         <label>Telefone com DDD<input name="phone" autoComplete="tel" inputMode="tel" required maxLength={18} disabled={pending || uncertain} /></label>
         <p className={styles.muted}>Seus dados de cobrança são enviados à Sync Pay para emitir o PIX. Seu CPF e telefone não são salvos na nossa base.</p>
-        <button type="submit" className="btn btn-accent" disabled={pending || !requestKey}>
-          {pending ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Preparando…</> : uncertain ? "Conferir esta solicitação" : `Gerar PIX de ${money(plan.priceMonthlyBRL)}`}
+        <button type="submit" className="btn btn-accent" disabled={pending || refreshingQuote || !requestKey || (creditMode && !uncertain && !quoteReady)}>
+          {pending ? <><LoaderCircle size={18} className={styles.spinner} aria-hidden="true" /> Preparando…</> : uncertain ? "Conferir esta solicitação" : creditMode ? packPrice === null ? "Aguardando cotação" : `Gerar PIX de ${money(packPrice)}` : `Gerar PIX de ${money(plan.priceMonthlyBRL)}`}
         </button>
       </form> : <div className={styles.form}>
         <h2 ref={orderHeading} tabIndex={-1}>{statusLabel[current.status]}</h2>
-        <p className={styles.orderReference}>Plano {getPlan(current.planId)?.name} · Pedido {current.id}</p>
+        <p className={styles.orderReference}>{current.planId ? "Plano " : ""}{orderLabel(current)} · {money(current.amountCents / 100)} · Pedido {current.id}</p>
         {current.error ? <p role="alert">{current.error}</p> : null}
         {current.pixCode && current.status === "pending" ? <>
           <label>PIX Copia e Cola<textarea ref={pixField} readOnly value={current.pixCode} rows={3} /></label>
@@ -215,10 +270,10 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
         {unresolved(current) ? <button type="button" className="btn btn-ghost" disabled={refreshingId !== null || pending} onClick={() => { void check(current); }}>
           <RotateCcw size={16} aria-hidden="true" />{refreshingId ? "Conferindo…" : current.status === "pending" ? "Já paguei · conferir pagamento" : "Conferir este pedido"}
         </button> : null}
-        {current.status === "failed" ? <><p className={styles.muted}>O provedor confirmou que este pagamento não foi concluído. Você pode escolher um plano e iniciar outro pedido.</p><button type="button" className="btn btn-accent" disabled={pending || refreshingId !== null} onClick={newOrder}>Escolher outro plano / novo pedido</button></> : null}
-        {current.status === "paid" ? <><p className={styles.muted}>Pagamento confirmado. Seus créditos e acessos são atualizados após a confirmação.</p><Link href="/app/influencers" className="btn btn-accent">Criar meu influencer</Link></> : null}
-        {current.status === "refunded" ? <p className={styles.muted}>Este pagamento foi estornado. Os créditos e acessos vinculados ao pedido foram revistos.</p> : null}
-        {current.status === "paid" || current.status === "refunded" ? <button type="button" className="btn btn-ghost" disabled={pending || refreshingId !== null} onClick={newOrder}>Voltar aos planos</button> : null}
+        {current.status === "failed" ? <><p className={styles.muted}>O provedor confirmou que este pagamento não foi concluído. Você pode {creditMode ? "escolher um pacote" : "escolher um plano"} e iniciar outro pedido.</p><button type="button" className="btn btn-accent" disabled={pending || refreshingId !== null} onClick={newOrder}>{creditMode ? "Comprar mais créditos" : "Escolher outro plano / novo pedido"}</button></> : null}
+        {current.status === "paid" ? <><p className={styles.muted}>{creditMode ? "Pagamento confirmado. Os créditos desta compra foram adicionados ao seu saldo, sem alterar seu plano." : "Pagamento confirmado. Seus créditos e acessos são atualizados após a confirmação."}</p><Link href="/app/influencers" className="btn btn-accent">Criar meu influencer</Link></> : null}
+        {current.status === "refunded" ? <p className={styles.muted}>{creditMode ? "Este pagamento foi estornado e os créditos desta compra foram revistos. Seu plano permanece o mesmo." : "Este pagamento foi estornado. Os créditos e acessos vinculados ao pedido foram revistos."}</p> : null}
+        {current.status === "paid" || current.status === "refunded" ? <button type="button" className="btn btn-ghost" disabled={pending || refreshingId !== null} onClick={newOrder}>{creditMode ? "Comprar mais créditos" : "Voltar aos planos"}</button> : null}
       </div>}
       <p role="status" className="sr-only">{pending ? "Preparando sua solicitação de pagamento." : refreshingId ? "Conferindo pagamento." : ""}</p>
       {error ? <p role="alert" className={styles.billingError}>{error}</p> : null}
@@ -226,8 +281,8 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
     <section className={styles.panel}>
       <h2>Meus pedidos</h2>
       {!history.length ? <p className={styles.muted}>Seus pagamentos aparecerão aqui.</p> : <div className={styles.tableScroll}><table>
-        <thead><tr><th>Plano</th><th>Valor</th><th>Status</th><th>Data</th><th><span className="sr-only">Ações</span></th></tr></thead>
-        <tbody>{history.map(order => <tr key={order.id}><td>{getPlan(order.planId)?.name}</td><td>{money(order.amountCents / 100)}</td><td>{statusLabel[order.status]}</td><td>{displayDate(order.createdAt)}</td><td>
+        <thead><tr><th>{creditMode ? "Créditos" : "Plano"}</th><th>Valor</th><th>Status</th><th>Data</th><th><span className="sr-only">Ações</span></th></tr></thead>
+        <tbody>{history.map(order => <tr key={order.id}><td>{orderLabel(order)}</td><td>{money(order.amountCents / 100)}</td><td>{statusLabel[order.status]}</td><td>{displayDate(order.createdAt)}</td><td>
           {unresolved(order) ? <button type="button" className="btn btn-ghost" disabled={refreshingId !== null || pending || uncertain} onClick={() => { void check(order); }}>{refreshingId === order.id ? "Conferindo…" : "Consultar"}</button> : <button type="button" className="btn btn-ghost" disabled={refreshingId !== null || pending || uncertain} onClick={() => { setSelectedOrderId(order.id); setError(null); setCopied(false); requestAnimationFrame(() => orderHeading.current?.focus()); }}>Ver pedido</button>}
         </td></tr>)}</tbody>
       </table></div>}

@@ -21,7 +21,7 @@ export const EDIT_RATES = { "480p": 0.318, "720p": 0.681, "1080p": 1.632 } as co
 export type EditSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset"; id: string } | { kind: "upload"; token: string };
 export type EditQuote = {
   token: string; name: string; sourceUrl: string; metadata: VideoMetadata;
-  resolution: EditResolution; estimatedUsd: number; expiresAt: number;
+  resolution: EditResolution; estimatedUsd: number; creditCost: number; expiresAt: number;
   engine?: EditEngine; costDetail?: string; segmentCount?: number;
 };
 export function estimateProviderEdit(engine: EditEngine, media: VideoMetadata, resolution: EditResolution, durations: number[] = [media.duration]): { estimatedUsd: number; costDetail: string } {

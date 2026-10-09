@@ -6,6 +6,7 @@ export type EditReceipt = {
   id: string; userId: string; influencerId: string; imageUrl: string; sourceUrl: string;
   name: string; target: string; metadata: VideoMetadata; resolution: EditResolution;
   estimatedUsd: number; expiresAt: number;
+  creditCost?: number; creditPricingVersion?: string;
   engine?: EditEngine; seed?: number;
   assembly?: "overlap-v1";
   segments?: Array<{ sourceUrl: string; start: number; source: VideoMetadata }>;

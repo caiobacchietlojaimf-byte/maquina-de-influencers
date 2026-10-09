@@ -9,11 +9,11 @@ import { pollInfluencersAction } from "@/app/actions/influencers";
 import { generateCharacterEditAction } from "@/app/actions/character-edit";
 import { prepareEditClient, PrepareEditClientError } from "@/lib/prepare-edit-client";
 import { exportEditClient, ExportEditClientError, type ExportEditPackage } from "@/lib/export-edit-client";
-import { EDIT_PRICE_DATE, EDIT_ENGINES, type EditEngine, type EditQuote, type EditResolution, type EditTargetMode, type EditSource } from "@/lib/character-edit";
+import { EDIT_ENGINES, type EditEngine, type EditQuote, type EditResolution, type EditTargetMode, type EditSource } from "@/lib/character-edit";
 import { verifyVideoReferenceAction } from "@/app/actions/video-reference";
 import { MAX_REFERENCE_BYTES, type StudioReference } from "@/lib/video-reference";
 import { MOTION_PRESETS, type MotionPreset } from "@/data/motion-presets";
-import { VIDEO_COST } from "@/lib/costs";
+import { creditsToUsd } from "@/lib/credit-pricing";
 import type { Influencer } from "@/lib/db";
 import { MotionPresetCard } from "./motion-preset-card";
 import styles from "./video-studio.module.css";
@@ -96,7 +96,7 @@ export function VideoStudio({
   const ready = useMemo(() => influencers.filter((inf) => inf.status === "completed" && inf.imageUrl), [influencers]);
   const influencer = ready.find((inf) => inf.id === influencerId);
   const preset = MOTION_PRESETS.find((item) => item.id === presetId);
-  const enoughCredits = credits >= VIDEO_COST;
+  const enoughCredits = !quote || credits >= quote.creditCost;
   const list = useMemo(() => {
     const search = query.trim().toLocaleLowerCase("pt-BR");
     return MOTION_PRESETS.filter((item) =>
@@ -332,7 +332,7 @@ export function VideoStudio({
 
           <div className={`builder-footer ${styles.footer}`}>
             <p className={styles.creditBalance}>Saldo: <b>{credits.toLocaleString("pt-BR")} créditos</b></p>
-            {!enoughCredits ? <p className={styles.error} role="status">Você precisa de {VIDEO_COST} créditos para gerar um vídeo.</p> : null}
+            {!enoughCredits && quote ? <p className={styles.error} role="status">Você precisa de {quote.creditCost} créditos. <Link href="/app/creditos">Comprar créditos</Link></p> : null}
             {error ? <p className="auth-error" role="alert">{error}</p> : null}
             {preparing ? <div className={styles.preparation}>
               <p role="status" aria-live="polite">{prepareMessage}</p>
@@ -350,15 +350,14 @@ export function VideoStudio({
                 <span>Original: {quote.metadata.duration.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}s · {quote.metadata.width} × {quote.metadata.height}</span>
                 <span>{EDIT_ENGINES[quote.engine ?? "higgsfield"].label}{quote.resolution !== "auto" ? ` · ${quote.resolution}` : ""}</span>
                 {quote.segmentCount && quote.segmentCount > 1 ? <span>{quote.segmentCount} trechos serão editados e unidos em um único vídeo, com o áudio original completo.</span> : null}
-                <strong>Estimativa da edição: US$ {quote.estimatedUsd.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
-                <span>{quote.costDetail}</span>
-                <small>Tabela de {EDIT_PRICE_DATE}; cobrança final conforme sua conta no provedor. Nenhuma geração foi cobrada nesta preparação. <a href={engine === "higgsfield" ? "https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground" : `https://fal.ai/models/${engineConfig.model}`} target="_blank" rel="noreferrer">Ver tabela oficial</a>.</small>
-                <label className={styles.accept}><input type="checkbox" checked={acceptedEstimate} disabled={busy} onChange={e => setAcceptedEstimate(e.target.checked)} />Li a estimativa em dólares e quero gerar este vídeo.</label>
+                <strong>{quote.creditCost.toLocaleString("pt-BR")} créditos · US$ {creditsToUsd(quote.creditCost).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+                <small>10 créditos = US$ 1. Valor arredondado para o próximo crédito inteiro.</small>
+                <label className={styles.accept}><input type="checkbox" checked={acceptedEstimate} disabled={busy} onChange={e => setAcceptedEstimate(e.target.checked)} />Autorizo usar {quote.creditCost.toLocaleString("pt-BR")} créditos para gerar este vídeo.</label>
               </div>
             ) : null}
             <div className={styles.studioActions}>
               <button type="button" className="generate-btn" disabled={busy || !influencer || !referenceReady || !targetReady || !enoughCredits || (Boolean(quote) && !acceptedEstimate)} onClick={quote ? generate : prepare}>
-                {submitting || uploading || preparing ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Preparando vídeo…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Confirmar geração" : "Gerar no site"}{quote && <span className="cost">✦ {VIDEO_COST}</span>}</>}
+                {submitting || uploading || preparing ? <><span className="spinner" />{uploading ? "Enviando vídeo…" : preparing ? "Preparando vídeo…" : "Enviando edição…"}</> : <><Sparkles size={16} />{quote ? "Confirmar geração" : "Gerar no site"}{quote && <span className="cost">✦ {quote.creditCost}</span>}</>}
               </button>
               <div className={styles.exportAction}>
                 {exportedPackage ? <a className="btn btn-ghost" href={exportedPackage.url} download={exportedPackage.filename} target="_blank" rel="noopener noreferrer"><Download size={16} />Baixar pacote ZIP</a> : <button type="button" className="btn btn-ghost" disabled={busy || !influencer || !referenceReady || !targetReady} onClick={() => void exportPackage()}>

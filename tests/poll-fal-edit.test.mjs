@@ -50,7 +50,7 @@ function pollFixture(item = video(), overrides = {}) {
       updateVideoFromPoll: async (snapshot, patch) => { const current = records.get(snapshot.id); if (current.status !== snapshot.status || current.finalizationStartedAt !== snapshot.finalizationStartedAt) return false; updates.push([snapshot.id, patch]); Object.assign(current, patch); return true; },
       adjustCredits: async (...args) => charges.push(args),
     },
-    "@/lib/prompt": {}, "@/lib/costs": { VIDEO_COST: 1000 },
+    "@/lib/prompt": {}, "@/lib/costs": load("src/lib/costs.ts"), "@/lib/credit-pricing": load("src/lib/credit-pricing.ts"),
     "@/lib/platform": {
       getStatus: async (...args) => { higgsfieldReads.push(args); throw new Error("Unexpected Higgsfield request"); },
       submitGeneration: async (...args) => { submissions.push(args); throw new Error("Unexpected paid request"); },

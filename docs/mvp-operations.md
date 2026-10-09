@@ -8,11 +8,21 @@ O código inclui criação de influencers, edição de vídeos, reconciliação 
 
 | Plano | Valor / 30 dias | Créditos | Conteúdo |
 |---|---:|---:|---|
-| Starter | R$ 97 | 1.500 | Estúdio e exportação |
-| Pro | R$ 197 | 3.500 | Starter + guias escritos |
-| Max | R$ 397 | 7.500 | Pro + área futura Criação Ilimitada |
+| Starter | R$ 97 | 100 | Estúdio e exportação |
+| Pro | R$ 197 | 250 | Starter + guias escritos |
+| Max | R$ 397 | 500 | Pro + área futura Criação Ilimitada |
 
 Catálogo único: `src/lib/plans.ts`. PIX único; renovação manual, sem assinatura automática. Saldo não expira; acesso aos módulos dura 30 dias por período adquirido. Aulas gravadas de GPU/ComfyUI ainda não foram entregues e não são apresentadas como disponíveis. GPU e APIs externas têm custos próprios. Revisar margens por modelo/duração antes de definir preço final.
+
+## Créditos e recargas
+
+Desde 09/10/2026, **10 créditos = US$1**. Os créditos incluídos acima valem para novos pedidos. Pedidos, concessões e saldos anteriores mantêm seus valores originais. Personagem custa 1 crédito; efeito fixo de 5 segundos custa 7; edição cobra a estimativa assinada do modelo convertida a créditos inteiros, arredondados para cima. O valor aplicado e a versão da precificação ficam no vídeo. Preparar/exportar não cobra geração.
+
+`/app/creditos` oferece 50/100/250/500 créditos (US$5/10/25/50). A compra avulsa não renova plano nem concede módulos. O servidor consulta a PTAX venda mais recente do Banco Central nos últimos sete dias, assina uma cotação por usuário válida por 15 minutos e congela o valor em centavos de BRL no pedido. Não há taxa de câmbio fictícia como fallback: se a fonte falhar, é preciso atualizar a cotação. Valores/créditos enviados pelo navegador não determinam o pedido.
+
+Migração `20261009165543_credit_topups.sql` aplicada no banco do projeto. `mi_credit_topups_ready` bloqueia a emissão antes de o banco suportar recargas. O ledger `creditPurchases` é separado de `planGrants`; liquidação e estorno travam pedido/usuário e não repetem saldo. Validado no banco com fixtures em transação e rollback; usuários e soma dos saldos mantidos. Nenhuma compra ou geração paga foi feita. Advisors não apontaram erros/avisos de segurança; os avisos informativos de RLS sem políticas são intencionais em tabelas restritas ao servidor ([referência](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy)). A Sync Pay ainda precisa das credenciais e da validação real descritas abaixo.
+
+Fontes da conversão: [PTAX Banco Central](https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/documentacao). Preços de geração verificados em [AI Influencer](https://open.higgsfield.ai/models/higgsfield/ai-influencer/playground), [Kling O3 Pro](https://fal.ai/models/fal-ai/kling-video/o3/pro/video-to-video/edit), [Kling O3 Standard](https://fal.ai/models/fal-ai/kling-video/o3/standard/video-to-video/edit), [Wan Replace](https://fal.ai/models/fal-ai/wan/v2.2-14b/animate/replace) e [Genjutsu](https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground). Revisar a tabela quando o provedor alterar preços.
 
 ## Administração
 

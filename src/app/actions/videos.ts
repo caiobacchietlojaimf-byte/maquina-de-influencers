@@ -21,6 +21,7 @@ import { buildViralPrompt } from "@/lib/prompt";
 import { getStatus, isConfigured, submitGeneration, PlatformError, TERMINAL_STATUSES } from "@/lib/platform";
 
 import { VIDEO_COST } from "@/lib/costs";
+import { CREDIT_PRICING_VERSION } from "@/lib/credit-pricing";
 import { finalizeCharacterEdit } from "@/lib/finalize-edit";
 import { reconcileFalVideo } from "@/lib/reconcile-fal-video";
 
@@ -79,6 +80,8 @@ export async function createViralVideoAction(input: {
     prompt,
     status: "queued",
     thumbnailUrl: effect.thumbnail,
+    creditCost: VIDEO_COST,
+    creditPricingVersion: CREDIT_PRICING_VERSION,
   };
   if (!await createVideoOnce(video)) return { id };
   const chargeError = await charge(user.id, user.credits);

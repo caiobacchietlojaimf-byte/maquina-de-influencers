@@ -114,6 +114,10 @@ export function AppSidebar({
       <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
         <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong>{credits.toLocaleString("pt-BR")}</strong></div>
         <div className="sidebar-credits-bar" data-empty={credits <= 0} aria-hidden="true" />
+        <Link href="/app/creditos" className="sidebar-buy-credits" aria-label="Comprar créditos" title="Comprar créditos" aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
+          onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
+          <CreditCard size={16} aria-hidden="true" /><span data-hide={collapsed}>Comprar créditos</span>
+        </Link>
       </div>
 
       <nav aria-label="Menu principal">

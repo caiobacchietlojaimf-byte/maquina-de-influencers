@@ -3,11 +3,11 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { serverDb } from "./server-db";
-import { grantPlanCredits } from "./db";
+import { grantPlanCredits, grantPurchasedCredits } from "./db";
 import type { PlanId } from "./plans";
 
 export type OrderStatus = "creating" | "pending" | "paid" | "failed" | "refunded" | "review";
-export type Order = { id: string; userId: string; planId: PlanId; amountCents: number; credits: number; status: OrderStatus; createdAt: number; updatedAt: number; referenceId?: string; pixCode?: string; paidAt?: number; error?: string };
+export type Order = { id: string; userId: string; kind?: "plan" | "credits"; planId?: PlanId; packId?: string; usdAmountCents?: number; usdBrlRate?: number; exchangeRateDate?: string; amountCents: number; credits: number; status: OrderStatus; createdAt: number; updatedAt: number; referenceId?: string; pixCode?: string; paidAt?: number; error?: string };
 export type SystemSettings = { registrationsOpen: boolean; checkoutEnabled: boolean; supportEmail: string; announcement: string };
 export type AuditEntry = { id: string; actorId: string; action: string; targetId?: string; createdAt: number; details: Record<string, string | number | boolean> };
 const defaults: SystemSettings = { registrationsOpen: true, checkoutEnabled: true, supportEmail: "pulsecoding2026@gmail.com", announcement: "" };
@@ -17,7 +17,30 @@ function local(): Local { return existsSync(file()) ? JSON.parse(readFileSync(fi
 function save(data: Local) { mkdirSync(path.dirname(file()), { recursive: true }); const tmp = file() + "." + randomUUID() + ".tmp"; writeFileSync(tmp, JSON.stringify(data)); renameSync(tmp, file()); }
 function dbError() { throw new Error("Não foi possível acessar os dados de pagamento. Tente novamente."); }
 let localSettlement: Promise<void> = Promise.resolve();
+/** Fail closed before issuing a PIX if the database cannot settle top-ups. */
+export async function creditTopupsReady(): Promise<boolean> {
+  try {
+    const db = serverDb();
+    if (!db) return true;
+    const { data, error } = await db.rpc("mi_credit_topups_ready");
+    return !error && data === true;
+  } catch { return false; }
+}
+function validateOrder(order: Order) {
+  const positiveInt = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 2147483647;
+  if (!positiveInt(order.amountCents) || !positiveInt(order.credits)) throw new Error("Valor do pedido inválido");
+  if (order.kind === "credits") {
+    if (order.planId !== undefined || typeof order.packId !== "string" || !/^[a-z0-9-]{1,64}$/.test(order.packId)
+      || !positiveInt(order.usdAmountCents) || order.usdAmountCents !== order.credits * 10
+      || typeof order.usdBrlRate !== "number" || !Number.isFinite(order.usdBrlRate) || order.usdBrlRate <= 0 || order.usdBrlRate > 100
+      || order.amountCents !== Math.round(order.usdAmountCents * order.usdBrlRate)
+      || typeof order.exchangeRateDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(order.exchangeRateDate)) throw new Error("Cotação do pedido de créditos inválida");
+  } else if (order.kind !== undefined && order.kind !== "plan" || !["starter", "pro", "max"].includes(order.planId ?? "")) {
+    throw new Error("Plano do pedido inválido");
+  }
+}
 export async function createOrderOnce(order: Order): Promise<{ order: Order; created: boolean }> {
+  validateOrder(order);
   const db = serverDb();
   if (!db) { const data = local(); const old = data.orders.find(o => o.id === order.id); if (old) return { order: old, created: false }; data.orders.push(order); save(data); return { order, created: true }; }
   const result = await db.from("mi_orders").insert({ id: order.id, user_id: order.userId, status: order.status, created_at: order.createdAt, data: order });
@@ -58,9 +81,14 @@ export async function settleOrder(reference: string, status: "paid" | "pending" 
   await previous;
   try {
   const order = await findOrderByReference(reference); if (!order) return null;
-  if (order.amountCents !== amountCents) throw new Error("Valor do pagamento não confere");
+  validateOrder(order);
+  if (!Number.isInteger(amountCents) || order.amountCents !== amountCents) throw new Error("Valor do pagamento não confere");
+  if (!["paid", "pending", "failed", "refunded"].includes(status)) throw new Error("Status de pagamento inválido");
   if (order.status === "refunded" || order.status === "paid" && (status === "pending" || status === "failed")) return order;
-  if (status === "paid" || status === "refunded") await grantPlanCredits(order.userId, order.id, order.planId, order.credits, now, status === "refunded");
+  if (status === "paid" || status === "refunded") {
+    if (order.kind === "credits") await grantPurchasedCredits(order.userId, order.id, order.credits, now, status === "refunded");
+    else await grantPlanCredits(order.userId, order.id, order.planId!, order.credits, now, status === "refunded");
+  }
   const data = local(); const index = data.orders.findIndex(o => o.id === order.id); const next = { ...data.orders[index], status, updatedAt: now, ...(status === "paid" && !order.paidAt ? { paidAt: now } : {}) }; data.orders[index] = next; save(data); return next;
   } finally { release(); }
 }

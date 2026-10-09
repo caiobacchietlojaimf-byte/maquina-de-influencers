@@ -23,6 +23,7 @@ export type User = {
   credits: number;
   creditRevision?: string;
   planGrants?: Record<string, PlanGrant>;
+  creditPurchases?: Record<string, { credits: number; grantedAt: number; revoked?: boolean }>;
   suspendedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   createdAt: number;
@@ -58,6 +59,8 @@ export type Influencer = {
 export type VideoKind = "motion" | "viral" | "custom";
 
 export type Video = {
+  creditCost?: number;
+  creditPricingVersion?: string;
   id: string;
   userId: string;
   influencerId?: string;
@@ -325,6 +328,25 @@ export async function grantPlanCredits(userId: string, orderId: string, planId: 
       user.credits += credits;
     }
     user.planGrants = grants;
+  });
+}
+
+/** Purchased credits never create or renew a plan entitlement. */
+export async function grantPurchasedCredits(userId: string, orderId: string, credits: number, now: number, revoke = false) {
+  if (!Number.isSafeInteger(credits) || credits <= 0) throw new Error("Valor de créditos inválido");
+  return mutateCredits(userId, user => {
+    const purchases = { ...user.creditPurchases };
+    const prior = purchases[orderId];
+    if (revoke) {
+      if (prior && !prior.revoked) {
+        user.credits -= prior.credits;
+        purchases[orderId] = { ...prior, revoked: true };
+      }
+    } else if (!prior) {
+      purchases[orderId] = { credits, grantedAt: now };
+      user.credits += credits;
+    }
+    user.creditPurchases = purchases;
   });
 }
 
