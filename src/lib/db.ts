@@ -28,6 +28,8 @@ export type User = {
   creditRevision?: string;
   planGrants?: Record<string, PlanGrant>;
   creditPurchases?: Record<string, { credits: number; grantedAt: number; revoked?: boolean }>;
+  /** Manual balance added by an administrator, keyed by the form submission. */
+  adminCreditGrants?: Record<string, { credits: number; grantedAt: number; adminId: string }>;
   suspendedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   captionRequests?: number[];
@@ -411,6 +413,16 @@ export async function listAdminUsers(): Promise<User[]> {
   const { data, error } = await sb.from("mi_users").select("data").order("created_at", { ascending: false }).limit(500);
   if (error) fail("listar usuários", error);
   return (data ?? []).map(row => rowData<User>(row));
+}
+
+/** The grant key makes a repeated submission (double click, retry) a no-op. */
+export async function grantAdminCredits(userId: string, grantId: string, credits: number, adminId: string): Promise<{ applied: boolean; balance: number }> {
+  return mutateCredits(userId, user => {
+    if (user.adminCreditGrants?.[grantId]) return { applied: false, balance: user.credits };
+    user.credits += credits;
+    user.adminCreditGrants = { ...user.adminCreditGrants, [grantId]: { credits, grantedAt: Date.now(), adminId } };
+    return { applied: true, balance: user.credits };
+  });
 }
 
 export async function setUserSuspended(userId: string, suspended: boolean) {

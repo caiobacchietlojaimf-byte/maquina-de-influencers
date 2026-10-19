@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin, isAdmin } from "@/lib/admin";
 import { adminAudit, getOrder, saveSystemSettings } from "@/lib/commerce";
-import { findUserById, setUserSuspended } from "@/lib/db";
+import { findUserById, grantAdminCredits, setUserSuspended } from "@/lib/db";
 import { isUuid, reconcilePayment } from "@/lib/syncpay";
 export type AdminState = { error?: string; success?: string } | null;
 export async function saveSettingsAction(_previous: AdminState, form: FormData): Promise<AdminState> {
@@ -24,4 +24,19 @@ export async function reconcileOrderAction(form: FormData) {
   const order = await getOrder(id); if (!order?.referenceId) return;
   await adminAudit(admin.id, "order.reconcile", id);
   await reconcilePayment(order.referenceId); revalidatePath("/app/admin");
+}
+const MAX_ADMIN_CREDIT_GRANT = 1_000_000;
+export async function addCreditsAction(_previous: AdminState, form: FormData): Promise<AdminState> {
+  const admin = await requireAdmin();
+  const id = String(form.get("userId") ?? ""), grantId = String(form.get("grantId") ?? "");
+  const credits = Number(String(form.get("credits") ?? "").replace(/./g, "").trim());
+  if (!isUuid(id) || !isUuid(grantId)) return { error: "Pedido inválido. Atualize a página." };
+  if (!Number.isSafeInteger(credits) || credits < 1 || credits > MAX_ADMIN_CREDIT_GRANT) return { error: `Informe um número inteiro de 1 a ${MAX_ADMIN_CREDIT_GRANT.toLocaleString("pt-BR")}.` };
+  const user = await findUserById(id); if (!user) return { error: "Usuário não encontrado." };
+  try {
+    const result = await grantAdminCredits(id, grantId, credits, admin.id);
+    if (result.applied) await adminAudit(admin.id, "user.credits.add", id, { credits, balance: result.balance });
+    revalidatePath("/app/admin");
+    return { success: result.applied ? `+${credits.toLocaleString("pt-BR")} créditos. Saldo: ${result.balance.toLocaleString("pt-BR")}.` : "Esses créditos já tinham sido adicionados." };
+  } catch { return { error: "Não foi possível adicionar os créditos." }; }
 }
