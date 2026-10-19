@@ -29,7 +29,7 @@ const MAX_ADMIN_CREDIT_GRANT = 1_000_000;
 export async function addCreditsAction(_previous: AdminState, form: FormData): Promise<AdminState> {
   const admin = await requireAdmin();
   const id = String(form.get("userId") ?? ""), grantId = String(form.get("grantId") ?? "");
-  const credits = Number(String(form.get("credits") ?? "").replace(/./g, "").trim());
+  const credits = Number(String(form.get("credits") ?? "").trim());
   if (!isUuid(id) || !isUuid(grantId)) return { error: "Pedido inválido. Atualize a página." };
   if (!Number.isSafeInteger(credits) || credits < 1 || credits > MAX_ADMIN_CREDIT_GRANT) return { error: `Informe um número inteiro de 1 a ${MAX_ADMIN_CREDIT_GRANT.toLocaleString("pt-BR")}.` };
   const user = await findUserById(id); if (!user) return { error: "Usuário não encontrado." };
