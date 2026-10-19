@@ -32,11 +32,11 @@ export async function reconcileFalVideo(video: Video, force = false): Promise<vo
     const polling: Video["polling"] = { checkedAt: Date.now(), failures: 0, providerStatus };
     const edit = { ...originalEdit, segments: parts.map((part, index) => ({ ...part, ...(statuses[index].videoUrl ? { resultUrl: statuses[index].videoUrl } : {}) })) };
     if (failed) {
-      await updateVideoFromPoll(video, { edit, polling, status: "review", error: `A fal.ai não concluiu a edição: ${failed.error ?? "falha no processamento"}. Nenhuma nova geração foi solicitada.` });
+      await updateVideoFromPoll(video, { edit, polling, status: "review", error: `A IA não concluiu a edição: ${failed.error ?? "falha no processamento"}. Nenhuma nova geração foi solicitada.` });
       return;
     }
     if (statuses.some(item => item.status !== "completed" || !item.videoUrl)) {
-      await updateVideoFromPoll(video, { edit, polling, error: Date.now() - video.createdAt > 1800_000 ? "A fal.ai ainda está processando este pedido. O vídeo será conferido assim que o provedor concluir; nenhuma nova geração foi enviada." : undefined });
+      await updateVideoFromPoll(video, { edit, polling, error: Date.now() - video.createdAt > 1800_000 ? "A IA ainda está processando este pedido. O vídeo será conferido assim que o provedor concluir; nenhuma nova geração foi enviada." : undefined });
       return;
     }
     const urls = statuses.map(item => item.videoUrl!);
@@ -57,8 +57,8 @@ export async function reconcileFalVideo(video: Video, force = false): Promise<vo
     const failures = (video.polling?.failures ?? 0) + 1;
     const code = error instanceof FalError ? error.status : undefined;
     // A failed status lookup is not a failed generation. Keep the request and a visible explanation.
-    const message = code === 401 || code === 403 ? "A consulta à fal.ai foi recusada. Confira a configuração da API; o pedido existente foi preservado."
-      : code === 404 || code === 410 ? "A fal.ai não localizou o resultado deste pedido. Confira o identificador no provedor; nenhuma nova geração foi solicitada."
+    const message = code === 401 || code === 403 ? "A consulta à IA foi recusada. Confira a configuração da API; o pedido existente foi preservado."
+      : code === 404 || code === 410 ? "A IA não localizou o resultado deste pedido. Confira o identificador no provedor; nenhuma nova geração foi solicitada."
       : "Não foi possível conferir a geração agora. A consulta será repetida com o mesmo pedido, sem nova geração.";
     await updateVideoFromPoll(video, { polling: { checkedAt: Date.now(), failures, error: message, nextCheckAt: Date.now() + Math.min(60_000, failures * 15_000) }, error: message });
   }

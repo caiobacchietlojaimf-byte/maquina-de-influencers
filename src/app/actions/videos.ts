@@ -183,7 +183,7 @@ export async function cancelVideoAction(id: string): Promise<{ refunded: boolean
   await Promise.all(parts.map(part => cancelFalGeneration(video.edit!.model, part.requestId!).catch(() => undefined)));
   const cancelled = await updateVideoFromPoll(video, {
     status: "review",
-    error: neverStarted ? "Geração cancelada por você antes de começar. Os créditos foram devolvidos." : "Geração cancelada por você. A fal.ai já tinha começado a processar, então pode cobrar o trecho iniciado.",
+    error: neverStarted ? "Geração cancelada por você antes de começar. Os créditos foram devolvidos." : "Geração cancelada por você. A IA já tinha começado a processar, então pode cobrar o trecho iniciado.",
     polling: { checkedAt: Date.now(), failures: 0, providerStatus: "failed" },
     edit: { ...video.edit, cancelledAt: Date.now() },
   });

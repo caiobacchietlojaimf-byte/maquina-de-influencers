@@ -3,9 +3,9 @@ import type { VideoMetadata } from "./video-reference";
 export const CHARACTER_EDIT_MODEL = "higgsfield/genjutsu/object-swap/v1.0";
 export type EditEngine = "fal-kling-pro" | "fal-kling-standard" | "fal-wan" | "higgsfield";
 export const EDIT_ENGINES = {
-  "fal-kling-pro": { label: "fal.ai · Kling O3 Pro", model: "fal-ai/kling-video/o3/pro/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução, com referência do personagem. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
-  "fal-kling-standard": { label: "fal.ai · Kling O3 Standard", model: "fal-ai/kling-video/o3/standard/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução com menor custo que Pro. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
-  "fal-wan": { label: "fal.ai · Wan 2.2 Replace", model: "fal-ai/wan/v2.2-14b/animate/replace", provider: "fal", resolutions: ["480p", "720p"], note: "Esta integração libera originais 16:9 e 9:16 e confere a proporção ao finalizar. O Wan pode recortar a cena e não escolhe a pessoa por texto. Para vídeos 4:3 ou quadrados, escolha Kling." },
+  "fal-kling-pro": { label: "Kling O3 Pro", model: "fal-ai/kling-video/o3/pro/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução, com referência do personagem. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
+  "fal-kling-standard": { label: "Kling O3 Standard", model: "fal-ai/kling-video/o3/standard/video-to-video/edit", provider: "fal", resolutions: ["auto"], note: "Edição por instrução com menor custo que Pro. Vídeos com mais de 15s de imagem usam trechos com uma passagem compartilhada para melhorar a continuidade. Ainda pode haver variação visual." },
+  "fal-wan": { label: "Wan 2.2 Replace", model: "fal-ai/wan/v2.2-14b/animate/replace", provider: "fal", resolutions: ["480p", "720p"], note: "Esta integração libera originais 16:9 e 9:16 e confere a proporção ao finalizar. O Wan pode recortar a cena e não escolhe a pessoa por texto. Para vídeos 4:3 ou quadrados, escolha Kling." },
   higgsfield: { label: "Higgsfield · Genjutsu Object Swap", model: CHARACTER_EDIT_MODEL, provider: "higgsfield", resolutions: ["480p", "720p", "1080p"], note: "Troca localizada por instrução. Usa o saldo da Higgsfield." },
 } as const;
 export function isEditEngine(value: unknown): value is EditEngine { return typeof value === "string" && Object.hasOwn(EDIT_ENGINES, value); }
@@ -46,7 +46,7 @@ export function estimateProviderEdit(engine: EditEngine, media: VideoMetadata, r
   }
   const mills = engine === "fal-kling-pro" ? 168 : 126;
   const billable = durations.reduce((n, d) => n + Math.ceil(d), 0);
-  return { estimatedUsd: Math.ceil(billable * mills / 10) / 100, costDetail: `Até ${billable}s estimados em ${durations.length} trecho(s) × US$ ${(mills / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 3 })}/s. Estimativa arredondada por trecho; cobrança final da fal.ai.` };
+  return { estimatedUsd: Math.ceil(billable * mills / 10) / 100, costDetail: `Até ${billable}s estimados em ${durations.length} trecho(s) × US$ ${(mills / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 3 })}/s. Estimativa arredondada por trecho; valor final confirmado pelo provedor.` };
 }
 export function validateProviderEdit(engine: EditEngine, media: VideoMetadata, resolution: EditResolution, targetMode: EditTargetMode): string | undefined {
   if (!(EDIT_ENGINES[engine].resolutions as readonly string[]).includes(resolution)) return "A resolução não é compatível com o modelo escolhido.";

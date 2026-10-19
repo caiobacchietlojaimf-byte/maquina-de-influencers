@@ -16,7 +16,7 @@ import {
   publicImageUrl, submitInfluencerImageEdit, validateInfluencerVariantInput, type CreateInfluencerVariantInput,
 } from "@/lib/influencer-generation";
 import { INFLUENCER_EDIT_COST, INFLUENCER_PROMPT_COST, SHEET_COST } from "@/lib/costs";
-import { failInfluencerGeneration as failGeneration, finalizeInfluencers } from "@/lib/influencer-finalization";
+import { failInfluencerGeneration as failGeneration, finalizeInfluencers, persistInfluencerImages } from "@/lib/influencer-finalization";
 
 export type { CreateInfluencerInput, CreateInfluencerVariantInput } from "@/lib/influencer-generation";
 type CreateResult = { id: string } | { error: string; retryable?: boolean };
@@ -127,7 +127,8 @@ export async function createInfluencerVariantAction(input: CreateInfluencerVaria
 export async function pollInfluencersAction(): Promise<Influencer[]> {
   const user = await requireUser();
   const records = await listInfluencers(user.id);
-  if (await finalizeInfluencers(records)) revalidatePath("/app", "layout");
+  const finalized = await finalizeInfluencers(records);
+  if (await persistInfluencerImages(records) || finalized) revalidatePath("/app", "layout");
   return listInfluencers(user.id);
 }
 

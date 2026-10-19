@@ -32,13 +32,13 @@ export function isFalConfigured(): boolean {
 }
 
 function credentials(): string {
-  if (!isFalConfigured()) throw new FalError(500, "A fal.ai ainda não foi configurada no servidor.");
+  if (!isFalConfigured()) throw new FalError(500, "A IA ainda não foi configurada no servidor.");
   return process.env.FAL_KEY!.trim();
 }
 
 function queueApp(model: string): string {
   const app = QUEUE_APPS.get(model);
-  if (!app) throw new FalError(400, "Modelo de edição da fal.ai inválido.");
+  if (!app) throw new FalError(400, "Modelo de edição da IA inválido.");
   return app;
 }
 
@@ -95,13 +95,13 @@ async function send(method: "POST" | "GET" | "PUT", path: string, input?: Record
   } catch {
     // A submission timeout can still have enqueued a paid job. Let the caller
     // retain that uncertainty; never automatically re-submit a POST.
-    throw new FalError(502, "Não foi possível confirmar a resposta da fal.ai. A solicitação não foi reenviada.");
+    throw new FalError(502, "Não foi possível confirmar a resposta da IA. A solicitação não foi reenviada.");
   }
   let payload: unknown;
   try { payload = body ? JSON.parse(body) : null; }
   catch { payload = body; }
   if (!response.ok) {
-    throw new FalError(response.status, messageFromBody(payload, `Falha na fal.ai (${response.status}).`));
+    throw new FalError(response.status, messageFromBody(payload, `Falha na IA (${response.status}).`));
   }
   return payload;
 }
@@ -125,7 +125,7 @@ export async function submitFalGeneration(model: string, input: Record<string, u
   const data = record(await send("POST", `${model}${webhookUrl ? `?fal_webhook=${encodeURIComponent(webhookUrl)}` : ""}`, input));
   const requestId = data.request_id;
   if (typeof requestId !== "string" || !REQUEST_ID.test(requestId) || redact(requestId) !== requestId) {
-    throw new FalError(502, "A fal.ai não retornou um identificador válido. A solicitação não foi reenviada.");
+    throw new FalError(502, "A IA não retornou um identificador válido. A solicitação não foi reenviada.");
   }
   return { requestId };
 }
@@ -152,9 +152,9 @@ export async function getFalGenerationStatus(model: string, requestId: string): 
   const data = record(await send("GET", `${path}/status`));
   if (data.status === "IN_QUEUE") return { status: "queued" };
   if (data.status === "IN_PROGRESS") return { status: "processing" };
-  if (data.status !== "COMPLETED") throw new FalError(502, "A fal.ai retornou um status desconhecido.");
+  if (data.status !== "COMPLETED") throw new FalError(502, "A IA retornou um status desconhecido.");
   if (data.error || data.error_type) {
-    return { status: "failed", error: messageFromBody(data, "A fal.ai não conseguiu concluir esta edição.") };
+    return { status: "failed", error: messageFromBody(data, "A IA não conseguiu concluir esta edição.") };
   }
 
   let result: Record<string, unknown>;
@@ -167,16 +167,16 @@ export async function getFalGenerationStatus(model: string, requestId: string): 
     }
     throw error;
   }
-  if (result.error) return { status: "failed", error: messageFromBody(result, "A fal.ai não conseguiu concluir esta edição.") };
+  if (result.error) return { status: "failed", error: messageFromBody(result, "A IA não conseguiu concluir esta edição.") };
   const videoUrl = record(result.video).url;
   if (typeof videoUrl !== "string" || redact(videoUrl) !== videoUrl) {
-    throw new FalError(502, "A fal.ai concluiu a solicitação sem retornar um vídeo válido.");
+    throw new FalError(502, "A IA concluiu a solicitação sem retornar um vídeo válido.");
   }
   try {
     const url = new URL(videoUrl);
     if (url.protocol !== "https:" || url.username || url.password) throw new Error("Invalid video URL");
   } catch {
-    throw new FalError(502, "A fal.ai retornou um endereço de vídeo inválido.");
+    throw new FalError(502, "A IA retornou um endereço de vídeo inválido.");
   }
   return { status: "completed", videoUrl };
 }

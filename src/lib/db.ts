@@ -62,6 +62,8 @@ export type Influencer = {
   /** Completed upstream output waiting for our durable storage, never a new generation. */
   pendingImageUrl?: string;
   completionCheckedAt?: number;
+  /** Last attempt to copy an expiring provider image into our storage. */
+  imageRepairAt?: number;
   error?: string;
   referenceUrl?: string;
   styleReferenceUrl?: string;

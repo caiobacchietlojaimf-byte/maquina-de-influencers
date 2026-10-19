@@ -143,6 +143,13 @@ export function InfluencerStudio({
     return () => { mounted.current = false; };
   }, []);
 
+  // Older influencers may still point at an expiring provider link; one poll
+  // lets the server copy it into storage (or recover it) before it breaks.
+  useEffect(() => {
+    if (influencers.some((item) => item.status === "completed" && item.imageUrl?.startsWith("https://") && !item.imageUrl.includes(".public.blob.vercel-storage.com"))) void refreshInfluencers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const refreshInfluencers = useCallback(() => {
     if (refreshRef.current) return refreshRef.current;
     setRefreshing(true);

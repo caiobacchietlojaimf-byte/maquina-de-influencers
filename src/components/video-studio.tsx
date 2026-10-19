@@ -109,6 +109,16 @@ export function VideoStudio({
     );
   }, [scope, query]);
 
+  // Older influencers may still point at an expiring provider link; one poll
+  // lets the server copy it into storage (or recover it) before it breaks.
+  useEffect(() => {
+    if (!influencers.some((item) => item.status === "completed" && item.imageUrl?.startsWith("https://") && !item.imageUrl.includes(".public.blob.vercel-storage.com"))) return;
+    let disposed = false;
+    void pollInfluencersAction().then((items) => { if (!disposed) setInfluencers(items); }).catch(() => undefined);
+    return () => { disposed = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (!hasPending) return;
     let disposed = false;

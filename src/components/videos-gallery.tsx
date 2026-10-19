@@ -57,7 +57,7 @@ export function VideosGallery({ initialVideos }: { initialVideos: Video[] }) {
   }, [hasPending]);
 
   async function cancel(video: Video) {
-    if (cancelling || !window.confirm("Cancelar esta geração? Se a fal.ai ainda não tiver começado, os créditos voltam. Se já começou, ela pode cobrar o que processou.")) return;
+    if (cancelling || !window.confirm("Cancelar esta geração? Se a IA ainda não tiver começado, os créditos voltam. Se já começou, ela pode cobrar o que processou.")) return;
     setCancelling(video.id);
     try {
       const result = await cancelVideoAction(video.id);

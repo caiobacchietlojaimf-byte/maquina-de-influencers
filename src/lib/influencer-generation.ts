@@ -294,3 +294,24 @@ export async function storeInfluencerEditResult(value: string, userId: string, i
   });
   return result.url;
 }
+
+const STORED_IMAGE_HOST = ".public.blob.vercel-storage.com";
+export function isStoredInfluencerImage(value: string | undefined): boolean {
+  try { return Boolean(value) && new URL(value!).hostname.endsWith(STORED_IMAGE_HOST); } catch { return false; }
+}
+
+/** Provider CDN links expire (a Higgsfield result returned 403 two days later):
+ * every finished influencer keeps its own copy. */
+export async function storeInfluencerImage(value: string, userId: string, id: string, name: string): Promise<string> {
+  if (!publicImageUrl(value)) throw new InfluencerGenerationError("A plataforma retornou uma imagem inválida.");
+  const bytes = await readPublicVideo(value, 25 * 1024 * 1024, AbortSignal.timeout(25_000));
+  const png = bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const jpeg = bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  const webp = bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
+  if (!png && !jpeg && !webp) throw new InfluencerGenerationError("A plataforma não entregou uma imagem válida.");
+  const [extension, contentType] = png ? ["png", "image/png"] : jpeg ? ["jpg", "image/jpeg"] : ["webp", "image/webp"];
+  const result = await put(`influencer-images/${userId}/${id}/${name}.${extension}`, bytes, {
+    access: "public", contentType, addRandomSuffix: false, allowOverwrite: true, abortSignal: AbortSignal.timeout(25_000),
+  });
+  return result.url;
+}
