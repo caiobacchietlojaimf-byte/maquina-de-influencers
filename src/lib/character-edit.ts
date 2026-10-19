@@ -18,7 +18,7 @@ export type EditIdentityReferences = {
   strategy: "sheet-panels" | "single-image";
   frontalUrl?: string;
   /** Where the face view came from: a sheet panel, a head crop or a gallery sheet. */
-  frontalSource?: "sheet" | "head-crop" | "gallery-sheet";
+  frontalSource?: "sheet" | "head-crop" | "gallery-sheet" | "upload";
   appearanceUrl: string;
   wanUrl?: string;
 };

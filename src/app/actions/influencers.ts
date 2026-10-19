@@ -4,10 +4,11 @@ import { randomInt } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import {
-  claimInfluencerSubmission, createInfluencerOnce, deleteInfluencer, getInfluencer, listInfluencers,
+  claimInfluencerSubmission, createInfluencer, createInfluencerOnce, deleteInfluencer, getInfluencer, listInfluencers,
   refundInfluencerCredits, reserveInfluencerCredits, updateInfluencer, type Influencer,
 } from "@/lib/db";
 import { buildBrief } from "@/lib/prompt";
+import { validImportPath, verifyImportedImage } from "@/lib/influencer-import";
 import {
   buildInfluencerPayload, checkInfluencerConfiguration,
   InfluencerGenerationError, influencerRequestIdentity, storeInfluencerReference,
@@ -172,4 +173,27 @@ export async function retryInfluencerAction(id: string, requestKey: string): Pro
     ...(influencer.referenceUrl ? { referenceUrl: influencer.referenceUrl } : {}),
     ...(influencer.styleReferenceUrl ? { styleReferenceUrl: influencer.styleReferenceUrl } : {}),
   }, true);
+}
+
+/** A ready-made character: no generation and no credits. The images are the
+ * user's own uploads, re-validated on the server before the record exists. */
+export async function importInfluencerAction(input: { name: string; imagePath: string; facePath?: string }): Promise<{ id: string } | { error: string }> {
+  const user = await requireUser();
+  const name = typeof input?.name === "string" ? input.name.normalize("NFC").replace(/\s+/g, " ").trim() : "";
+  if (name.length < 2 || name.length > 80) return { error: "Dê um nome de 2 a 80 caracteres ao influencer." };
+  if (!validImportPath(input.imagePath, user.id) || (input.facePath !== undefined && !validImportPath(input.facePath, user.id))) return { error: "As imagens não pertencem à sua conta. Envie novamente." };
+  try {
+    const image = await verifyImportedImage(input.imagePath);
+    const face = input.facePath ? await verifyImportedImage(input.facePath) : undefined;
+    const influencer = await createInfluencer({
+      userId: user.id, name, tier: "import", selection: {}, brief: "", seed: 0, status: "completed",
+      creationMode: "import", imageUrl: image.url, gallery: [], ...(face ? { faceUrl: face.url } : {}),
+    });
+    revalidatePath("/app", "layout");
+    return { id: influencer.id };
+  } catch (error) {
+    // Only the validator’s own Portuguese messages are shown; storage errors stay generic.
+    const message = error instanceof Error ? error.message : "";
+    return { error: /^(A |Envie |Não )/.test(message) ? message : "Não foi possível importar o influencer." };
+  }
 }

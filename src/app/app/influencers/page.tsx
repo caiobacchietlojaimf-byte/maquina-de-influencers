@@ -27,6 +27,7 @@ export default async function InfluencersPage({
     <InfluencerStudio
       initialInfluencers={await listInfluencers(user.id)}
       credits={user.credits}
+      userId={user.id}
     />
   );
 }

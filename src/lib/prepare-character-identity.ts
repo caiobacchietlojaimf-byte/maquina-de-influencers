@@ -28,6 +28,11 @@ export async function readCharacterIdentity(influencer: Influencer, video: { wid
   const image = await readPublicVideo(publicMediaUrl(influencer.imageUrl), 25 * 1024 * 1024, signal);
   const sheetLayout = await hasSheetLayout(influencer, signal);
   const identity = await prepareCharacterIdentityMedia(image, { knownTwoPanelSheet: sheetLayout, videoWidth: video.width, videoHeight: video.height, signal });
+  if (influencer.faceUrl) {
+    // A face the user supplied on import beats any crop we could derive.
+    const face = await prepareCharacterIdentityMedia(await readPublicVideo(publicMediaUrl(influencer.faceUrl), 25 * 1024 * 1024, signal), { knownTwoPanelSheet: false, videoWidth: video.width, videoHeight: video.height, signal });
+    return { image, identity: { ...identity, strategy: "sheet-panels" as const, frontal: face.appearance, frontalSource: "upload" as const } };
+  }
   if (identity.frontal) return { image, identity: { ...identity, frontalSource: "sheet" as const } };
   // Kling needs a dedicated face view. The selected image itself is preferred:
   // a gallery sheet may predate an edit that changed hair or facial hair.

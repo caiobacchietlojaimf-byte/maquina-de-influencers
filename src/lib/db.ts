@@ -55,7 +55,9 @@ export type Influencer = {
   rootInfluencerId?: string;
   sourceInfluencerId?: string;
   variantLabel?: string;
-  creationMode?: "form" | "prompt" | "edit";
+  creationMode?: "form" | "prompt" | "edit" | "import";
+  /** Optional face close-up supplied with an imported influencer; Kling uses it as the frontal view. */
+  faceUrl?: string;
   editKind?: "outfit" | "details";
   prompt?: string;
   provider?: "higgsfield" | "fal";

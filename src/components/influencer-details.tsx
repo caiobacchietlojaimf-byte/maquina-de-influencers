@@ -259,7 +259,7 @@ export function InfluencerDetails({ influencer, variants = [influencer], credits
           <details className={styles.moreDetails}>
             <summary>Ver mais detalhes</summary>
             <div className={styles.expandedDetails}>
-              <dl className={styles.summary}><div><dt>Tipo de personagem</dt><dd>{selected.creationMode === "prompt" ? "Imagem + prompt" : tier}</dd></div><div><dt>Status</dt><dd>{STATUS[selected.status]}</dd></div><div><dt>Criado em</dt><dd>{displayDateTime(selected.createdAt, "long")}</dd></div></dl>
+              <dl className={styles.summary}><div><dt>Tipo de personagem</dt><dd>{selected.creationMode === "prompt" ? "Imagem + prompt" : selected.creationMode === "import" ? "Importado" : tier}</dd></div><div><dt>Status</dt><dd>{STATUS[selected.status]}</dd></div><div><dt>Criado em</dt><dd>{displayDateTime(selected.createdAt, "long")}</dd></div></dl>
               {traits.length ? <div className={styles.section}><h3>Características de origem</h3><dl className={styles.traits}>{traits.map((trait) => <div key={trait.id}><dt>{trait.label}</dt><dd>{trait.values}</dd></div>)}</dl></div> : null}
               {selected.prompt ? <div className={styles.section}><h3>{selected.creationMode === "edit" ? "Alteração solicitada" : "Instruções da criação"}</h3><p className={styles.promptText}>{selected.prompt}</p></div> : null}
               {selected.referenceUrl ? <div className={styles.section}><h3>Imagem de referência</h3><a href={selected.referenceUrl} target="_blank" rel="noreferrer"><img className={styles.reference} src={selected.referenceUrl} alt="Imagem usada como referência nesta versão" /></a></div> : null}

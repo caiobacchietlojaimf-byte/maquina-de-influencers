@@ -31,6 +31,7 @@ import {
   SmilePlus,
   Sparkles,
   Trash2,
+  Upload,
   VenusAndMars,
   X,
   type LucideIcon,
@@ -53,6 +54,7 @@ import type { Influencer } from "@/lib/db";
 import { groupInfluencerVersions, influencerRootId } from "@/lib/influencer-versions";
 import { InfluencerDetails } from "./influencer-details";
 import { InfluencerImage } from "./influencer-image";
+import { InfluencerImportDialog } from "./influencer-import-dialog";
 import { ReferenceUpload } from "./influencer-reference-upload";
 import detailStyles from "./influencer-details.module.css";
 import styles from "./influencer-studio.module.css";
@@ -68,9 +70,10 @@ type Preset = {
 
 type RightTab = "explore" | "history";
 
-const TIER_LABEL: Record<string, string> = Object.fromEntries(
-  CHARACTER_TYPES.map((t) => [t.id, t.label]),
-);
+const TIER_LABEL: Record<string, string> = {
+  ...Object.fromEntries(CHARACTER_TYPES.map((t) => [t.id, t.label])),
+  import: "Importado",
+};
 
 /** Ícone de cada grupo de traços (mesma linguagem visual do Higgsfield). */
 const GROUP_ICONS: Record<string, LucideIcon> = {
@@ -97,10 +100,13 @@ const GROUP_ICONS: Record<string, LucideIcon> = {
 export function InfluencerStudio({
   initialInfluencers,
   credits,
+  userId,
 }: {
   initialInfluencers: Influencer[];
   credits: number;
+  userId: string;
 }) {
+  const [importOpen, setImportOpen] = useState(false);
   const router = useRouter();
   const studioId = useId();
   const mounted = useRef(true);
@@ -432,6 +438,12 @@ export function InfluencerStudio({
             <Clock size={14} />
             Meus Influencers
           </button>
+          {rightTab === "history" ? (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportOpen(true)}>
+              <Upload size={14} aria-hidden="true" />
+              Importar influencer
+            </button>
+          ) : null}
           <span style={{ marginLeft: "auto", color: "var(--tx3)", fontSize: 12.5 }}>
             ✦ {credits.toLocaleString("pt-BR")} créditos
           </span>
@@ -525,6 +537,13 @@ export function InfluencerStudio({
           )
         ) : null}
       </section>
+
+      {importOpen ? <InfluencerImportDialog userId={userId} onClose={() => setImportOpen(false)} onImported={async (id) => {
+        setImportOpen(false);
+        await refreshInfluencers();
+        router.refresh();
+        setDetailId(id);
+      }} /> : null}
 
       {detail ? <InfluencerDetails key={detail.id} influencer={detail} variants={families.find((family) => family.id === influencerRootId(detail))?.versions ?? [detail]} credits={credits} refreshError={refreshError} refreshing={refreshing} onRefresh={async () => {
         await refreshRef.current;
