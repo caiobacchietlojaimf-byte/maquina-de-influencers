@@ -11,6 +11,7 @@ import { INFLUENCER_EDIT_COST, INFLUENCER_PROMPT_COST, SHEET_COST } from "@/lib/
 import { influencerVersionLabel } from "@/lib/influencer-versions";
 import { displayDateTime } from "@/lib/display-date";
 import { ReferenceUpload } from "./influencer-reference-upload";
+import { InfluencerImage } from "./influencer-image";
 import styles from "./influencer-details.module.css";
 
 const STATUS = { queued: "Na fila", processing: "Gerando", completed: "Pronto", failed: "Falhou" };
@@ -205,7 +206,7 @@ export function InfluencerDetails({ influencer, variants = [influencer], credits
       <div className={styles.content}>
         <section className={styles.visual} aria-label="Imagens do influencer">
           <div className={styles.stage}>
-            {image ? <img src={image} alt={`${influencer.name} — ${influencerVersionLabel(selected)} — imagem ${selectedImage + 1}`} /> : <div className={styles.placeholder} role="status">{selected.status === "queued" || selected.status === "processing" ? <span className="spinner" aria-hidden="true" /> : <ImageIcon size={40} />}<p>{selected.pendingImageUrl ? "Salvando a imagem gerada…" : selected.status === "failed" ? "Esta versão não foi gerada." : "Gerando sua nova imagem…"}</p></div>}
+            {image ? <InfluencerImage key={image} loading="eager" src={image} alt={`${influencer.name} — ${influencerVersionLabel(selected)} — imagem ${selectedImage + 1}`} /> : <div className={styles.placeholder} role="status">{selected.status === "queued" || selected.status === "processing" ? <span className="spinner" aria-hidden="true" /> : <ImageIcon size={40} />}<p>{selected.pendingImageUrl ? "Salvando a imagem gerada…" : selected.status === "failed" ? "Esta versão não foi gerada." : "Gerando sua nova imagem…"}</p></div>}
           </div>
           {images.length > 1 ? <div className={styles.thumbnails} aria-label="Escolher imagem">{images.map((url, index) => <button key={url} type="button" aria-label={`Ver imagem ${index + 1}`} aria-pressed={selectedImage === index} onClick={() => setSelectedImage(index)}><img src={url} alt="" /></button>)}</div> : null}
           {image ? <a className="btn btn-ghost" href={image} target="_blank" rel="noreferrer"><Download size={16} />Abrir imagem desta versão</a> : null}

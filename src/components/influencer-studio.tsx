@@ -52,6 +52,7 @@ import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection,
 import type { Influencer } from "@/lib/db";
 import { groupInfluencerVersions, influencerRootId } from "@/lib/influencer-versions";
 import { InfluencerDetails } from "./influencer-details";
+import { InfluencerImage } from "./influencer-image";
 import { ReferenceUpload } from "./influencer-reference-upload";
 import detailStyles from "./influencer-details.module.css";
 import styles from "./influencer-studio.module.css";
@@ -628,8 +629,7 @@ function InfluencerCard({
       <button type="button" className={detailStyles.cardOpen} onClick={onOpen} aria-label={`Ver detalhes de ${influencer.name}`} />
       <div className="media">
         {influencer.status === "completed" && influencer.imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={influencer.imageUrl} alt={influencer.name} loading="lazy" />
+          <InfluencerImage key={influencer.imageUrl} src={influencer.imageUrl} alt={influencer.name} />
         ) : influencer.status === "failed" ? (
           <div className="pending">
             <span style={{ color: "var(--danger)", fontSize: 13, padding: "0 14px", textAlign: "center" }}>

@@ -6,6 +6,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ArrowRight, Clapperboard, Download, Package, Search, Sparkles, Upload, Users, X } from "lucide-react";
 
 import { pollInfluencersAction } from "@/app/actions/influencers";
+import { InfluencerImage } from "./influencer-image";
 import { generateCharacterEditAction } from "@/app/actions/character-edit";
 import { prepareEditClient, PrepareEditClientError } from "@/lib/prepare-edit-client";
 import { exportEditClient, ExportEditClientError, type ExportEditPackage } from "@/lib/export-edit-client";
@@ -265,8 +266,7 @@ export function VideoStudio({
                         title={item.root.name}
                         onClick={() => { setInfluencerId(inf.id); setError(null); }}
                       >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={inf.imageUrl} alt="" loading="lazy" />
+                        <InfluencerImage key={inf.imageUrl} src={inf.imageUrl!} alt="" />
                         <span>{item.root.name}</span>
                       </button>
                     ); })}
@@ -275,7 +275,7 @@ export function VideoStudio({
                     <span className={styles.versionLabel} id={`${formId}-version-label`}>Roupa e versão</span>
                     <div className={styles.versionGrid} role="group" aria-labelledby={`${formId}-version-label`}>
                       {readyVersions.map(version => <button type="button" key={version.id} className={styles.versionPick} aria-pressed={influencerId === version.id} onClick={() => { setInfluencerId(version.id); setError(null); }}>
-                        <img src={version.imageUrl} alt="" loading="lazy" />
+                        <InfluencerImage key={version.imageUrl} src={version.imageUrl!} alt="" />
                         <span>{influencerVersionLabel(version)}</span>
                       </button>)}
                     </div>
