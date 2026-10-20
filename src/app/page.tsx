@@ -6,13 +6,13 @@ import { CHARACTER_TYPES } from "@/data/character-types";
 import { PLAN_CATALOG } from "@/lib/plans";
 import { LogoMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { HeroReel } from "@/components/hero-reel";
+import { HeroCarousel } from "@/components/hero-carousel";
+import { GalleryCarousel } from "@/components/gallery-carousel";
 import styles from "./landing.module.css";
 
-const gallery = PRESETS.filter((_, index) => [0, 4, 10, 2, 8, 6].includes(index));
-const faces = PRESETS.slice(12, 16);
-const heroVideos = [HERO_VIDEOS[0], HERO_VIDEOS[2], HERO_VIDEOS[3]];
 const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
+const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.preview.thumb || item.preview.url, label: typeLabel(item.tier) }));
+const faces = PRESETS.slice(12, 16);
 
 const stats = [
   { value: "9", label: "tipos de personagem", icon: ScanFace },
@@ -74,8 +74,8 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className={styles.stage} aria-label="Personagens de IA em movimento">
-            <HeroReel videos={heroVideos} className={styles.reel} />
+          <div className={styles.stage}>
+            <HeroCarousel videos={HERO_VIDEOS} />
             <div className={`${styles.float} ${styles.floatTop}`}><Wand2 size={15} /> Personagem gerado</div>
             <div className={`${styles.float} ${styles.floatBottom}`}><span className={styles.liveDot} /> Pronto para publicar</div>
           </div>
@@ -92,13 +92,7 @@ export default function LandingPage() {
           <h2>Personalidades que saem do comum.</h2>
           <p>Referências reais do catálogo. Use como ponto de partida e recrie com os seus traços.</p>
         </div>
-        <div className={styles.gallery}>
-          {gallery.map((item, index) => <figure key={item.id} className={styles.galleryCard}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={item.preview.thumb || item.preview.url} alt={`Personagem de IA do catálogo, exemplo ${index + 1}`} loading="lazy" />
-            <figcaption>{typeLabel(item.tier)}</figcaption>
-          </figure>)}
-        </div>
+        <GalleryCarousel items={gallery} />
         <p className={styles.mediaNote}>Referências do catálogo Higgsfield integrado ao estúdio. A Máquina de Influencers é um produto independente. Exemplos ilustram possibilidades, não garantem resultado idêntico.</p>
       </section>
 
