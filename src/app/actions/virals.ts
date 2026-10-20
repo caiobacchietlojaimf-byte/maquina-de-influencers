@@ -1,37 +1,56 @@
 "use server";
 
-
 import { requireUser } from "@/lib/auth";
-import {
-  getViral,
-  type Viral,
-} from "@/lib/db";
+import { getViral, markViralsSeen, type Viral } from "@/lib/db";
 import { listAiVirals, mineByUrl, mineTrending, refreshViralMedia } from "@/lib/miner";
 import { isAiCharacterVideo, type DiscoveryCursors } from "@/lib/ai-discovery";
+import { collectionOverdue, countNewVirals, getCollectorStatus, runViralCollection, type CollectorStatus } from "@/lib/viral-collector";
 
+export type MinedState = { virals: Viral[]; error?: string; notice?: string; cursors?: DiscoveryCursors; hasMore?: boolean; status?: CollectorStatus };
 
-export type MinedState = { virals: Viral[]; error?: string; notice?: string; cursors?: DiscoveryCursors; hasMore?: boolean };
-
-/** Lista os virais minerados da região; minera se o cache estiver velho. */
-export async function getMinedViralsAction(region = "AI"): Promise<MinedState> {
+/** Estado da galeria sem coleta externa: o acervo vem do banco e o status do agendador.
+ *  Rede de segurança: se o agendador estiver parado há mais de dois intervalos, uma
+ *  rodada curta roda aqui (o lease impede que vários visitantes disparem ao mesmo tempo). */
+export async function getMinedViralsAction(): Promise<MinedState> {
   await requireUser();
+  let notice: string | undefined;
+  let error: string | undefined;
   try {
-    const result = await mineTrending(region);
-    return { virals: await listAiVirals(), cursors: result.cursors, hasMore: result.hasMore, notice: result.warning };
+    let status = await getCollectorStatus();
+    if (collectionOverdue(status)) {
+      const run = await runViralCollection({ budgetMs: 20_000 });
+      if (!run.skipped) {
+        status = await getCollectorStatus();
+        if (run.errors.length) error = run.errors[0];
+        else if (run.added) notice = `${run.added} novos vídeos encontrados.`;
+      }
+    }
+    return { virals: await listAiVirals(), status, ...(notice ? { notice } : {}), ...(error ? { error } : {}) };
   } catch (caught) {
-    return {
-      virals: await listAiVirals(),
-      error: caught instanceof Error ? caught.message : "Mineração indisponível agora",
-    };
+    return { virals: await listAiVirals(), error: caught instanceof Error ? caught.message : "Não foi possível consultar a coleta agora." };
   }
 }
 
-/** Força uma nova mineração do feed de tendências. */
+/** Verificação leve enquanto a página está aberta: só leitura do banco. */
+export async function checkViralsNewsAction(since: number): Promise<{ newCount: number; status: CollectorStatus; now: number }> {
+  await requireUser();
+  const safeSince = Number.isFinite(since) && since > 0 ? since : Date.now();
+  const [newCount, status] = await Promise.all([countNewVirals(safeSince), getCollectorStatus()]);
+  return { newCount, status, now: Date.now() };
+}
+
+/** Registra a visita; o indicador "novo" da sessão atual usa o valor anterior. */
+export async function markViralsSeenAction(): Promise<void> {
+  const user = await requireUser();
+  await markViralsSeen(user.id);
+}
+
+/** Força uma nova busca no TikTok (ação explícita do usuário). */
 export async function refreshViralsAction(region = "AI", cursors?: DiscoveryCursors): Promise<MinedState> {
   await requireUser();
   try {
     const result = await mineTrending(region, { force: true, ...(cursors ? { cursors } : {}) });
-    return { virals: await listAiVirals(), cursors: result.cursors, hasMore: result.hasMore,
+    return { virals: await listAiVirals(), cursors: result.cursors, hasMore: result.hasMore, status: await getCollectorStatus(),
       notice: result.warning ?? (result.added ? `${result.added} novos vídeos de personagens de IA adicionados.` : "Busca concluída. Nenhum vídeo novo relacionado aos personagens nesta página.") };
   } catch (caught) {
     return {

@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/influencers",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/virals",
+      "schedule": "*/15 * * * *"
     }
   ],
   "regions": [

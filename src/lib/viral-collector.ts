@@ -1,0 +1,321 @@
+import "server-only";
+
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+import { listVirals, upsertVirals, type Viral } from "./db";
+import { listAiVirals, mineTrending, MiningProviderError, refreshViralMedia } from "./miner";
+import { serverDb } from "./server-db";
+import type { DiscoveryCursors } from "./ai-discovery";
+import { searchYoutubeShorts, youtubeConfigured, YoutubeProviderError, YOUTUBE_QUERIES } from "./youtube-discovery";
+
+/* Coleta contínua de vídeos de personagens de IA.
+   - Roda pelo cron da Vercel (vercel.json) a cada 15 minutos e, no dev local,
+     pelo instrumentation.ts. Visitas à página nunca disparam a coleta
+     externa, salvo como rede de segurança quando o agendador está parado.
+   - Um lease em mi_settings impede execuções sobrepostas; o estado por fonte
+     guarda última tentativa, último sucesso, novos itens e espera progressiva.
+   - TikTok: busca via tikwm.com (serviço público, sem chave, com limites) e
+     atualização de métricas dos vídeos recentes. Instagram: sem fonte de
+     descoberta autorizada; o catálogo verificado e a importação manual
+     continuam, com status explícito para o usuário. YouTube: complemento pela API oficial (Data API v3), só com
+     YOUTUBE_API_KEY e YOUTUBE_DISCOVERY_ENABLED=true; uma rodada por hora
+     com duas buscas (48/dia, dentro do bucket oficial de 100 search.list/dia).
+     Sem isso fica "inactive".
+   - As três áreas da página (Vídeos, Descobrir personagens, Efeitos) leem o
+     mesmo acervo: nenhuma consulta externa se repete por aba. */
+
+export const VIRAL_COLLECTOR_ID = "viral-collector";
+
+/** Coleta automática desligada por padrão: só VIRAL_COLLECTION_ENABLED=true liga.
+ *  Um deploy com o cron declarado não consulta provedor nenhum sem essa variável. */
+export function collectionEnabled(): boolean {
+  return process.env.VIRAL_COLLECTION_ENABLED?.trim().toLowerCase() === "true";
+}
+
+/** YouTube é complemento: além da chave, exige YOUTUBE_DISCOVERY_ENABLED=true. */
+export function youtubeDiscoveryEnabled(): boolean {
+  return youtubeConfigured() && process.env.YOUTUBE_DISCOVERY_ENABLED?.trim().toLowerCase() === "true";
+}
+export const COLLECT_INTERVAL_MS = 15 * 60_000;
+const LOCK_TTL_MS = 10 * 60_000;
+const BACKOFF_BASE_MS = 5 * 60_000;
+const BACKOFF_MAX_MS = 60 * 60_000;
+const METRICS_WINDOW_MS = 14 * 24 * 60 * 60_000;
+const METRICS_MIN_AGE_MS = 6 * 60 * 60_000;
+const METRICS_BATCH = 6;
+const UNAVAILABLE_AFTER_FAILURES = 3;
+export const YOUTUBE_INTERVAL_MS = 60 * 60_000;
+const YOUTUBE_QUERIES_PER_RUN = 2;
+
+export type SourceId = "tiktok" | "instagram" | "youtube";
+export type SourceState = {
+  /** "discovery" coleta sozinha; "catalog" só tem o acervo verificado e importação manual;
+   *  "inactive" tem integração pronta, mas sem credencial configurada. */
+  mode: "discovery" | "catalog" | "inactive";
+  lastAttemptAt?: number;
+  lastSuccessAt?: number;
+  lastError?: string;
+  lastAdded?: number;
+  lastMetricsUpdated?: number;
+  consecutiveFailures?: number;
+  backoffUntil?: number;
+  cursors?: DiscoveryCursors;
+};
+export type CollectorState = {
+  lock?: { runId: string; startedAt: number; expiresAt: number };
+  sources: Record<SourceId, SourceState>;
+  revision?: string;
+};
+export type CollectorStatus = {
+  /** false = coleta automática desligada; o acervo salvo continua disponível. */
+  enabled: boolean;
+  intervalMs: number;
+  sources: Record<SourceId, Omit<SourceState, "cursors">>;
+  running: boolean;
+};
+export type CollectionRun = { skipped?: "disabled" | "locked" | "backoff"; added: number; metricsUpdated: number; errors: string[]; youtube?: { skipped?: "inactive" | "interval" | "backoff"; added: number; units: number } };
+
+const defaults = (): CollectorState => ({
+  sources: { tiktok: { mode: "discovery" }, instagram: { mode: "catalog" }, youtube: { mode: youtubeDiscoveryEnabled() ? "discovery" : "inactive" } },
+});
+
+const localFile = () => path.join(process.env.DATA_DIR || path.join(process.cwd(), "data"), "viral-collector.json");
+function readLocal(): CollectorState | undefined {
+  return existsSync(localFile()) ? JSON.parse(readFileSync(localFile(), "utf8")) : undefined;
+}
+function persistLocal(data: CollectorState) {
+  const file = localFile();
+  mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  writeFileSync(temporary, JSON.stringify(data), "utf8");
+  renameSync(temporary, file);
+}
+const failure = () => new Error("Estado da coleta indisponível.");
+
+function normalize(state: CollectorState | undefined): CollectorState {
+  const base = defaults();
+  if (!state) return base;
+  return { ...base, ...state, sources: {
+    tiktok: { ...base.sources.tiktok, ...state.sources?.tiktok },
+    instagram: { ...base.sources.instagram, ...state.sources?.instagram },
+    // O modo do YouTube segue a configuração atual, não o que ficou salvo.
+    youtube: { ...base.sources.youtube, ...state.sources?.youtube, mode: base.sources.youtube.mode },
+  } };
+}
+
+export async function readCollectorState(): Promise<CollectorState> {
+  const db = serverDb();
+  if (!db) return normalize(readLocal());
+  const result = await db.from("mi_settings").select("data").eq("id", VIRAL_COLLECTOR_ID).abortSignal(AbortSignal.timeout(5000)).maybeSingle();
+  if (result.error) throw failure();
+  return normalize(result.data?.data as CollectorState | undefined);
+}
+
+/** Compare-and-set: `change` recebe o estado atual e devolve o próximo (ou undefined para desistir). */
+async function changeState(change: (current: CollectorState) => CollectorState | undefined): Promise<CollectorState | undefined> {
+  const db = serverDb();
+  if (!db) {
+    const next = change(normalize(readLocal()));
+    if (next) persistLocal({ ...next, revision: randomUUID() });
+    return next;
+  }
+  const signal = AbortSignal.timeout(5000);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const result = await db.from("mi_settings").select("data").eq("id", VIRAL_COLLECTOR_ID).abortSignal(signal).maybeSingle();
+    if (result.error) throw failure();
+    const current = result.data?.data as CollectorState | undefined;
+    const changed = change(normalize(current));
+    if (!changed) return undefined;
+    const next = { ...changed, revision: randomUUID() };
+    if (!current) {
+      const inserted = await db.from("mi_settings").insert({ id: VIRAL_COLLECTOR_ID, data: next }).abortSignal(signal);
+      if (!inserted.error) return next;
+      if (inserted.error.code === "23505") continue;
+      throw failure();
+    }
+    let update = db.from("mi_settings").update({ data: next }).eq("id", VIRAL_COLLECTOR_ID);
+    update = current.revision ? update.eq("data->>revision", current.revision) : update.is("data->>revision", null);
+    const saved = await update.select("id").abortSignal(signal);
+    if (saved.error) throw failure();
+    if (saved.data?.length) return next;
+  }
+  throw failure();
+}
+
+function backoffFor(failures: number): number {
+  return Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** Math.max(0, failures - 1));
+}
+
+/** Estado público, sem cursores nem detalhes internos. */
+export async function getCollectorStatus(now = Date.now()): Promise<CollectorStatus> {
+  const state = await readCollectorState();
+  const strip = ({ cursors: _cursors, ...rest }: SourceState) => rest;
+  return {
+    enabled: collectionEnabled(),
+    intervalMs: COLLECT_INTERVAL_MS,
+    running: Boolean(state.lock && state.lock.expiresAt > now),
+    sources: { tiktok: strip(state.sources.tiktok), instagram: strip(state.sources.instagram), youtube: strip(state.sources.youtube) },
+  };
+}
+
+/** A coleta está atrasada quando a última tentativa é mais velha que dois intervalos. */
+export function collectionOverdue(status: CollectorStatus, now = Date.now()): boolean {
+  if (!status.enabled) return false;
+  const last = status.sources.tiktok.lastAttemptAt ?? 0;
+  return now - last > 2 * status.intervalMs;
+}
+
+async function acquireLock(now: number): Promise<string | null> {
+  const runId = randomUUID();
+  const next = await changeState((current) => {
+    if (current.lock && current.lock.expiresAt > now) return undefined;
+    return { ...current, lock: { runId, startedAt: now, expiresAt: now + LOCK_TTL_MS } };
+  });
+  return next ? runId : null;
+}
+
+async function releaseLock(runId: string): Promise<void> {
+  await changeState((current) => (current.lock?.runId === runId ? { ...current, lock: undefined } : undefined));
+}
+
+/** Escolhe vídeos recentes do TikTok cujas métricas estão mais velhas; nunca os indisponíveis. */
+export function pickMetricsCandidates(virals: Viral[], now = Date.now(), limit = METRICS_BATCH): Viral[] {
+  return virals
+    .filter((viral) => viral.source === "tiktok" && viral.minedAt > 0 && !viral.unavailableAt)
+    .filter((viral) => now - (viral.discoveredAt ?? viral.minedAt) <= METRICS_WINDOW_MS)
+    .filter((viral) => now - (viral.metricsUpdatedAt ?? viral.minedAt) >= METRICS_MIN_AGE_MS)
+    .sort((a, b) => (a.metricsUpdatedAt ?? a.minedAt) - (b.metricsUpdatedAt ?? b.minedAt))
+    .slice(0, limit);
+}
+
+/** Uma rodada completa: descoberta no TikTok (uma página por termo, cursores persistidos) e métricas. */
+export async function runViralCollection(options: { now?: number; budgetMs?: number } = {}): Promise<CollectionRun> {
+  const now = options.now ?? Date.now();
+  const deadline = now + (options.budgetMs ?? 50_000);
+  // Desligada: encerra antes de tocar no estado ou em qualquer provedor.
+  if (!collectionEnabled()) return { skipped: "disabled", added: 0, metricsUpdated: 0, errors: [] };
+  const runId = await acquireLock(now);
+  if (!runId) return { skipped: "locked", added: 0, metricsUpdated: 0, errors: [] };
+  const errors: string[] = [];
+  let added = 0;
+  let metricsUpdated = 0;
+  let unavailable = false;
+  try {
+    const state = await readCollectorState();
+    const tiktok = state.sources.tiktok;
+    if (tiktok.backoffUntil && tiktok.backoffUntil > now) {
+      return { skipped: "backoff", added: 0, metricsUpdated: 0, errors: [] };
+    }
+    await changeState((current) => ({ ...current, sources: { ...current.sources, tiktok: { ...current.sources.tiktok, lastAttemptAt: now } } }));
+
+    // 1) Descoberta: continua da página salva; ao esgotar, recomeça na próxima rodada.
+    let cursors: DiscoveryCursors | undefined = tiktok.cursors && Object.keys(tiktok.cursors).length ? tiktok.cursors : undefined;
+    let discoveryOk = false;
+    try {
+      const result = await mineTrending("AI", { force: true, ...(cursors ? { cursors } : {}) });
+      added += result.added;
+      cursors = result.hasMore ? result.cursors : {};
+      discoveryOk = true;
+      if (result.warning) errors.push(result.warning);
+    } catch (error) {
+      const message = typeof (error as { message?: unknown } | null)?.message === "string" ? (error as Error).message : "A busca do TikTok falhou.";
+      errors.push(message);
+      unavailable = error instanceof MiningProviderError && error.unavailable;
+    }
+
+    // 2) Métricas dos vídeos recentes, dentro do orçamento de tempo e do limite do provedor.
+    if (discoveryOk && Date.now() < deadline) {
+      const candidates = pickMetricsCandidates(await listVirals("AI"), Date.now());
+      for (const viral of candidates) {
+        if (Date.now() > deadline - 3_000) break;
+        try {
+          await refreshViralMedia(viral);
+          metricsUpdated += 1;
+        } catch (error) {
+          if (error instanceof MiningProviderError && error.unavailable) { unavailable = true; errors.push(error.message); break; }
+          const failures = (viral.checkFailures ?? 0) + 1;
+          await upsertVirals([{ ...viral, checkFailures: failures, ...(failures >= UNAVAILABLE_AFTER_FAILURES ? { unavailableAt: Date.now() } : {}) }]);
+        }
+      }
+    }
+
+    // 3) YouTube (API oficial): no máximo uma rodada por hora, duas consultas por rodada.
+    const youtube = await runYoutubeDiscovery(state.sources.youtube, now, deadline);
+    if (youtube.added) added += youtube.added;
+    if (youtube.error) errors.push(youtube.error);
+
+    const finishedAt = Date.now();
+    await changeState((current) => {
+      const previous = current.sources.tiktok;
+      const failures = discoveryOk ? 0 : (previous.consecutiveFailures ?? 0) + 1;
+      return {
+        ...current,
+        sources: {
+          ...current.sources,
+          tiktok: {
+            ...previous,
+            lastAttemptAt: now,
+            ...(discoveryOk ? { lastSuccessAt: finishedAt, lastError: undefined, lastAdded: added, lastMetricsUpdated: metricsUpdated, cursors } : { lastError: errors[0] }),
+            consecutiveFailures: failures,
+            backoffUntil: discoveryOk ? undefined : unavailable ? finishedAt + backoffFor(failures) : previous.backoffUntil && previous.backoffUntil > finishedAt ? previous.backoffUntil : undefined,
+          },
+          instagram: { ...current.sources.instagram, mode: "catalog", lastAttemptAt: now, lastSuccessAt: now, lastAdded: 0 },
+          youtube: youtube.state ? { ...current.sources.youtube, ...youtube.state } : current.sources.youtube,
+        },
+      };
+    });
+    return { added, metricsUpdated, errors, youtube: { ...(youtube.skipped ? { skipped: youtube.skipped } : {}), added: youtube.added, units: youtube.units } };
+  } finally {
+    try { await releaseLock(runId); } catch { /* o lease expira sozinho */ }
+  }
+}
+
+type YoutubeRound = { skipped?: "inactive" | "interval" | "backoff"; added: number; units: number; error?: string; state?: Partial<SourceState> };
+
+/** Descoberta no YouTube dentro da mesma rodada: roda no máximo uma vez por hora,
+ *  gira pelos termos de busca (cursor "next") e respeita a espera progressiva. */
+async function runYoutubeDiscovery(previous: SourceState, now: number, deadline: number): Promise<YoutubeRound> {
+  if (previous.mode !== "discovery") return { skipped: "inactive", added: 0, units: 0 };
+  if (previous.backoffUntil && previous.backoffUntil > now) return { skipped: "backoff", added: 0, units: 0 };
+  if (previous.lastAttemptAt && now - previous.lastAttemptAt < YOUTUBE_INTERVAL_MS) return { skipped: "interval", added: 0, units: 0 };
+  let index = Number(previous.cursors?.next ?? 0);
+  if (!Number.isInteger(index) || index < 0) index = 0;
+  let added = 0;
+  let units = 0;
+  const collected = new Map<string, Omit<Viral, "id">>();
+  try {
+    for (let i = 0; i < YOUTUBE_QUERIES_PER_RUN; i++) {
+      if (Date.now() > deadline - 5_000) break;
+      const query = YOUTUBE_QUERIES[(index + i) % YOUTUBE_QUERIES.length];
+      const result = await searchYoutubeShorts(query, Date.now());
+      units += result.units;
+      for (const viral of result.virals) collected.set(viral.videoId ?? viral.pageUrl, viral);
+    }
+    if (collected.size) added = await upsertVirals([...collected.values()]);
+    const next = String((index + YOUTUBE_QUERIES_PER_RUN) % YOUTUBE_QUERIES.length);
+    return { added, units, state: { lastAttemptAt: now, lastSuccessAt: Date.now(), lastError: undefined, lastAdded: added, consecutiveFailures: 0, backoffUntil: undefined, cursors: { next } } };
+  } catch (error) {
+    const message = typeof (error as { message?: unknown } | null)?.message === "string" ? (error as Error).message : "A busca do YouTube falhou.";
+    const failures = (previous.consecutiveFailures ?? 0) + 1;
+    const quota = error instanceof YoutubeProviderError && error.quotaExceeded;
+    // Cota esgotada (HTTP 403 quotaExceeded): espera a virada do dia no horário do
+    // Pacífico, que cai às 07:00 UTC (PDT) ou 08:00 UTC (PST); 08:05 UTC cobre os dois.
+    const backoffUntil = quota ? nextQuotaReset(now) : now + backoffFor(failures);
+    return { added, units, error: `YouTube: ${message}`, state: { lastAttemptAt: now, lastError: message, consecutiveFailures: failures, backoffUntil } };
+  }
+}
+
+function nextQuotaReset(now: number): number {
+  const reset = new Date(now);
+  reset.setUTCHours(8, 5, 0, 0);
+  if (reset.getTime() <= now) reset.setUTCDate(reset.getUTCDate() + 1);
+  return reset.getTime();
+}
+
+/** Novidades desde um instante, só por leitura do banco. */
+export async function countNewVirals(since: number): Promise<number> {
+  const virals = await listAiVirals();
+  return virals.filter((viral) => (viral.discoveredAt ?? viral.minedAt) > since && !viral.unavailableAt).length;
+}

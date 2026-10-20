@@ -1,25 +1,27 @@
-/* Processos de fundo do servidor Next:
+/* Processos de fundo do servidor Next (só fora da Vercel):
    - agendador de publicações (a cada 60s)
-   - mineração periódica de tendências (a cada 30min, região BR)
+   - coleta de vídeos de personagens de IA (a cada 15min, mesmo intervalo do cron)
    Registrado uma vez por processo; os erros são engolidos para o loop nunca
    derrubar o servidor. */
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  // Em serverless não há processo persistente: o agendador roda pelo polling
-  // das páginas (pollPostsAction) e a mineração na visita à página de virais.
+  // Em serverless não há processo persistente: publicação e coleta rodam
+  // pelos crons de vercel.json (/api/cron/publish, /api/cron/virals).
   if (process.env.VERCEL) return;
 
   const { publisherTick } = await import("./lib/publisher");
-  const { mineTrending } = await import("./lib/miner");
+  const { runViralCollection, COLLECT_INTERVAL_MS, collectionEnabled } = await import("./lib/viral-collector");
 
   setInterval(() => {
     publisherTick().catch(() => undefined);
   }, 60_000);
 
-  const mine = () => {
-    mineTrending("BR").catch(() => undefined);
+  // Coleta automática só com VIRAL_COLLECTION_ENABLED=true (mesma trava do cron).
+  if (!collectionEnabled()) return;
+  const collect = () => {
+    runViralCollection().catch(() => undefined);
   };
-  setTimeout(mine, 10_000);
-  setInterval(mine, 30 * 60_000);
+  setTimeout(collect, 10_000);
+  setInterval(collect, COLLECT_INTERVAL_MS);
 }

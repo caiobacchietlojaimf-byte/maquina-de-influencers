@@ -76,13 +76,60 @@ Copie `.env.example` para `.env.local`:
 
 ### Mineração
 
-- TikTok: feed de tendências por região e resolução de URL via API pública do
-  tikwm.com (sem chave). Cache de 30min no banco; botão "Minerar agora" força.
-- Instagram: a Meta não expõe feed de tendências nem o arquivo do Reel
-  publicamente — importe pela URL direta do vídeo (.mp4) ou use as tendências
-  do TikTok.
-- O servidor também minera sozinho (região BR) a cada 30min via
-  `instrumentation.ts`.
+- **Desligada por padrão**: a coleta automática só roda com
+  `VIRAL_COLLECTION_ENABLED=true`. Sem isso, o cron pode estar declarado e
+  disparar que a rodada encerra em `runViralCollection` sem consultar nenhum
+  provedor, sem lease e sem gravar estado; o agendador local nem é registrado
+  e a página nunca dispara a rodada de segurança. Um deploy de outra alteração
+  não liga a coleta. A busca manual do usuário ("Buscar no TikTok agora" e
+  "Importar link") continua sendo uma ação explícita, independente da trava.
+- Coleta contínua (`src/lib/viral-collector.ts`): o cron `/api/cron/virals`
+  roda a cada 15 min (vercel.json, autenticado por `CRON_SECRET`), com lease
+  contra execuções sobrepostas, cursores persistidos, espera progressiva quando
+  o provedor bloqueia e estado por fonte (última tentativa, último sucesso,
+  novos itens) em `mi_settings`. Fora da Vercel, `instrumentation.ts` chama
+  a mesma rotina no mesmo intervalo. Visitas à página não disparam coleta
+  externa; só uma rodada curta de segurança quando o agendador está parado
+  há mais de dois intervalos.
+- TikTok: busca por nomes dos personagens e termos de influencers virtuais via
+  API pública do tikwm.com (serviço de terceiros, sem chave, com limite de
+  consultas e bloqueios eventuais; não é uma API oficial do TikTok). As
+  métricas dos vídeos descobertos nos últimos 14 dias são renovadas aos poucos;
+  três falhas seguidas marcam o vídeo como indisponível, sem apagá-lo.
+- Instagram: não há fonte de descoberta autorizada configurada. O acervo vem
+  do catálogo verificado (`src/data/ai-profiles.ts`) e da importação manual de
+  Reels dos perfis acompanhados; a interface informa isso como "sem coleta
+  automática".
+- Cada vídeo guarda data de descoberta, data de publicação (quando a fonte
+  informa) e data da última atualização de métricas; o indicador "novo"
+  compara a descoberta com a última visita do usuário.
+- YouTube (complemento, desligado por padrão): descoberta pela API oficial
+  (YouTube Data API v3) só com `YOUTUBE_API_KEY` e
+  `YOUTUBE_DISCOVERY_ENABLED=true`; busca Shorts recentes por termos de
+  personagens de IA, uma rodada por hora com duas buscas. Cota oficial
+  (documentação consultada em 2026-10-20): 100 chamadas `search.list` por dia
+  em bucket próprio e 10.000 unidades/dia para os demais métodos, reinício à
+  meia-noite no horário do Pacífico, HTTP 403 `quotaExceeded` ao estourar; o
+  coletor usa 48 buscas + 48 `videos.list` por dia e, ao estourar, espera a
+  virada do dia.
+  Não há arquivo de vídeo: a reprodução usa o player oficial (embed) e o vídeo
+  não serve como referência de movimento. Sem chave, a fonte aparece como
+  "integração pronta, aguardando chave".
+- A página Explorar virais tem três áreas sobre o mesmo acervo, sem repetir
+  consultas externas: **Vídeos** (tudo o que foi coletado + catálogo),
+  **Descobrir personagens IA** (agrupado por perfil: acompanhados, novos
+  perfis com evidência da fonte e candidatos para revisar; nunca por
+  aparência) e **Efeitos virais** (presets executáveis do catálogo local, com
+  prompt/modelo/custo validados, separados das tendências descobertas, que são
+  só inspiração). O catálogo de efeitos não tem métricas de alcance; os
+  números ilustrativos antigos foram removidos. Critério de "tendência
+  descoberta": vídeo da coleta cujo título, legenda ou música cita um efeito
+  do catálogo (nome ou tag específica) ou vocabulário de efeito visual
+  (`EFFECT_VOCABULARY` em `src/lib/effects-catalog.ts`). Em "Descobrir
+  personagens", só perfis acompanhados são verificados; termos de IA no nome
+  ou no título são indícios e o perfil fica marcado como não verificado.
+- Fontes de descoberta para Instagram e TikTok: avaliação e proposta em
+  `docs/fontes-virais-proposta.md` (nenhum provedor contratado).
 
 ### Publicação
 

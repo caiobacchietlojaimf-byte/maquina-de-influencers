@@ -21,6 +21,7 @@ type TikwmItem = {
   cover?: string; origin_cover?: string; duration?: number;
   play?: string; hdplay?: string; images?: unknown[];
   play_count?: number; digg_count?: number; comment_count?: number; share_count?: number;
+  create_time?: number;
   music_info?: { title?: string };
   author?: { unique_id?: string; nickname?: string };
 };
@@ -90,9 +91,12 @@ function toViral(item: TikwmItem): Omit<Viral, "id"> | null {
     authorHandle: handle, duration: count(item.duration), views: count(item.play_count), likes: count(item.digg_count),
     comments: count(item.comment_count), shares: count(item.share_count),
     ...(item.music_info?.title ? { musicTitle: item.music_info.title } : {}),
-    region: AI_REGION, minedAt: Date.now(),
+    ...(count(item.create_time) > 1_000_000_000 ? { publishedAt: count(item.create_time) * 1000 } : {}),
+    region: AI_REGION, minedAt: Date.now(), metricsUpdatedAt: Date.now(),
   };
 }
+
+export { tikwm as tikwmRequest, MiningProviderError };
 
 export function isDuplicable(viral: Pick<Viral, "duration" | "title" | "authorHandle" | "authorName">): boolean {
   return isAiCharacterVideo(viral) && isMotionReference(viral.duration);
