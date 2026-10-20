@@ -1,5 +1,5 @@
 import { VideoStudio } from "@/components/video-studio";
-import { requirePageUser } from "@/lib/auth";
+import { requirePageUser, sessionUserId } from "@/lib/auth";
 import { getViral, listInfluencers } from "@/lib/db";
 import { getProfile } from "@/data/ai-profiles";
 import { isAiCharacterVideo } from "@/lib/ai-discovery";
@@ -14,8 +14,8 @@ export default async function CreateVideosPage({
 }: {
   searchParams: Promise<{ influencer?: string; preset?: string; profile?: string; video?: string; viral?: string }>;
 }) {
-  const user = await requirePageUser();
-  const [influencers, params] = await Promise.all([listInfluencers(user.id), searchParams]);
+  const userId = (await sessionUserId()) ?? "";
+  const [user, influencers, params] = await Promise.all([requirePageUser(), userId ? listInfluencers(userId) : [], searchParams]);
   let reference: StudioReference | undefined;
   if (params.profile && params.video) {
     const profile = getProfile(params.profile);

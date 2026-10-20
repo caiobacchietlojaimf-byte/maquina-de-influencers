@@ -1,4 +1,4 @@
-import { requirePageUser } from "@/lib/auth";
+import { requirePageUser, sessionUserId } from "@/lib/auth";
 import { listVideos } from "@/lib/db";
 import { VideosGallery } from "@/components/videos-gallery";
 
@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 240;
 
 export default async function VideosPage() {
-  const user = await requirePageUser();
+  const userId = (await sessionUserId()) ?? "";
+  const [, videos] = await Promise.all([requirePageUser(), userId ? listVideos(userId) : []]);
 
   return (
     <div>
@@ -22,7 +23,7 @@ export default async function VideosPage() {
           </p>
         </div>
       </div>
-      <VideosGallery initialVideos={await listVideos(user.id)} />
+      <VideosGallery initialVideos={videos} />
     </div>
   );
 }

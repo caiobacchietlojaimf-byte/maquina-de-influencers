@@ -1,4 +1,4 @@
-import { requirePageUser } from "@/lib/auth";
+import { requirePageUser, sessionUserId } from "@/lib/auth";
 import { listInfluencers } from "@/lib/db";
 import { listAiVirals } from "@/lib/miner";
 import { MinedVirals } from "@/components/mined-virals";
@@ -8,12 +8,13 @@ export const metadata = { title: "Vídeos Virais" };
 export const dynamic = "force-dynamic";
 
 export default async function ViraisPage() {
-  const user = await requirePageUser();
-
-  // Buscas em paralelo; a mineração NÃO bloqueia o render — o cliente dispara
-  // em background assim que a página monta (getMinedViralsAction).
-  const [influencers, virals] = await Promise.all([
-    listInfluencers(user.id),
+  // Buscas em paralelo com a validação do usuário (id vem do cookie assinado);
+  // a mineração NÃO bloqueia o render — o cliente dispara em background
+  // assim que a página monta (getMinedViralsAction).
+  const userId = (await sessionUserId()) ?? "";
+  const [, influencers, virals] = await Promise.all([
+    requirePageUser(),
+    userId ? listInfluencers(userId) : [],
     listAiVirals(),
   ]);
   const ready = groupInfluencerVersions(influencers).flatMap(family => family.versions.filter(i => i.status === "completed" && i.imageUrl).map(i => ({ ...i, name: family.versions.length > 1 ? `${family.root.name} · ${influencerVersionLabel(i)}` : family.root.name })));

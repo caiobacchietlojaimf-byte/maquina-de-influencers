@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, ArrowRight, Film, Flame, Plus, Send, Users, Wand2 } from "lucide-react";
 
-import { requirePageUser } from "@/lib/auth";
+import { requirePageUser, sessionUserId } from "@/lib/auth";
 import { listInfluencers, listPosts, listVideos, type Post, type Video } from "@/lib/db";
 import { displayDate } from "@/lib/display-date";
 import { groupInfluencerVersions } from "@/lib/influencer-versions";
@@ -51,11 +51,14 @@ function plural(count: number, singular: string, pluralForm: string): string {
 }
 
 export default async function HomePage() {
-  const user = await requirePageUser();
-  const [influencers, videos, posts] = await Promise.all([
-    listInfluencers(user.id),
-    listVideos(user.id),
-    listPosts(user.id),
+  // As listas partem do id do cookie assinado e correm em paralelo com a
+  // validação do usuário; sem sessão válida, requirePageUser redireciona.
+  const userId = (await sessionUserId()) ?? "";
+  const [user, influencers, videos, posts] = await Promise.all([
+    requirePageUser(),
+    userId ? listInfluencers(userId) : [],
+    userId ? listVideos(userId) : [],
+    userId ? listPosts(userId) : [],
   ]);
   const configured = isConfigured();
   const families = groupInfluencerVersions(influencers);

@@ -890,6 +890,45 @@ textarea.input {
   .auth-media-video { transition: none; }
 }
 
+/* ================= ESQUELETO DE PÁGINA ================= */
+
+.page-skeleton {
+  display: grid;
+  gap: 20px;
+  max-width: 1180px;
+}
+.page-skeleton-head { display: grid; gap: 10px; }
+.page-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.skeleton-block {
+  display: block;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--s1) 0%, var(--s3) 50%, var(--s1) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .page-skeleton-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block { animation: none; background: var(--s1); }
+}
+
 /* ================= APP SHELL ================= */
 
 .app-shell {

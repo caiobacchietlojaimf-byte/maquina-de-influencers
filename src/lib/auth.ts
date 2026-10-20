@@ -74,6 +74,14 @@ export async function clearSessionCookie() {
   jar.set(SESSION_COOKIE, "", { ...SESSION_COOKIE_OPTIONS, maxAge: 0 });
 }
 
+/** Id de usuário do cookie assinado, sem consultar o banco. Serve para disparar
+    as consultas da página em paralelo com a validação do usuário; quem chama
+    ainda precisa aguardar requirePageUser() antes de renderizar. */
+export async function sessionUserId(): Promise<string | null> {
+  const jar = await cookies();
+  return readSessionToken(jar.get(SESSION_COOKIE)?.value);
+}
+
 /** Usuário logado ou null. Cacheado por requisição (layout + página = 1 query). */
 export const currentUser = cache(async (): Promise<User | null> => {
   const jar = await cookies();

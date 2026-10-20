@@ -9,9 +9,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { getSystemSettings } from "@/lib/commerce";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const user = await currentUser();
+  // Usuário e configurações em paralelo: uma ida ao banco a menos por página.
+  const [user, settings] = await Promise.all([currentUser(), getSystemSettings()]);
   if (!user) redirect("/login");
-  const settings = await getSystemSettings();
   const admin = isAdmin(user);
 
   return (
