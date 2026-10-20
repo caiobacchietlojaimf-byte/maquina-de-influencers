@@ -15,10 +15,10 @@ const heroVideos = [HERO_VIDEOS[0], HERO_VIDEOS[2], HERO_VIDEOS[3]];
 const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
 
 const stats = [
-  { value: "9", label: "tipos de personagem" },
-  { value: "180+", label: "traços de aparência" },
-  { value: "4", label: "etapas, um só estúdio" },
-  { value: "2", label: "redes para publicar" },
+  { value: "9", label: "tipos de personagem", icon: ScanFace },
+  { value: "180+", label: "traços de aparência", icon: Layers3 },
+  { value: "4", label: "etapas, um só estúdio", icon: Wand2 },
+  { value: "2", label: "redes para publicar", icon: Send },
 ];
 
 const steps = [
@@ -82,7 +82,7 @@ export default function LandingPage() {
         </div>
 
         <div className={styles.stats}>
-          {stats.map((item) => <div key={item.label}><strong>{item.value}</strong><span>{item.label}</span></div>)}
+          {stats.map((item) => <div key={item.label}><span className={styles.statIcon}><item.icon size={18} /></span><p><strong>{item.value}</strong><span>{item.label}</span></p></div>)}
         </div>
       </section>
 

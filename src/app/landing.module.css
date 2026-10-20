@@ -50,11 +50,13 @@
 .liveDot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-14); flex-shrink: 0; }
 @keyframes bob { 50% { transform: translateY(-8px); } }
 
-.stats { width: min(var(--wrap), 100%); margin-inline: auto; padding: 0 var(--gutter); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--line); }
-.stats > div { display: grid; gap: 4px; padding: 28px 24px; border-left: 1px solid var(--line); }
-.stats > div:first-child { border-left: 0; padding-left: 0; }
-.stats strong { font-family: var(--font-display); font-size: clamp(28px, 3vw, 40px); font-weight: 700; letter-spacing: -.05em; line-height: 1; }
-.stats span { color: var(--tx3); font-size: 13px; }
+.stats { width: min(calc(var(--wrap) - 2 * var(--gutter)), calc(100% - 2 * var(--gutter))); margin: 8px auto 56px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 20px; background: color-mix(in srgb, var(--panel) 80%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.stats > div { display: flex; align-items: center; gap: 14px; padding: 20px 24px; border-left: 1px solid var(--line); }
+.stats > div:first-child { border-left: 0; }
+.statIcon { display: grid; place-items: center; flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: var(--accent-08); border: 1px solid var(--accent-14); color: var(--accent-text); }
+.stats p { display: grid; gap: 2px; min-width: 0; }
+.stats strong { font-family: var(--font-display); font-size: 24px; font-weight: 700; letter-spacing: -.04em; line-height: 1.1; color: var(--accent-text); }
+.stats p span { color: var(--tx2); font-size: 13px; line-height: 1.35; }
 
 /* sections */
 .section { width: min(var(--wrap), 100%); margin-inline: auto; padding: clamp(72px, 9vw, 120px) var(--gutter); }
@@ -64,9 +66,14 @@
 .sectionHeading > p { margin-top: 16px; font-size: 16px; line-height: 1.65; color: var(--tx2); }
 
 .gallery { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
-.galleryCard { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); aspect-ratio: 3/4; }
-.galleryCard img { width: 100%; height: 100%; object-fit: cover; object-position: top; filter: saturate(.9); transition: transform .5s var(--ease), filter .3s var(--ease); }
-.galleryCard:hover img { transform: scale(1.03); filter: none; }
+.galleryCard { --c: #c9d98a; position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; aspect-ratio: 3/4; background: radial-gradient(110% 80% at 50% 28%, color-mix(in srgb, var(--c) 55%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 70%, #000)); }
+.galleryCard:nth-child(2) { --c: #b6c4d4; }
+.galleryCard:nth-child(3) { --c: #d6c0a0; }
+.galleryCard:nth-child(4) { --c: #c2b9d6; }
+.galleryCard:nth-child(5) { --c: #a8c4b3; }
+.galleryCard:nth-child(6) { --c: #dfb6a4; }
+.galleryCard img { width: 100%; height: 100%; object-fit: cover; object-position: top; mix-blend-mode: multiply; transition: transform .5s var(--ease); }
+.galleryCard:hover img { transform: scale(1.03); }
 .galleryCard figcaption { position: absolute; top: 8px; left: 8px; padding: 3px 9px; border-radius: 999px; background: rgba(10, 10, 11, .62); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); color: #fff; font-size: 11px; font-weight: 600; }
 .mediaNote, .planNote { color: var(--tx3); font-size: 12px; line-height: 1.7; margin-top: 24px; text-align: center; max-width: 720px; margin-inline: auto; }
 
@@ -147,9 +154,12 @@
   .login { display: none; }
   .brand span { font-size: 13px; }
   .stats { grid-template-columns: 1fr 1fr; }
-  .stats > div { padding: 22px 16px; }
-  .stats > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .stats { margin-bottom: 40px; }
+  .stats > div { flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 16px; }
+  .stats > div:nth-child(odd) { border-left: 0; }
   .stats > div:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .statIcon { width: 34px; height: 34px; border-radius: 10px; }
+  .stats strong { font-size: 22px; }
   .gallery { gap: 8px; }
   .galleryCard { border-radius: 12px; }
   .steps, .plans, .learning, .faq { grid-template-columns: minmax(0, 1fr); }
