@@ -96,20 +96,17 @@ Copie `.env.example` para `.env.local`:
   consultas e bloqueios eventuais; não é uma API oficial do TikTok). As
   métricas dos vídeos descobertos nos últimos 14 dias são renovadas aos poucos;
   três falhas seguidas marcam o vídeo como indisponível, sem apagá-lo.
-- Instagram (`src/lib/instagram-discovery.ts`): atualização pela API
-  oficial, sem serviço pago. Usa a conexão já existente da conta
-  administradora (Instagram API with Instagram Login, escopo
-  `instagram_business_basic`, conectada em Publicar) e a aresta
-  `business_discovery` do nó IG User, que devolve a mídia pública de outras
-  contas profissionais pelo nome de usuário. Cobertura real: só os perfis
-  acompanhados do catálogo e só os que são contas Business/Creator; não há
-  busca por termo, hashtag nem ranking. Uma chamada por perfil por rodada
-  (limite de plataforma: 200 chamadas por hora por usuário). Reels que a Meta
-  devolve sem `media_url` (áudio licenciado, download desligado) ficam sem
-  arquivo e abrem na origem. Sem conta conectada, a fonte fica em modo
-  catálogo (acervo verificado + importação manual) e a página diz isso. O
-  administrador tem o botão "Ler perfis do Instagram agora", que roda uma
-  leitura imediata independente do cron.
+- Instagram (`src/lib/instagram-discovery.ts`): tentativa pela API oficial
+  (aresta `business_discovery`) com a conexão já existente da conta
+  administradora (Instagram API with Instagram Login). Resultado real em
+  2026-10-20: a Meta respondeu "Tried accessing nonexisting field
+  (business_discovery)" para todos os perfis; essa aresta só existe na
+  Instagram API with Facebook Login (conta profissional ligada a uma Página do
+  Facebook, escopos `instagram_basic`, `instagram_manage_insights`,
+  `pages_read_engagement`). Até existir essa outra conexão, o Instagram fica
+  em modo catálogo (acervo verificado + importação manual) e a página não
+  anuncia atualização automática. A página também não mostra mais o status por
+  fonte nem o aviso de coleta desligada.
 - TikTok: a busca via tikwm fica desligada por padrão
   (`TIKTOK_DISCOVERY_ENABLED=true` liga) porque a fonte respondeu HTTP 403 em
   2026-10-20; a página mostra o motivo e não repete consultas bloqueadas.

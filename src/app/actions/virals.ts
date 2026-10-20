@@ -4,9 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { getViral, markViralsSeen, type Viral } from "@/lib/db";
 import { listAiVirals, mineByUrl, mineTrending, refreshViralMedia } from "@/lib/miner";
 import { isAiCharacterVideo, type DiscoveryCursors } from "@/lib/ai-discovery";
-import { collectionOverdue, countNewVirals, getCollectorStatus, recordInstagramRound, runViralCollection, type CollectorStatus } from "@/lib/viral-collector";
-import { runInstagramDiscovery } from "@/lib/instagram-discovery";
-import { isAdmin } from "@/lib/admin";
+import { collectionOverdue, countNewVirals, getCollectorStatus, runViralCollection, type CollectorStatus } from "@/lib/viral-collector";
 
 export type MinedState = { virals: Viral[]; error?: string; notice?: string; cursors?: DiscoveryCursors; hasMore?: boolean; status?: CollectorStatus };
 
@@ -45,25 +43,6 @@ export async function checkViralsNewsAction(since: number): Promise<{ newCount: 
 export async function markViralsSeenAction(): Promise<void> {
   const user = await requireUser();
   await markViralsSeen(user.id);
-}
-
-/** Leitura imediata dos perfis acompanhados no Instagram pela API oficial (ação explícita
- *  do administrador; não depende da trava do cron e não consulta serviço pago). */
-export async function collectInstagramNowAction(): Promise<MinedState> {
-  const user = await requireUser();
-  if (!isAdmin(user)) return { virals: await listAiVirals(), error: "Só a conta administradora pode disparar a leitura do Instagram." };
-  try {
-    const now = Date.now();
-    const round = await runInstagramDiscovery({ now });
-    if (!round) return { virals: await listAiVirals(), status: await getCollectorStatus(), error: "Nenhuma conta administradora com Instagram conectado pela API oficial. Conecte em Publicar e tente de novo." };
-    await recordInstagramRound(round, now);
-    const ok = round.profiles.filter((profile) => profile.ok);
-    const detail = ok.map((profile) => `@${profile.username} ${profile.videos} ${profile.videos === 1 ? "vídeo" : "vídeos"}`).join(", ");
-    const notice = `Instagram (@${round.account}): ${round.added} ${round.added === 1 ? "vídeo novo" : "vídeos novos"} em ${ok.length} ${ok.length === 1 ? "perfil lido" : "perfis lidos"}${detail ? ` (${detail})` : ""}.`;
-    return { virals: await listAiVirals(), status: await getCollectorStatus(), ...(round.errors.length ? { error: `${notice} Falhas: ${round.errors.join(" · ")}` } : { notice }) };
-  } catch (caught) {
-    return { virals: await listAiVirals(), error: caught instanceof Error ? caught.message : "Não foi possível ler o Instagram agora." };
-  }
 }
 
 /** Força uma nova busca no TikTok (ação explícita do usuário). */

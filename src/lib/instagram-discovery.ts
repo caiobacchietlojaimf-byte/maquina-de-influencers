@@ -6,11 +6,16 @@ import { getSocialAccount, upsertVirals, type SocialAccount, type Viral } from "
 import { freshSocialAccount } from "./social";
 import { openSocialToken } from "./social-token";
 
-/* Atualização automática do Instagram pela API oficial, sem serviço pago.
-   Usa a conexão já existente (Instagram API with Instagram Login, escopo
-   instagram_business_basic) da conta administradora e a aresta
-   business_discovery do nó IG User, que devolve a mídia pública de outras
-   contas profissionais (Business/Creator) pelo nome de usuário.
+/* Atualização do Instagram pela API oficial, sem serviço pago.
+   Tenta a aresta business_discovery do nó IG User com a conexão já existente
+   (Instagram API with Instagram Login, escopo instagram_business_basic).
+   RESULTADO REAL em 2026-10-20 (conta administradora, produção): a Meta
+   respondeu "Tried accessing nonexisting field (business_discovery)" para
+   todos os perfis. Ou seja, business_discovery não existe no login do
+   Instagram; só na Instagram API with Facebook Login (graph.facebook.com,
+   conta profissional ligada a uma Página do Facebook, escopos instagram_basic
+   + instagram_manage_insights + pages_read_engagement). A conexão atual não
+   serve, e a fonte fica em modo catálogo até existir essa outra conexão.
    Cobertura real: só os perfis acompanhados do catálogo, e só se forem contas
    profissionais; não há busca por termo nem ranking. Chamadas: uma por perfil
    por rodada (5 perfis a cada 15 min = 20/h), dentro do limite de plataforma

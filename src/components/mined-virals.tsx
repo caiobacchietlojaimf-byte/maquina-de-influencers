@@ -2,11 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
-import { ChevronDown, Info, Link2, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ChevronDown, Link2, RefreshCw, Search, Sparkles } from "lucide-react";
 
 import {
   checkViralsNewsAction,
-  collectInstagramNowAction,
   getMinedViralsAction,
   importViralAction,
   markViralsSeenAction,
@@ -15,12 +14,11 @@ import {
 } from "@/app/actions/virals";
 import { AI_DISCOVERY_PROFILES, isAiCharacterVideo, matchesAiProfile, type DiscoveryCursors } from "@/lib/ai-discovery";
 import { AI_PROFILES } from "@/data/ai-profiles";
-import { displayDateTime } from "@/lib/display-date";
 import type { Viral } from "@/lib/db";
 import { discoveredTrends } from "@/lib/effects-catalog";
 import { PLATFORM_LABEL, relativeTime, type ExplorePlatform } from "@/lib/explore-format";
 import { buildCharacterSections, viralItem, type ExploreItem } from "@/lib/explore-items";
-import type { CollectorStatus, SourceState } from "@/lib/viral-collector";
+import type { CollectorStatus } from "@/lib/viral-collector";
 import { ExploreCard, ExploreDialog, PlatformMark } from "./explore-card";
 import { CharactersTab } from "./explore-characters";
 import { EffectsTab } from "./explore-effects";
@@ -57,13 +55,12 @@ function discoveredAt(viral: Viral): number {
   return viral.discoveredAt ?? viral.minedAt;
 }
 
-export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverNow, influencers, canAdmin = false }: {
+export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverNow, influencers }: {
   initialVirals: Viral[];
   initialStatus: CollectorStatus | null;
   seenAt: number | null;
   now: number;
   influencers: MiniInfluencer[];
-  canAdmin?: boolean;
 }) {
   const router = useRouter();
   const baseId = useId();
@@ -155,13 +152,6 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
     });
   };
 
-  const readInstagramNow = () => {
-    startMining(async () => {
-      try { applyResult(await collectInstagramNowAction()); }
-      catch { if (mounted.current) setError("Não foi possível ler o Instagram agora."); }
-    });
-  };
-
   const importByUrl = () => {
     if (!importUrl.trim()) return;
     startMining(async () => {
@@ -208,7 +198,6 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
 
   const visible = list.slice(0, limit);
   const hasPublishDates = virals.some((viral) => viral.publishedAt);
-  const intervalMinutes = status ? Math.round(status.intervalMs / 60_000) : 15;
   const activeProfile = PROFILE_CHIPS.find((chip) => chip.handle === profileFilter);
   const openItem = (item: ExploreItem) => setActive(item);
   const useHref = (href: string) => router.push(href);
@@ -298,7 +287,6 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
               </span>
               <span>Explorar por perfil{activeProfile ? `: @${activeProfile.handle}` : ""}</span>
               <ChevronDown size={16} aria-hidden="true" />
-              <span className={styles.statusHint}><Info size={13} aria-hidden="true" /> Atualização automática a cada {intervalMinutes} min</span>
             </summary>
             <div className={styles.profileChips} role="group" aria-label="Filtrar por perfil">
               <button type="button" className="chip" data-active={!profileFilter} aria-pressed={!profileFilter} onClick={() => { setProfileFilter(""); setLimit(PAGE_SIZE); }}>Todos os personagens</button>
@@ -315,16 +303,6 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
             </div>
           </details>
 
-          <SourcesStatus status={status} now={now} />
-          {canAdmin ? (
-            <div className={styles.adminRow}>
-              {status?.sources.instagram.mode === "discovery" ? (
-                <button type="button" className="btn btn-outline btn-sm" disabled={mining} onClick={readInstagramNow}><RefreshCw size={14} className={mining ? "spin" : undefined} aria-hidden="true" /> Ler perfis do Instagram agora (@{status.sources.instagram.account})</button>
-              ) : (
-                <span>Para a atualização automática do Instagram, conecte sua conta profissional em <a href="/app/publicar">Publicar</a>. A leitura usa a API oficial, sem serviço pago.</span>
-              )}
-            </div>
-          ) : null}
 
           <div className={styles.resultsRow}>
             <h2>Referências para sua próxima criação</h2>
@@ -356,8 +334,6 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
         </>
       ) : null}
 
-      {tab !== "videos" ? <SourcesStatus status={status} now={now} /> : null}
-
       {active ? (
         <ExploreDialog item={active} now={now} onClose={() => setActive(null)} onUse={useHref}>
           {tab === "effects" && active.origin === "collected" ? <p className={styles.dialogText}>Tendência descoberta: inspiração com métricas e data da origem. Não é um efeito executável.</p> : null}
@@ -367,28 +343,3 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
   );
 }
 
-function sourceLine(name: string, source: SourceState | undefined, now: number): string {
-  if (!source) return `${name}: status indisponível`;
-  if (source.mode === "catalog") return `${name}: catálogo verificado e importação manual (${source.reason ?? "sem coleta automática"})`;
-  if (source.mode === "inactive") return `${name}: ${source.reason ?? "desligado"}`;
-  const scope = name === "Instagram" ? ` (API oficial, conta @${source.account ?? "?"}, só perfis acompanhados)` : "";
-  if (!source.lastAttemptAt && !source.lastSuccessAt) return `${name}${scope}: nenhuma leitura registrada ainda`;
-  const parts = [source.lastSuccessAt ? `atualizado ${relativeTime(source.lastSuccessAt, now)}` : "ainda sem coleta registrada"];
-  if (source.lastError) parts.push(`última tentativa falhou${source.lastAttemptAt ? ` ${relativeTime(source.lastAttemptAt, now)}` : ""}; o acervo anterior foi mantido`);
-  if (source.backoffUntil && source.backoffUntil > now) parts.push(`nova tentativa ${displayDateTime(source.backoffUntil, "short")}`);
-  if (typeof source.lastAdded === "number" && source.lastSuccessAt) parts.push(`${source.lastAdded} novo${source.lastAdded === 1 ? "" : "s"} na última rodada`);
-  return `${name}${scope}: ${parts.join(" · ")}`;
-}
-
-/** Estado real por fonte, igual nas três áreas: todas leem a mesma coleta. */
-function SourcesStatus({ status, now }: { status: CollectorStatus | null; now: number }) {
-  return (
-    <div className={styles.statusRow} aria-live="polite">
-      {status && !status.enabled ? <span className={styles.disabled}><strong>Atualização automática desligada</strong> (VIRAL_COLLECTION_ENABLED). O acervo salvo, o catálogo e a importação manual continuam.</span> : null}
-      <span><strong>Fontes:</strong> {sourceLine("TikTok", status?.sources.tiktok, now)}</span>
-      <span>{sourceLine("Instagram", status?.sources.instagram, now)}</span>
-      <span>{sourceLine("YouTube", status?.sources.youtube, now)}</span>
-      {status?.running ? <span className={styles.running}><span className="spinner" aria-hidden="true" /> coletando agora</span> : null}
-    </div>
-  );
-}
