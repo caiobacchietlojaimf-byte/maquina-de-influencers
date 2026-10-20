@@ -4,6 +4,7 @@ import { listAiVirals } from "@/lib/miner";
 import { getCollectorStatus } from "@/lib/viral-collector";
 import { MinedVirals } from "@/components/mined-virals";
 import { groupInfluencerVersions, influencerVersionLabel } from "@/lib/influencer-versions";
+import { isAdmin } from "@/lib/admin";
 
 export const metadata = { title: "Explorar virais" };
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export default async function ViraisPage() {
       seenAt={user.viralsSeenAt ?? null}
       now={Date.now()}
       influencers={ready.map((i) => ({ id: i.id, name: i.name, imageUrl: i.imageUrl! }))}
+      canAdmin={isAdmin(user)}
     />
   );
 }

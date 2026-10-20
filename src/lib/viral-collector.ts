@@ -9,6 +9,7 @@ import { listAiVirals, mineTrending, MiningProviderError, refreshViralMedia } fr
 import { serverDb } from "./server-db";
 import type { DiscoveryCursors } from "./ai-discovery";
 import { searchYoutubeShorts, youtubeConfigured, YoutubeProviderError, YOUTUBE_QUERIES } from "./youtube-discovery";
+import { instagramDiscoveryAccount, runInstagramDiscovery, type InstagramRound } from "./instagram-discovery";
 
 /* Coleta contínua de vídeos de personagens de IA.
    - Roda pelo cron da Vercel (vercel.json) a cada 15 minutos e, no dev local,
@@ -16,10 +17,13 @@ import { searchYoutubeShorts, youtubeConfigured, YoutubeProviderError, YOUTUBE_Q
      externa, salvo como rede de segurança quando o agendador está parado.
    - Um lease em mi_settings impede execuções sobrepostas; o estado por fonte
      guarda última tentativa, último sucesso, novos itens e espera progressiva.
-   - TikTok: busca via tikwm.com (serviço público, sem chave, com limites) e
-     atualização de métricas dos vídeos recentes. Instagram: sem fonte de
-     descoberta autorizada; o catálogo verificado e a importação manual
-     continuam, com status explícito para o usuário. YouTube: complemento pela API oficial (Data API v3), só com
+   - Instagram: API oficial (business_discovery) com a conta administradora
+     conectada em Publicar; lê os Reels públicos dos perfis acompanhados a cada
+     rodada. Sem conta conectada, fica em modo catálogo (acervo verificado e
+     importação manual), com status explícito.
+   - TikTok: busca via tikwm.com (serviço público, sem chave, com limites),
+     desligada por padrão porque a fonte responde 403; só
+     TIKTOK_DISCOVERY_ENABLED=true liga, para não repetir consultas bloqueadas. YouTube: complemento pela API oficial (Data API v3), só com
      YOUTUBE_API_KEY e YOUTUBE_DISCOVERY_ENABLED=true; uma rodada por hora
      com duas buscas (48/dia, dentro do bucket oficial de 100 search.list/dia).
      Sem isso fica "inactive".
@@ -32,6 +36,11 @@ export const VIRAL_COLLECTOR_ID = "viral-collector";
  *  Um deploy com o cron declarado não consulta provedor nenhum sem essa variável. */
 export function collectionEnabled(): boolean {
   return process.env.VIRAL_COLLECTION_ENABLED?.trim().toLowerCase() === "true";
+}
+
+/** TikTok (tikwm, fonte bloqueada em 2026-10-20) só com TIKTOK_DISCOVERY_ENABLED=true. */
+export function tiktokDiscoveryEnabled(): boolean {
+  return process.env.TIKTOK_DISCOVERY_ENABLED?.trim().toLowerCase() === "true";
 }
 
 /** YouTube é complemento: além da chave, exige YOUTUBE_DISCOVERY_ENABLED=true. */
@@ -54,6 +63,9 @@ export type SourceState = {
   /** "discovery" coleta sozinha; "catalog" só tem o acervo verificado e importação manual;
    *  "inactive" tem integração pronta, mas sem credencial configurada. */
   mode: "discovery" | "catalog" | "inactive";
+  /** Por que a fonte não coleta (modos catalog/inactive) ou qual conta lê (Instagram). */
+  reason?: string;
+  account?: string;
   lastAttemptAt?: number;
   lastSuccessAt?: number;
   lastError?: string;
@@ -75,10 +87,18 @@ export type CollectorStatus = {
   sources: Record<SourceId, Omit<SourceState, "cursors">>;
   running: boolean;
 };
-export type CollectionRun = { skipped?: "disabled" | "locked" | "backoff"; added: number; metricsUpdated: number; errors: string[]; youtube?: { skipped?: "inactive" | "interval" | "backoff"; added: number; units: number } };
+export type CollectionRun = { skipped?: "disabled" | "locked" | "backoff"; added: number; metricsUpdated: number; errors: string[]; youtube?: { skipped?: "inactive" | "interval" | "backoff"; added: number; units: number }; instagram?: { skipped?: "catalog" | "backoff"; added: number; profiles: number; failed: number } };
+
+const TIKTOK_OFF = "fonte pública (tikwm) bloqueada com HTTP 403; descoberta desligada até haver fonte autorizada";
+const YOUTUBE_OFF = "complemento desligado: exige chave da API e YOUTUBE_DISCOVERY_ENABLED=true";
+const INSTAGRAM_CATALOG = "sem conta administradora conectada pela API oficial; só catálogo verificado e importação manual";
 
 const defaults = (): CollectorState => ({
-  sources: { tiktok: { mode: "discovery" }, instagram: { mode: "catalog" }, youtube: { mode: youtubeDiscoveryEnabled() ? "discovery" : "inactive" } },
+  sources: {
+    tiktok: tiktokDiscoveryEnabled() ? { mode: "discovery" } : { mode: "inactive", reason: TIKTOK_OFF },
+    instagram: { mode: "catalog", reason: INSTAGRAM_CATALOG },
+    youtube: youtubeDiscoveryEnabled() ? { mode: "discovery" } : { mode: "inactive", reason: YOUTUBE_OFF },
+  },
 });
 
 const localFile = () => path.join(process.env.DATA_DIR || path.join(process.cwd(), "data"), "viral-collector.json");
@@ -97,11 +117,11 @@ const failure = () => new Error("Estado da coleta indisponível.");
 function normalize(state: CollectorState | undefined): CollectorState {
   const base = defaults();
   if (!state) return base;
+  // Modo e motivo seguem a configuração atual, não o que ficou salvo.
   return { ...base, ...state, sources: {
-    tiktok: { ...base.sources.tiktok, ...state.sources?.tiktok },
-    instagram: { ...base.sources.instagram, ...state.sources?.instagram },
-    // O modo do YouTube segue a configuração atual, não o que ficou salvo.
-    youtube: { ...base.sources.youtube, ...state.sources?.youtube, mode: base.sources.youtube.mode },
+    tiktok: { ...base.sources.tiktok, ...state.sources?.tiktok, mode: base.sources.tiktok.mode, reason: base.sources.tiktok.reason },
+    instagram: { ...base.sources.instagram, ...state.sources?.instagram, mode: "catalog", reason: INSTAGRAM_CATALOG },
+    youtube: { ...base.sources.youtube, ...state.sources?.youtube, mode: base.sources.youtube.mode, reason: base.sources.youtube.reason },
   } };
 }
 
@@ -150,20 +170,24 @@ function backoffFor(failures: number): number {
 
 /** Estado público, sem cursores nem detalhes internos. */
 export async function getCollectorStatus(now = Date.now()): Promise<CollectorStatus> {
-  const state = await readCollectorState();
+  const [state, instagramAccount] = await Promise.all([readCollectorState(), instagramDiscoveryAccount().catch(() => null)]);
   const strip = ({ cursors: _cursors, ...rest }: SourceState) => rest;
+  const instagram = strip(state.sources.instagram);
+  if (instagramAccount) { instagram.mode = "discovery"; instagram.account = instagramAccount.username; delete instagram.reason; }
   return {
     enabled: collectionEnabled(),
     intervalMs: COLLECT_INTERVAL_MS,
     running: Boolean(state.lock && state.lock.expiresAt > now),
-    sources: { tiktok: strip(state.sources.tiktok), instagram: strip(state.sources.instagram), youtube: strip(state.sources.youtube) },
+    sources: { tiktok: strip(state.sources.tiktok), instagram, youtube: strip(state.sources.youtube) },
   };
 }
 
 /** A coleta está atrasada quando a última tentativa é mais velha que dois intervalos. */
 export function collectionOverdue(status: CollectorStatus, now = Date.now()): boolean {
   if (!status.enabled) return false;
-  const last = status.sources.tiktok.lastAttemptAt ?? 0;
+  const active = Object.values(status.sources).filter((source) => source.mode === "discovery");
+  if (!active.length) return false;
+  const last = Math.max(0, ...active.map((source) => source.lastAttemptAt ?? 0));
   return now - last > 2 * status.intervalMs;
 }
 
@@ -190,7 +214,32 @@ export function pickMetricsCandidates(virals: Viral[], now = Date.now(), limit =
     .slice(0, limit);
 }
 
-/** Uma rodada completa: descoberta no TikTok (uma página por termo, cursores persistidos) e métricas. */
+/** Registra o resultado de uma rodada do Instagram (automática ou manual) no estado por fonte. */
+export async function recordInstagramRound(round: InstagramRound, now: number): Promise<void> {
+  const finishedAt = Date.now();
+  await changeState((current) => {
+    const previous = current.sources.instagram;
+    const ok = !round.failure;
+    const failures = ok ? 0 : (previous.consecutiveFailures ?? 0) + 1;
+    return {
+      ...current,
+      sources: {
+        ...current.sources,
+        instagram: {
+          ...previous,
+          mode: "discovery", account: round.account, reason: undefined,
+          lastAttemptAt: now,
+          ...(ok ? { lastSuccessAt: finishedAt, lastError: round.errors[0], lastAdded: round.added } : { lastError: round.errors[0] }),
+          consecutiveFailures: failures,
+          // Autorização expirada não é tentada de novo sozinha (precisa reconectar); limite de taxa espera progressivamente.
+          backoffUntil: ok ? undefined : round.failure === "auth" ? undefined : Math.max(now, finishedAt) + backoffFor(failures),
+        },
+      },
+    };
+  });
+}
+
+/** Uma rodada completa: Instagram (API oficial), TikTok (se ligado) e YouTube (se ligado). */
 export async function runViralCollection(options: { now?: number; budgetMs?: number } = {}): Promise<CollectionRun> {
   const now = options.now ?? Date.now();
   const deadline = now + (options.budgetMs ?? 50_000);
@@ -205,27 +254,47 @@ export async function runViralCollection(options: { now?: number; budgetMs?: num
   try {
     const state = await readCollectorState();
     const tiktok = state.sources.tiktok;
-    if (tiktok.backoffUntil && tiktok.backoffUntil > now) {
+    const tiktokActive = tiktok.mode === "discovery";
+    if (tiktokActive && tiktok.backoffUntil && tiktok.backoffUntil > now && !(await instagramDiscoveryAccount())) {
       return { skipped: "backoff", added: 0, metricsUpdated: 0, errors: [] };
     }
-    await changeState((current) => ({ ...current, sources: { ...current.sources, tiktok: { ...current.sources.tiktok, lastAttemptAt: now } } }));
 
-    // 1) Descoberta: continua da página salva; ao esgotar, recomeça na próxima rodada.
-    let cursors: DiscoveryCursors | undefined = tiktok.cursors && Object.keys(tiktok.cursors).length ? tiktok.cursors : undefined;
-    let discoveryOk = false;
-    try {
-      const result = await mineTrending("AI", { force: true, ...(cursors ? { cursors } : {}) });
-      added += result.added;
-      cursors = result.hasMore ? result.cursors : {};
-      discoveryOk = true;
-      if (result.warning) errors.push(result.warning);
-    } catch (error) {
-      const message = typeof (error as { message?: unknown } | null)?.message === "string" ? (error as Error).message : "A busca do TikTok falhou.";
-      errors.push(message);
-      unavailable = error instanceof MiningProviderError && error.unavailable;
+    // 0) Instagram pela API oficial: perfis acompanhados, uma chamada por perfil.
+    let instagramSummary: CollectionRun["instagram"];
+    const instagramState = state.sources.instagram;
+    if (instagramState.backoffUntil && instagramState.backoffUntil > now) {
+      instagramSummary = { skipped: "backoff", added: 0, profiles: 0, failed: 0 };
+    } else {
+      const round = await runInstagramDiscovery({ now });
+      if (!round) instagramSummary = { skipped: "catalog", added: 0, profiles: 0, failed: 0 };
+      else {
+        await recordInstagramRound(round, now);
+        added += round.added;
+        errors.push(...round.errors.map((message) => `Instagram ${message}`));
+        instagramSummary = { added: round.added, profiles: round.profiles.filter((profile) => profile.ok).length, failed: round.profiles.filter((profile) => !profile.ok).length };
+      }
     }
 
-    // 2) Métricas dos vídeos recentes, dentro do orçamento de tempo e do limite do provedor.
+    // 1) TikTok (só com TIKTOK_DISCOVERY_ENABLED): continua da página salva; ao esgotar, recomeça.
+    let cursors: DiscoveryCursors | undefined = tiktok.cursors && Object.keys(tiktok.cursors).length ? tiktok.cursors : undefined;
+    let discoveryOk = false;
+    const tiktokSkipped = !tiktokActive || (tiktok.backoffUntil !== undefined && tiktok.backoffUntil > now);
+    if (!tiktokSkipped) {
+      await changeState((current) => ({ ...current, sources: { ...current.sources, tiktok: { ...current.sources.tiktok, lastAttemptAt: now } } }));
+      try {
+        const result = await mineTrending("AI", { force: true, ...(cursors ? { cursors } : {}) });
+        added += result.added;
+        cursors = result.hasMore ? result.cursors : {};
+        discoveryOk = true;
+        if (result.warning) errors.push(result.warning);
+      } catch (error) {
+        const message = typeof (error as { message?: unknown } | null)?.message === "string" ? (error as Error).message : "A busca do TikTok falhou.";
+        errors.push(message);
+        unavailable = error instanceof MiningProviderError && error.unavailable;
+      }
+    }
+
+    // 2) Métricas dos vídeos recentes do TikTok, dentro do orçamento de tempo e do limite do provedor.
     if (discoveryOk && Date.now() < deadline) {
       const candidates = pickMetricsCandidates(await listVirals("AI"), Date.now());
       for (const viral of candidates) {
@@ -247,26 +316,27 @@ export async function runViralCollection(options: { now?: number; budgetMs?: num
     if (youtube.error) errors.push(youtube.error);
 
     const finishedAt = Date.now();
+    const tiktokAdded = added - (instagramSummary?.added ?? 0) - youtube.added;
+    const tiktokErrors = errors.filter((message) => !message.startsWith("Instagram ") && !message.startsWith("YouTube:"));
     await changeState((current) => {
       const previous = current.sources.tiktok;
-      const failures = discoveryOk ? 0 : (previous.consecutiveFailures ?? 0) + 1;
+      const failures = tiktokSkipped ? previous.consecutiveFailures ?? 0 : discoveryOk ? 0 : (previous.consecutiveFailures ?? 0) + 1;
       return {
         ...current,
         sources: {
           ...current.sources,
-          tiktok: {
+          tiktok: tiktokSkipped ? previous : {
             ...previous,
             lastAttemptAt: now,
-            ...(discoveryOk ? { lastSuccessAt: finishedAt, lastError: undefined, lastAdded: added, lastMetricsUpdated: metricsUpdated, cursors } : { lastError: errors[0] }),
+            ...(discoveryOk ? { lastSuccessAt: finishedAt, lastError: undefined, lastAdded: tiktokAdded, lastMetricsUpdated: metricsUpdated, cursors } : { lastError: tiktokErrors[0] }),
             consecutiveFailures: failures,
             backoffUntil: discoveryOk ? undefined : unavailable ? finishedAt + backoffFor(failures) : previous.backoffUntil && previous.backoffUntil > finishedAt ? previous.backoffUntil : undefined,
           },
-          instagram: { ...current.sources.instagram, mode: "catalog", lastAttemptAt: now, lastSuccessAt: now, lastAdded: 0 },
           youtube: youtube.state ? { ...current.sources.youtube, ...youtube.state } : current.sources.youtube,
         },
       };
     });
-    return { added, metricsUpdated, errors, youtube: { ...(youtube.skipped ? { skipped: youtube.skipped } : {}), added: youtube.added, units: youtube.units } };
+    return { added, metricsUpdated, errors, youtube: { ...(youtube.skipped ? { skipped: youtube.skipped } : {}), added: youtube.added, units: youtube.units }, ...(instagramSummary ? { instagram: instagramSummary } : {}) };
   } finally {
     try { await releaseLock(runId); } catch { /* o lease expira sozinho */ }
   }

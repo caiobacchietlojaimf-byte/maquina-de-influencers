@@ -14,7 +14,7 @@ const plain = (value) => JSON.parse(JSON.stringify(value));
 /* Carrega os módulos TS num contexto isolado. O banco é o driver local (JSON
    em pasta temporária); o minerador é substituído por um dublê controlável, então
    nenhuma chamada real ao provedor acontece. */
-function loader({ env = {}, mocks = {} } = {}) {
+function loader({ env = {}, mocks = {}, globals = {} } = {}) {
   const cache = new Map();
   function load(file, extraGlobals = {}) {
     file = path.resolve(root, file);
@@ -27,7 +27,7 @@ function loader({ env = {}, mocks = {} } = {}) {
       if (id.startsWith("./")) return load(path.resolve(path.dirname(file), `${id}.ts`));
       if (id.startsWith("@/")) return load(`src/${id.slice(2)}.ts`);
       return require(id);
-    }, process: { env, cwd: () => root }, Buffer, URL, URLSearchParams, AbortSignal, Date, Math, JSON, Promise, Request, Response, Headers, fetch: () => assert.fail("No real network request is permitted"), setTimeout, clearTimeout, console, ...extraGlobals }, { filename: file });
+    }, process: { env, cwd: () => root }, Buffer, URL, URLSearchParams, AbortSignal, Date, Math, JSON, Promise, Request, Response, Headers, fetch: () => assert.fail("No real network request is permitted"), setTimeout, clearTimeout, console, ...globals, ...extraGlobals }, { filename: file });
     return module.exports;
   }
   return load;
@@ -52,12 +52,20 @@ function fakeMiner(db, plan) {
   };
 }
 
-function setup(plan = { calls: [] }, env = {}) {
+/** Dublê do Instagram: sem conta por padrão; o plano pode fornecer conta e rodadas. */
+function fakeInstagram(plan) {
+  return {
+    async instagramDiscoveryAccount() { return plan.instagramAccount ?? null; },
+    async runInstagramDiscovery(options) { plan.calls.push({ kind: "instagram", now: options?.now }); if (!plan.instagramAccount) return null; return plan.instagramRound ?? { account: plan.instagramAccount.username, added: 0, profiles: [], errors: [] }; },
+  };
+}
+
+function setup(plan = { calls: [] }, env = {}, extraMocks = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), "mi-collector-test-"));
   const load = loader({ env: { DATA_DIR: directory } });
   const db = load("src/lib/db.ts");
   const miner = fakeMiner(db, plan);
-  const collectorLoad = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null } } });
+  const collectorLoad = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", TIKTOK_DISCOVERY_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./instagram-discovery": fakeInstagram(plan), ...extraMocks } });
   const collector = collectorLoad("src/lib/viral-collector.ts");
   return { directory, db, collector, plan, miner };
 }
@@ -82,7 +90,7 @@ test("a successful run records the attempt, success, new count and resets exhaus
   const { directory, collector } = setup(plan);
   try {
     const run = await collector.runViralCollection({ budgetMs: 5_000 });
-    assert.deepEqual(plain(run), { added: 2, metricsUpdated: 0, errors: [], youtube: { skipped: "inactive", added: 0, units: 0 } });
+    assert.deepEqual(plain(run), { added: 2, metricsUpdated: 0, errors: [], youtube: { skipped: "inactive", added: 0, units: 0 }, instagram: { skipped: "catalog", added: 0, profiles: 0, failed: 0 } });
     const status = await collector.getCollectorStatus();
     assert.ok(status.sources.tiktok.lastAttemptAt && status.sources.tiktok.lastSuccessAt);
     assert.equal(status.sources.tiktok.lastAdded, 2);
@@ -201,7 +209,7 @@ function setupYoutube(plan = { calls: [] }, env = {}) {
     youtubeConfigured: () => Boolean(env.YOUTUBE_API_KEY),
     async searchYoutubeShorts(query) { plan.calls.push({ kind: "youtube", query }); if (plan.youtubeError) throw plan.youtubeError; return { virals: (plan.youtubeVideos ?? []).map((id) => ({ ...viral(id), source: "youtube", playUrl: "", pageUrl: `https://www.youtube.com/shorts/${id}`, title: "AI influencer character" })), units: 101 }; },
   };
-  const collector = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./youtube-discovery": youtube } })("src/lib/viral-collector.ts");
+  const collector = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", TIKTOK_DISCOVERY_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./youtube-discovery": youtube, "./instagram-discovery": fakeInstagram(plan) } })("src/lib/viral-collector.ts");
   return { directory, db, collector, plan, YoutubeProviderError };
 }
 
@@ -317,4 +325,135 @@ test("the local scheduler registers no collection timer while collection is disa
   const instrumentation = load("src/instrumentation.ts", { setInterval: (fn, ms) => { timers.push(ms); return 0; }, setTimeout: (fn, ms) => { timers.push(ms); return 0; } });
   await instrumentation.register();
   assert.deepEqual(timers, [60_000], "only the publisher tick is scheduled");
+});
+
+/* TikTok desligado por padrão (fonte bloqueada): nenhuma consulta repetida. */
+test("TikTok discovery stays off unless TIKTOK_DISCOVERY_ENABLED=true, with an explicit reason in the status", async () => {
+  const plan = { calls: [], discovered: [viral("x")] };
+  const { directory, collector } = setup(plan, { TIKTOK_DISCOVERY_ENABLED: "false" });
+  try {
+    const run = await collector.runViralCollection({ budgetMs: 10_000 });
+    assert.equal(run.skipped, undefined, "the round itself runs (Instagram/YouTube may be active)");
+    assert.equal(plan.calls.filter((call) => call.kind === "discover").length, 0, "no tikwm query");
+    const status = await collector.getCollectorStatus();
+    assert.equal(status.sources.tiktok.mode, "inactive");
+    assert.match(status.sources.tiktok.reason, /403/);
+    assert.equal(status.sources.tiktok.lastAttemptAt, undefined, "a disabled source never records an attempt");
+    assert.equal(collector.collectionOverdue(status), false, "no active source → never overdue");
+  } finally { cleanup(directory); }
+});
+
+/* Instagram pela API oficial: rodada registrada no estado por fonte. */
+test("an Instagram round through the official API is recorded per source and counted in the run", async () => {
+  const plan = { calls: [], instagramAccount: { username: "pulse.coding" }, instagramRound: { account: "pulse.coding", added: 3, profiles: [{ username: "moroniduarte", ok: true, videos: 12 }, { username: "red_cresty", ok: false, videos: 0, error: "não é conta profissional" }], errors: ["@red_cresty: não é conta profissional"] } };
+  const { directory, collector } = setup(plan, { TIKTOK_DISCOVERY_ENABLED: "false" });
+  try {
+    const t0 = Date.now();
+    const run = await collector.runViralCollection({ now: t0, budgetMs: 10_000 });
+    assert.deepEqual(plain(run.instagram), { added: 3, profiles: 1, failed: 1 });
+    assert.equal(run.added, 3);
+    assert.deepEqual(plain(run.errors), ["Instagram @red_cresty: não é conta profissional"]);
+    const status = await collector.getCollectorStatus(t0);
+    assert.equal(status.sources.instagram.mode, "discovery");
+    assert.equal(status.sources.instagram.account, "pulse.coding");
+    assert.equal(status.sources.instagram.lastAttemptAt, t0);
+    assert.ok(status.sources.instagram.lastSuccessAt >= t0);
+    assert.equal(status.sources.instagram.lastAdded, 3);
+    assert.equal(status.sources.instagram.reason, undefined);
+    assert.equal(collector.collectionOverdue(status, t0 + 10 * 60_000), false);
+    assert.equal(collector.collectionOverdue(status, t0 + 40 * 60_000), true, "overdue follows the active source");
+
+    plan.instagramRound = { account: "pulse.coding", added: 0, profiles: [], errors: ["A autorização do Instagram expirou"], failure: "auth" };
+    await collector.runViralCollection({ now: t0 + 15 * 60_000, budgetMs: 10_000 });
+    const after = await collector.getCollectorStatus(t0 + 15 * 60_000);
+    assert.match(after.sources.instagram.lastError, /expirou/);
+    assert.equal(after.sources.instagram.backoffUntil, undefined, "an expired authorization is not retried with backoff; it needs a reconnect");
+    assert.equal(after.sources.instagram.lastSuccessAt >= t0, true, "the previous success stays visible");
+
+    plan.instagramRound = { account: "pulse.coding", added: 0, profiles: [], errors: ["limitou"], failure: "rate" };
+    await collector.runViralCollection({ now: t0 + 30 * 60_000, budgetMs: 10_000 });
+    const limited = await collector.getCollectorStatus(t0 + 30 * 60_000);
+    assert.ok(limited.sources.instagram.backoffUntil > t0 + 30 * 60_000, "rate limiting backs off");
+    const skipped = await collector.runViralCollection({ now: t0 + 31 * 60_000, budgetMs: 10_000 });
+    assert.equal(skipped.instagram.skipped, "backoff");
+  } finally { cleanup(directory); }
+});
+
+/* Mapeamento e rodada real contra um Graph API simulado (sem rede). */
+function setupInstagram(responses, env = {}) {
+  const directory = mkdtempSync(path.join(tmpdir(), "mi-collector-test-"));
+  const requests = [];
+  const fetchMock = async (url, init) => {
+    requests.push({ url: String(url), auth: init?.headers?.Authorization });
+    const username = /username\(([^)]+)\)/.exec(decodeURIComponent(String(url)))?.[1];
+    const reply = responses[username] ?? { status: 400, body: { error: { message: "Unsupported get request", code: 100 } } };
+    return new Response(JSON.stringify(reply.body), { status: reply.status ?? 200, headers: { "content-type": "application/json" } });
+  };
+  const load = loader({ env: { DATA_DIR: directory, ADMIN_USER_IDS: "admin-1", ...env }, mocks: { "./social": { freshSocialAccount: async (account) => account }, "./social-token": { openSocialToken: () => "token-abc", sealSocialToken: (token) => token } }, globals: { fetch: fetchMock } });
+  const db = load("src/lib/db.ts");
+  const instagram = load("src/lib/instagram-discovery.ts");
+  return { directory, db, instagram, requests };
+}
+const media = (code, extra = {}) => ({ id: `1789${code.length}`, caption: `Personagem de IA no rolê #ai\nsegunda linha`, media_type: "VIDEO", media_url: `https://scontent.cdninstagram.com/v/${code}.mp4`, thumbnail_url: `https://scontent.cdninstagram.com/v/${code}.jpg`, permalink: `https://www.instagram.com/reel/${code}/`, timestamp: "2026-10-19T18:00:00+0000", like_count: 120, comments_count: 4, view_count: 9000, ...extra });
+
+test("Instagram media maps to catalog-compatible videos: reel link, caption title, official metrics and dates", () => {
+  const { directory, instagram } = setupInstagram({});
+  try {
+    const item = instagram.toInstagramViral("moroniduarte", "Morôni Duarte", media("DeXYZ123"), 1_700_000_000_000);
+    assert.equal(item.source, "instagram");
+    assert.equal(item.pageUrl, "https://www.instagram.com/reel/DeXYZ123/", "same shape as the catalog, so duplicates merge");
+    assert.equal(item.title, "Personagem de IA no rolê #ai");
+    assert.deepEqual([item.views, item.likes, item.comments], [9000, 120, 4]);
+    assert.equal(item.publishedAt, Date.parse("2026-10-19T18:00:00+0000"));
+    assert.equal(item.minedAt, 1_700_000_000_000);
+    assert.equal(instagram.toInstagramViral("x", undefined, media("A", { media_type: "IMAGE" })), null, "photos are ignored");
+    assert.equal(instagram.toInstagramViral("x", undefined, media("B", { permalink: "https://evil.example/reel/B/" })), null, "foreign links are ignored");
+    const bare = instagram.toInstagramViral("x", undefined, media("C", { caption: "", media_url: undefined, permalink: "https://www.instagram.com/p/C/" }));
+    assert.equal(bare.title, "Reel de @x");
+    assert.equal(bare.playUrl, "", "missing media_url (licensed audio / downloads off) stays empty, never invented");
+    assert.equal(bare.pageUrl, "https://www.instagram.com/reel/C/");
+  } finally { cleanup(directory); }
+});
+
+test("a real-shaped business_discovery round stores new reels, deduplicates against the catalog and reports per profile", async () => {
+  const responses = {
+    moroniduarte: { body: { business_discovery: { username: "moroniduarte", name: "Morôni Duarte", followers_count: 308000, media: { data: [media("DeBwwYiIO-F", { view_count: 7500000 }), media("NEWCODE01"), media("PHOTO1", { media_type: "IMAGE" })] } }, id: "1784" } },
+    red_cresty: { status: 400, body: { error: { message: "(#100) Unsupported get request. Object with ID 'red_cresty' does not exist", code: 100 } } },
+  };
+  const { directory, db, instagram, requests } = setupInstagram(responses);
+  try {
+    assert.equal(await instagram.instagramDiscoveryAccount(), null, "no connected admin account → no reading");
+    assert.equal(await instagram.runInstagramDiscovery(), null);
+    await db.upsertSocialAccount({ userId: "admin-1", platform: "instagram", status: "connected", username: "pulse.coding", accessToken: "enc:v1:x", igUserId: "17841400000", oauthProvider: "instagram", providerUserId: "17841400000", scopes: ["instagram_business_basic", "instagram_business_content_publish"], connectedAt: Date.now(), expiresAt: Date.now() + 30 * 86400000 });
+    // Catálogo já tem o Reel DeBwwYiIO-F com arquivo local.
+    await db.upsertVirals([{ source: "instagram", pageUrl: "https://www.instagram.com/reel/DeBwwYiIO-F/", playUrl: "/reel-videos/DeBwwYiIO-F.mp4", coverUrl: "/reel-thumbs/DeBwwYiIO-F.jpg", title: "Trend em alta do perfil", authorName: "Morôni Duarte", authorHandle: "moroniduarte", duration: 21, views: 7400000, likes: 245000, comments: 3240, shares: 0, region: "AI", minedAt: 0 }]);
+    const round = await instagram.runInstagramDiscovery({ now: 1_800_000_000_000, profiles: ["moroniduarte", "red_cresty"] });
+    assert.equal(round.account, "pulse.coding");
+    assert.deepEqual(plain(round.profiles), [{ username: "moroniduarte", ok: true, videos: 2, followers: 308000 }, { username: "red_cresty", ok: false, videos: 0, error: "O Instagram recusou a consulta: (#100) Unsupported get request. Object with ID 'red_cresty' does not exist" }]);
+    assert.equal(round.added, 1, "one new reel; the catalog one is an update, not a duplicate");
+    assert.equal(round.failure, undefined, "a profile that is not professional does not stop the round");
+    const rows = plain(await db.listVirals("AI"));
+    assert.equal(rows.length, 2);
+    const known = rows.find((row) => row.pageUrl.includes("DeBwwYiIO-F"));
+    assert.equal(known.views, 7500000, "official metrics refresh the catalog row");
+    assert.equal(known.discoveredAt, undefined, "catalog rows never gain a discovery date");
+    const fresh = rows.find((row) => row.pageUrl.includes("NEWCODE01"));
+    assert.equal(fresh.discoveredAt, 1_800_000_000_000);
+    assert.equal(fresh.publishedAt, Date.parse("2026-10-19T18:00:00+0000"));
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every((request) => request.url.startsWith("https://graph.instagram.com/v24.0/17841400000?") && request.auth === "Bearer token-abc"));
+    assert.ok(requests[0].url.includes("business_discovery.username(moroniduarte)") || decodeURIComponent(requests[0].url).includes("business_discovery.username(moroniduarte)"));
+  } finally { cleanup(directory); }
+});
+
+test("an expired Instagram authorization or rate limit ends the round with the right failure kind", async () => {
+  const { directory, db, instagram } = setupInstagram({ moroniduarte: { status: 401, body: { error: { message: "Invalid OAuth access token", code: 190 } } }, moroniceee: { body: { business_discovery: { media: { data: [media("Z1")] } } } } });
+  try {
+    await db.upsertSocialAccount({ userId: "admin-1", platform: "instagram", status: "connected", username: "pulse.coding", accessToken: "enc:v1:x", igUserId: "17841400000", oauthProvider: "instagram", providerUserId: "17841400000", scopes: ["instagram_business_basic"], connectedAt: Date.now(), expiresAt: Date.now() + 30 * 86400000 });
+    const round = await instagram.runInstagramDiscovery({ profiles: ["moroniduarte", "moroniceee"] });
+    assert.equal(round.failure, "auth");
+    assert.equal(round.profiles.length, 1, "stops at the first authorization failure instead of repeating blocked calls");
+    assert.match(round.errors[0], /Reconecte/);
+    assert.equal((await db.listVirals("AI")).length, 0);
+  } finally { cleanup(directory); }
 });

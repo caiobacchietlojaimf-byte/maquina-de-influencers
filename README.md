@@ -96,10 +96,23 @@ Copie `.env.example` para `.env.local`:
   consultas e bloqueios eventuais; não é uma API oficial do TikTok). As
   métricas dos vídeos descobertos nos últimos 14 dias são renovadas aos poucos;
   três falhas seguidas marcam o vídeo como indisponível, sem apagá-lo.
-- Instagram: não há fonte de descoberta autorizada configurada. O acervo vem
-  do catálogo verificado (`src/data/ai-profiles.ts`) e da importação manual de
-  Reels dos perfis acompanhados; a interface informa isso como "sem coleta
-  automática".
+- Instagram (`src/lib/instagram-discovery.ts`): atualização pela API
+  oficial, sem serviço pago. Usa a conexão já existente da conta
+  administradora (Instagram API with Instagram Login, escopo
+  `instagram_business_basic`, conectada em Publicar) e a aresta
+  `business_discovery` do nó IG User, que devolve a mídia pública de outras
+  contas profissionais pelo nome de usuário. Cobertura real: só os perfis
+  acompanhados do catálogo e só os que são contas Business/Creator; não há
+  busca por termo, hashtag nem ranking. Uma chamada por perfil por rodada
+  (limite de plataforma: 200 chamadas por hora por usuário). Reels que a Meta
+  devolve sem `media_url` (áudio licenciado, download desligado) ficam sem
+  arquivo e abrem na origem. Sem conta conectada, a fonte fica em modo
+  catálogo (acervo verificado + importação manual) e a página diz isso. O
+  administrador tem o botão "Ler perfis do Instagram agora", que roda uma
+  leitura imediata independente do cron.
+- TikTok: a busca via tikwm fica desligada por padrão
+  (`TIKTOK_DISCOVERY_ENABLED=true` liga) porque a fonte respondeu HTTP 403 em
+  2026-10-20; a página mostra o motivo e não repete consultas bloqueadas.
 - Cada vídeo guarda data de descoberta, data de publicação (quando a fonte
   informa) e data da última atualização de métricas; o indicador "novo"
   compara a descoberta com a última visita do usuário.

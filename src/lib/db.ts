@@ -1079,7 +1079,8 @@ export async function lastMinedAt(region: string): Promise<number> {
 
 function viralDedupeKey(item: Omit<Viral, "id">): string {
   if (item.source === "youtube" && item.videoId) return `yt:${item.videoId}`;
-  return item.videoId ? `tt:${item.videoId}` : `url:${item.pageUrl}`;
+  if (item.source === "tiktok" && item.videoId) return `tt:${item.videoId}`;
+  return `url:${item.pageUrl}`;
 }
 
 export async function upsertVirals(items: Omit<Viral, "id">[]): Promise<number> {
@@ -1120,8 +1121,8 @@ export async function upsertVirals(items: Omit<Viral, "id">[]): Promise<number> 
   return mutate((db) => {
     let added = 0;
     for (const item of items) {
-      const existing = item.videoId
-        ? db.virals.find((v) => v.videoId === item.videoId && (v.source === "youtube") === (item.source === "youtube"))
+      const existing = item.videoId && item.source !== "instagram"
+        ? db.virals.find((v) => v.videoId === item.videoId && v.source === item.source)
         : db.virals.find((v) => v.pageUrl === item.pageUrl);
       if (existing) {
         const discoveredAt = existing.discoveredAt ?? (existing.minedAt > 0 ? existing.minedAt : 0);

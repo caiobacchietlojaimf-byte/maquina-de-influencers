@@ -6,6 +6,7 @@ import { ChevronDown, Info, Link2, RefreshCw, Search, Sparkles } from "lucide-re
 
 import {
   checkViralsNewsAction,
+  collectInstagramNowAction,
   getMinedViralsAction,
   importViralAction,
   markViralsSeenAction,
@@ -56,12 +57,13 @@ function discoveredAt(viral: Viral): number {
   return viral.discoveredAt ?? viral.minedAt;
 }
 
-export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverNow, influencers }: {
+export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverNow, influencers, canAdmin = false }: {
   initialVirals: Viral[];
   initialStatus: CollectorStatus | null;
   seenAt: number | null;
   now: number;
   influencers: MiniInfluencer[];
+  canAdmin?: boolean;
 }) {
   const router = useRouter();
   const baseId = useId();
@@ -153,6 +155,13 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
     });
   };
 
+  const readInstagramNow = () => {
+    startMining(async () => {
+      try { applyResult(await collectInstagramNowAction()); }
+      catch { if (mounted.current) setError("Não foi possível ler o Instagram agora."); }
+    });
+  };
+
   const importByUrl = () => {
     if (!importUrl.trim()) return;
     startMining(async () => {
@@ -225,7 +234,7 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
           <label className="sr-only" htmlFor={`${baseId}-import-url`}>Link do vídeo</label>
           <input id={`${baseId}-import-url`} className="input" placeholder="Cole o link de um vídeo do TikTok ou de um Reel dos perfis acompanhados" value={importUrl} onChange={(event) => setImportUrl(event.target.value)} />
           <button type="submit" className="btn btn-accent" disabled={mining || !importUrl.trim()}>Importar</button>
-          <p className={styles.importHint}>TikTok: qualquer vídeo de personagem de IA. Instagram: só Reels dos perfis acompanhados com mídia verificada.</p>
+          <p className={styles.importHint}>TikTok: qualquer vídeo de personagem de IA (sujeito à disponibilidade da fonte). Instagram: só Reels dos perfis acompanhados com mídia verificada.</p>
         </form>
       ) : null}
 
@@ -307,6 +316,15 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
           </details>
 
           <SourcesStatus status={status} now={now} />
+          {canAdmin ? (
+            <div className={styles.adminRow}>
+              {status?.sources.instagram.mode === "discovery" ? (
+                <button type="button" className="btn btn-outline btn-sm" disabled={mining} onClick={readInstagramNow}><RefreshCw size={14} className={mining ? "spin" : undefined} aria-hidden="true" /> Ler perfis do Instagram agora (@{status.sources.instagram.account})</button>
+              ) : (
+                <span>Para a atualização automática do Instagram, conecte sua conta profissional em <a href="/app/publicar">Publicar</a>. A leitura usa a API oficial, sem serviço pago.</span>
+              )}
+            </div>
+          ) : null}
 
           <div className={styles.resultsRow}>
             <h2>Referências para sua próxima criação</h2>
@@ -323,17 +341,17 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
           ) : (
             <div className={styles.empty}>
               <b>{virals.length ? "Nenhum vídeo com esses filtros" : "Nenhum vídeo no acervo ainda"}</b>
-              <p>{virals.length ? "Ajuste a busca, a plataforma ou o perfil." : "A coleta automática traz vídeos de personagens de IA do TikTok; você também pode buscar agora ou importar um link."}</p>
+              <p>{virals.length ? "Ajuste a busca, a plataforma ou o perfil." : "O acervo vem do catálogo verificado, da leitura dos perfis acompanhados no Instagram e da importação manual de links."}</p>
               <div className={styles.emptyActions}>
                 {virals.length ? <button type="button" className="btn btn-ghost" onClick={clearFilters}>Limpar filtros</button> : null}
-                <button type="button" className="btn btn-accent" disabled={mining} onClick={() => searchMore()}><RefreshCw size={15} className={mining ? "spin" : undefined} aria-hidden="true" /> Buscar no TikTok agora</button>
+                {status?.sources.tiktok.mode === "discovery" ? <button type="button" className="btn btn-accent" disabled={mining} onClick={() => searchMore()}><RefreshCw size={15} className={mining ? "spin" : undefined} aria-hidden="true" /> Buscar no TikTok agora</button> : null}
               </div>
             </div>
           )}
 
           <div className={styles.more}>
             {visible.length < list.length ? <button type="button" className="btn btn-ghost" onClick={() => setLimit((value) => value + PAGE_SIZE)}>Carregar mais ({list.length - visible.length})</button> : null}
-            {hasMore ? <button type="button" className="btn btn-ghost" disabled={mining} onClick={() => searchMore(true)}><RefreshCw size={15} className={mining ? "spin" : undefined} aria-hidden="true" /> Buscar mais no TikTok</button> : null}
+            {hasMore && status?.sources.tiktok.mode === "discovery" ? <button type="button" className="btn btn-ghost" disabled={mining} onClick={() => searchMore(true)}><RefreshCw size={15} className={mining ? "spin" : undefined} aria-hidden="true" /> Buscar mais no TikTok</button> : null}
           </div>
         </>
       ) : null}
@@ -351,21 +369,22 @@ export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverN
 
 function sourceLine(name: string, source: SourceState | undefined, now: number): string {
   if (!source) return `${name}: status indisponível`;
-  if (source.mode === "discovery" && !source.lastAttemptAt && !source.lastSuccessAt) return `${name}: descoberta configurada, nenhuma rodada executada ainda`;
-  if (source.mode === "catalog") return `${name}: catálogo verificado e importação manual (sem coleta automática)`;
-  if (source.mode === "inactive") return `${name}: integração pronta (API oficial), aguardando chave configurada no servidor`;
+  if (source.mode === "catalog") return `${name}: catálogo verificado e importação manual (${source.reason ?? "sem coleta automática"})`;
+  if (source.mode === "inactive") return `${name}: ${source.reason ?? "desligado"}`;
+  const scope = name === "Instagram" ? ` (API oficial, conta @${source.account ?? "?"}, só perfis acompanhados)` : "";
+  if (!source.lastAttemptAt && !source.lastSuccessAt) return `${name}${scope}: nenhuma leitura registrada ainda`;
   const parts = [source.lastSuccessAt ? `atualizado ${relativeTime(source.lastSuccessAt, now)}` : "ainda sem coleta registrada"];
   if (source.lastError) parts.push(`última tentativa falhou${source.lastAttemptAt ? ` ${relativeTime(source.lastAttemptAt, now)}` : ""}; o acervo anterior foi mantido`);
   if (source.backoffUntil && source.backoffUntil > now) parts.push(`nova tentativa ${displayDateTime(source.backoffUntil, "short")}`);
   if (typeof source.lastAdded === "number" && source.lastSuccessAt) parts.push(`${source.lastAdded} novo${source.lastAdded === 1 ? "" : "s"} na última rodada`);
-  return `${name}: ${parts.join(" · ")}`;
+  return `${name}${scope}: ${parts.join(" · ")}`;
 }
 
 /** Estado real por fonte, igual nas três áreas: todas leem a mesma coleta. */
 function SourcesStatus({ status, now }: { status: CollectorStatus | null; now: number }) {
   return (
     <div className={styles.statusRow} aria-live="polite">
-      {status && !status.enabled ? <span className={styles.disabled}><strong>Coleta automática desligada</strong> (VIRAL_COLLECTION_ENABLED). O acervo salvo, o catálogo e a importação manual continuam.</span> : null}
+      {status && !status.enabled ? <span className={styles.disabled}><strong>Atualização automática desligada</strong> (VIRAL_COLLECTION_ENABLED). O acervo salvo, o catálogo e a importação manual continuam.</span> : null}
       <span><strong>Fontes:</strong> {sourceLine("TikTok", status?.sources.tiktok, now)}</span>
       <span>{sourceLine("Instagram", status?.sources.instagram, now)}</span>
       <span>{sourceLine("YouTube", status?.sources.youtube, now)}</span>

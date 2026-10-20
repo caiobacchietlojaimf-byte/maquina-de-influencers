@@ -47,6 +47,8 @@
 .statusRow { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--tx3); font-size: 12px; line-height: 1.5; }
 .statusRow strong { color: var(--tx2); font-weight: 600; }
 .disabled { flex-basis: 100%; padding: 6px 10px; border-radius: 8px; border: 1px dashed var(--line-2); color: var(--tx2); }
+.adminRow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--tx2); font-size: 12.5px; line-height: 1.5; }
+.adminRow a { color: var(--accent-text); text-decoration: underline; }
 .running { display: inline-flex; align-items: center; gap: 6px; }
 .running :global(.spinner) { width: 12px; height: 12px; }
 
