@@ -895,7 +895,6 @@ textarea.input {
 .page-skeleton {
   display: grid;
   gap: 20px;
-  max-width: 1180px;
 }
 .page-skeleton-head { display: grid; gap: 10px; }
 .page-skeleton-grid {
@@ -1509,7 +1508,7 @@ textarea.input {
 
 .masonry {
   margin-top: 18px;
-  columns: 4 220px;
+  columns: 7 220px;
   column-gap: 14px;
 }
 .masonry > * {
@@ -2032,7 +2031,6 @@ textarea.input {
 .home {
   display: grid;
   gap: 20px;
-  max-width: 1180px;
 }
 .home-head {
   display: flex;

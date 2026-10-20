@@ -1,7 +1,7 @@
 /* Estúdio de influencers: assistente em etapas (criar), catálogo (explorar)
    e biblioteca (meus influencers). Tokens do tema em globals.css. */
 
-.studio { --trait-surface: #fff; --motion: 0.18s var(--ease); display: grid; gap: 18px; max-width: 1280px; }
+.studio { --trait-surface: #fff; --motion: 0.18s var(--ease); display: grid; gap: 18px; }
 .studio > * { min-width: 0; }
 .studio :global(.input) { min-width: 0; max-width: 100%; }
 .studio :is(button, a, input, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -19,7 +19,7 @@
 
 /* ---------- assistente ---------- */
 
-.wizard { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.wizard { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, 380px); gap: 24px; align-items: start; }
 .wizardMain { display: grid; gap: 18px; min-width: 0; }
 .wizardIntro { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px 20px; flex-wrap: wrap; scroll-margin-top: 16px; }
 .kicker { color: var(--tx2); font-size: 12.5px; }
@@ -66,7 +66,7 @@
 .legendMeta { color: var(--tx3); font-size: 12px; font-weight: 500; }
 
 /* grades de opções */
-.typeGrid, .optionGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.typeGrid, .optionGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
 .optionGrid[data-kind="text"] { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
 .optionGrid[data-kind="color"] { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
 .optionCard { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 7px; min-width: 0; min-height: 44px; padding: 5px 5px 8px; border: 2px solid transparent; border-radius: 14px; background: var(--s2); color: var(--tx2); font-size: 12px; font-weight: 500; line-height: 1.25; text-align: center; cursor: pointer; transition: border-color var(--motion), background var(--motion), color var(--motion), transform var(--motion), box-shadow var(--motion); }
