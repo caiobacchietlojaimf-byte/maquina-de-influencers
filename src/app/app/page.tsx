@@ -1,13 +1,54 @@
 import Link from "next/link";
-import { Clapperboard, Flame, Send, Users, Wand2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Film, Flame, Plus, Send, Users, Wand2 } from "lucide-react";
 
 import { requirePageUser } from "@/lib/auth";
-import { listInfluencers, listPosts, listVideos } from "@/lib/db";
-import { isConfigured } from "@/lib/platform";
+import { listInfluencers, listPosts, listVideos, type Post, type Video } from "@/lib/db";
+import { displayDate } from "@/lib/display-date";
 import { groupInfluencerVersions } from "@/lib/influencer-versions";
+import { isConfigured } from "@/lib/platform";
+import { InfluencerImage } from "@/components/influencer-image";
+import { VideoCover } from "@/components/video-preview";
 
 export const metadata = { title: "Início" };
 export const dynamic = "force-dynamic";
+
+/* Recortes otimizados (WebP, 560×720) de capas do catálogo de referências que já vive em /reel-thumbs. */
+const SHOWCASE = ["/home/hero-stroll.webp", "/home/hero-boss.webp", "/home/hero-night.webp"];
+const RECENT_LIMIT = 3;
+const CAST_LIMIT = 8;
+
+type WorkState = {
+  label: string;
+  tone: "progress" | "ready" | "done" | "warn" | "danger";
+  action: string;
+  href: string;
+};
+
+/* Estados reais do modelo: geração (queued/processing/review/failed/completed) e,
+   para vídeos prontos, o que já existe em publicações. Geração concluída não é publicação. */
+function workState(video: Video, posts: Post[]): WorkState {
+  if (video.status === "queued" || video.status === "processing") {
+    return { label: video.finalizationStartedAt ? "Finalizando" : "Gerando", tone: "progress", action: "Acompanhar", href: "/app/videos" };
+  }
+  if (video.status === "failed") return { label: "Falhou", tone: "danger", action: "Ver detalhes", href: "/app/videos" };
+  if (video.status === "review") return { label: "Precisa de revisão", tone: "warn", action: "Revisar", href: "/app/videos" };
+  const related = posts.filter((post) => post.videoId === video.id);
+  if (related.some((post) => post.status === "posted")) return { label: "Publicado", tone: "done", action: "Ver publicações", href: "/app/publicar" };
+  if (related.some((post) => post.status === "scheduled" || post.status === "posting")) return { label: "Agendado", tone: "done", action: "Ver agendamento", href: "/app/publicar" };
+  if (related.some((post) => post.status === "failed")) return { label: "Publicação falhou", tone: "danger", action: "Ver publicações", href: "/app/publicar" };
+  if (video.resultUrl) return { label: "Pronto para publicar", tone: "ready", action: "Publicar", href: `/app/publicar?video=${encodeURIComponent(video.id)}` };
+  return { label: "Concluído", tone: "done", action: "Ver vídeo", href: "/app/videos" };
+}
+
+function workTitle(video: Video): string {
+  if (video.presetName) return video.presetName;
+  if (video.edit) return "Troca de personagem";
+  return video.kind === "viral" ? "Vídeo viral" : "Vídeo";
+}
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count.toLocaleString("pt-BR")} ${count === 1 ? singular : pluralForm}`;
+}
 
 export default async function HomePage() {
   const user = await requirePageUser();
@@ -17,121 +58,205 @@ export default async function HomePage() {
     listPosts(user.id),
   ]);
   const configured = isConfigured();
+  const families = groupInfluencerVersions(influencers);
+  const recent = [...videos].sort((a, b) => b.createdAt - a.createdAt).slice(0, RECENT_LIMIT);
+  const published = posts.filter((post) => post.status === "posted").length;
+  const influencerName = new Map(influencers.map((influencer) => [influencer.id, influencer.name]));
+  const firstName = user.name.trim().split(/\s+/)[0] || user.name;
+  const empty = families.length === 0 && videos.length === 0;
 
   return (
-    <div>
-      <div className="page-head">
+    <div className="home">
+      <header className="home-head">
         <div>
           <h1>
-            Fala, <span style={{ color: "var(--accent-text)" }}>{user.name.split(" ")[0]}</span>
+            Vamos criar algo, <span>{firstName}</span>?
           </h1>
-          <p className="sub">
-            A esteira completa da máquina: minerar o viral, criar o influencer, gerar o vídeo e
-            publicar. Tudo aqui dentro.
-          </p>
+          <p>Transforme suas ideias em vídeos com seus influencers.</p>
         </div>
-      </div>
+        <Link href="/app/criar-videos" className="btn btn-accent home-cta">
+          <Plus size={18} aria-hidden="true" />
+          Criar vídeo
+        </Link>
+      </header>
 
       {!configured ? (
-        <div className="notice">
+        <div className="notice" role="status">
           <b>Criação de influencers indisponível:</b> o serviço de geração ainda precisa ser configurado.
           Nenhum crédito será cobrado por essa indisponibilidade.
         </div>
       ) : null}
 
-      <div className="pipeline">
-        <div className="step">
-          <span className="n">PASSO 01</span>
-          <b>Minerar o viral</b>
-          <span>Tendências reais do TikTok, por região</span>
+      <section className="home-hero" aria-labelledby="home-hero-title">
+        <div className="home-hero-copy">
+          <span className="home-eyebrow">Seu próximo vídeo</span>
+          <h2 id="home-hero-title">Da inspiração à publicação.</h2>
+          <p>Escolha um influencer, adicione uma referência e comece.</p>
+          <Link href="/app/virais" className="btn btn-outline home-hero-link">
+            Explorar referências
+            <ArrowRight size={16} aria-hidden="true" />
+          </Link>
         </div>
-        <div className="step">
-          <span className="n">PASSO 02</span>
-          <b>Criar o influencer</b>
-          <span>9 tipos, 150+ traços, dado de sorteio</span>
+        <div className="home-hero-art" aria-hidden="true">
+          {SHOWCASE.map((src, index) => (
+            <span key={src} className="home-hero-frame">
+              <img src={src} alt="" width={560} height={720} loading={index === 0 ? "eager" : "lazy"} decoding="async" />
+            </span>
+          ))}
         </div>
-        <div className="step">
-          <span className="n">PASSO 03</span>
-          <b>Gerar o vídeo</b>
-          <span>Motion transfer com o viral de referência</span>
-        </div>
-        <div className="step">
-          <span className="n">PASSO 04</span>
-          <b>Publicar</b>
-          <span>Agora ou agendado, TikTok e Instagram</span>
-        </div>
-      </div>
+      </section>
 
-      <div className="stat-row">
-        <div className="stat" data-accent="true">
-          <div className="n">{user.credits.toLocaleString("pt-BR")}</div>
-          <div className="l">créditos disponíveis</div>
-        </div>
-        <div className="stat">
-          <div className="n">{groupInfluencerVersions(influencers).length}</div>
-          <div className="l">influencers criados</div>
-        </div>
-        <div className="stat">
-          <div className="n">{videos.length}</div>
-          <div className="l">vídeos gerados</div>
-        </div>
-        <div className="stat">
-          <div className="n">{posts.filter((p) => p.status === "posted").length}</div>
-          <div className="l">publicações feitas</div>
-        </div>
-      </div>
+      <p className="home-stats">
+        <span>{plural(families.length, "influencer", "influencers")}</span>
+        <span>{plural(videos.length, "vídeo criado", "vídeos criados")}</span>
+        <span>{plural(published, "publicação", "publicações")}</span>
+      </p>
 
-      <div className="home-grid">
-        <Link href="/app/virais" className="home-card">
-          <div className="icon">
-            <Flame size={19} />
+      {empty ? (
+        <ol className="home-flow" aria-label="Como funciona">
+          <li>
+            <Flame size={16} aria-hidden="true" />
+            <Link href="/app/virais">Explore uma referência</Link>
+          </li>
+          <li>
+            <Users size={16} aria-hidden="true" />
+            <Link href="/app/influencers">Crie um influencer</Link>
+          </li>
+          <li>
+            <Wand2 size={16} aria-hidden="true" />
+            <Link href="/app/criar-videos">Gere um vídeo</Link>
+          </li>
+          <li>
+            <Send size={16} aria-hidden="true" />
+            <Link href="/app/publicar">Publique</Link>
+          </li>
+        </ol>
+      ) : null}
+
+      <section className="home-section" aria-labelledby="home-recent-title">
+        <div className="home-section-head">
+          <h2 id="home-recent-title">{videos.length ? "Continue de onde parou" : "Seus vídeos recentes"}</h2>
+          {videos.length > RECENT_LIMIT ? (
+            <Link href="/app/videos" className="home-link">
+              Ver todos
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          ) : null}
+        </div>
+
+        {recent.length ? (
+          <div className="home-works">
+            {recent.map((video) => {
+              const state = workState(video, posts);
+              const title = workTitle(video);
+              const who = video.influencerId ? influencerName.get(video.influencerId) : undefined;
+              const playable = (video.status === "completed" || video.status === "review") && video.resultUrl;
+              return (
+                <article key={video.id} className="home-work">
+                  <div className="home-work-media">
+                    {playable ? (
+                      <VideoCover
+                        videoId={video.id}
+                        thumbnailUrl={video.thumbnailSourceUrl === video.resultUrl ? video.thumbnailUrl : undefined}
+                        title={title}
+                        className="home-work-cover"
+                      />
+                    ) : (
+                      <div className="home-work-placeholder" data-tone={state.tone} role="img" aria-label={`${state.label}: ${title}`}>
+                        {state.tone === "progress" ? <span className="spinner" /> : state.tone === "danger" ? <AlertTriangle size={22} /> : <Film size={22} />}
+                      </div>
+                    )}
+                    <span className="home-status" data-tone={state.tone}>
+                      <i aria-hidden="true" />
+                      {state.label}
+                    </span>
+                  </div>
+                  <div className="home-work-body">
+                    <h3>{title}</h3>
+                    <span className="home-work-meta">
+                      {who ? `${who} · ` : ""}
+                      {displayDate(video.createdAt, "short")}
+                    </span>
+                    <Link href={state.href} className="home-work-action" aria-label={`${state.action}: ${title}`}>
+                      {state.action}
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
           </div>
-          <h3>Minerar virais</h3>
-          <p>
-            Feed de tendências do TikTok minerado em tempo real, com views, música e download sem
-            marca d&apos;água. Importe também por link.
-          </p>
-          <span className="go">Ver tendências →</span>
-        </Link>
-        <Link href="/app/influencers" className="home-card">
-          <div className="icon">
-            <Users size={19} />
+        ) : (
+          <div className="home-empty">
+            <span className="home-empty-icon" aria-hidden="true">
+              <Film size={22} />
+            </span>
+            <b>Nenhum vídeo ainda</b>
+            <p>
+              {families.length
+                ? "Seus influencers estão prontos. Escolha um movimento de referência e gere o primeiro vídeo."
+                : "Crie um influencer, escolha uma referência e gere seu primeiro vídeo."}
+            </p>
+            <Link href={families.length ? "/app/criar-videos" : "/app/influencers"} className="btn btn-accent">
+              {families.length ? "Criar vídeo" : "Criar influencer"}
+            </Link>
           </div>
-          <h3>Criar influencer</h3>
-          <p>
-            Monte o personagem do zero: 9 tipos, mais de 150 traços, ou jogue o dado e deixe a
-            máquina decidir.
-          </p>
-          <span className="go">Abrir estúdio →</span>
-        </Link>
-        <Link href="/app/criar-videos" className="home-card">
-          <div className="icon">
-            <Wand2 size={19} />
+        )}
+      </section>
+
+      <section className="home-section" aria-labelledby="home-cast-title">
+        <div className="home-section-head">
+          <h2 id="home-cast-title">Seus influencers</h2>
+          {families.length > CAST_LIMIT ? (
+            <Link href="/app/influencers" className="home-link">
+              Ver todos
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          ) : null}
+        </div>
+
+        {families.length ? (
+          <div className="home-cast">
+            {families.slice(0, CAST_LIMIT).map((family) => {
+              const shown = family.versions.find((version) => version.status === "completed" && version.imageUrl) ?? family.root;
+              const ready = shown.status === "completed" && shown.imageUrl;
+              return (
+                <Link key={family.id} href="/app/influencers" className="home-cast-item" aria-label={`Abrir ${shown.name} no estúdio de influencers`}>
+                  <span className="home-cast-avatar" data-state={ready ? "ready" : shown.status}>
+                    {ready ? (
+                      <InfluencerImage src={shown.imageUrl!} alt="" />
+                    ) : shown.status === "failed" ? (
+                      <AlertTriangle size={18} aria-hidden="true" />
+                    ) : (
+                      <span className="spinner" aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="home-cast-name">{shown.name}</span>
+                </Link>
+              );
+            })}
+            <Link href="/app/influencers" className="home-cast-item home-cast-new" aria-label="Criar novo influencer">
+              <span className="home-cast-avatar">
+                <Plus size={22} aria-hidden="true" />
+              </span>
+              <span className="home-cast-name">Novo influencer</span>
+            </Link>
           </div>
-          <h3>Criar Vídeos</h3>
-          <p>Escolha seu influencer e um movimento de referência, ajuste a cena e gere seu vídeo.</p>
-          <span className="go">Criar um vídeo →</span>
-        </Link>
-        <Link href="/app/videos" className="home-card">
-          <div className="icon">
-            <Clapperboard size={19} />
+        ) : (
+          <div className="home-empty home-empty-row">
+            <span className="home-empty-icon" aria-hidden="true">
+              <Users size={22} />
+            </span>
+            <div>
+              <b>Crie seu primeiro influencer</b>
+              <p>Monte um personagem com identidade própria para estrelar seus vídeos.</p>
+            </div>
+            <Link href="/app/influencers" className="btn btn-accent">
+              Criar influencer
+            </Link>
           </div>
-          <h3>Meus vídeos</h3>
-          <p>Acompanhe as gerações em andamento, baixe os prontos e mande para publicação.</p>
-          <span className="go">Abrir galeria →</span>
-        </Link>
-        <Link href="/app/publicar" className="home-card">
-          <div className="icon">
-            <Send size={19} />
-          </div>
-          <h3>Publicar</h3>
-          <p>
-            Conecte TikTok e Instagram, escreva a legenda e publique na hora ou agende. A fila
-            roda sozinha.
-          </p>
-          <span className="go">Abrir central →</span>
-        </Link>
-      </div>
+        )}
+      </section>
     </div>
   );
 }

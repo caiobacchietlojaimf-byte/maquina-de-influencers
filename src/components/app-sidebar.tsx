@@ -3,20 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { BookOpen, ChevronUp, Clapperboard, CreditCard, Flame, Home, LogOut, Menu, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
+import { ArrowRight, ChevronUp, Clapperboard, Coins, CreditCard, Flame, GraduationCap, Home, LogOut, Menu, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
 
 import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 
+/* Produção: cada destino aparece uma vez, sem selos promocionais. */
 const ITEMS = [
   { href: "/app", label: "Início", icon: Home, exact: true },
-  { href: "/app/influencers", label: "Influencers", icon: Users, badge: "Novo" },
-  { href: "/app/virais", label: "Vídeos Virais", icon: Flame, badge: "Hot" },
-  { href: "/app/criar-videos", label: "Criar Vídeos", icon: Wand2, badge: "Novo" },
-  { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
-  { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },
-  { href: "/app/modulos", label: "Módulos", icon: BookOpen, badge: "Pro" },
+  { href: "/app/influencers", label: "Influencers", icon: Users },
+  { href: "/app/virais", label: "Explorar virais", icon: Flame },
+  { href: "/app/criar-videos", label: "Criar vídeos", icon: Wand2 },
+  { href: "/app/videos", label: "Meus vídeos", icon: Clapperboard },
+  { href: "/app/publicar", label: "Publicações", icon: Send },
 ] as const;
+/* Aprendizado fica separado da produção; "Pro" só aparece quando o plano ainda não libera. */
+const LEARN = { href: "/app/modulos", label: "Aprender", icon: GraduationCap } as const;
 
 const STORAGE_KEY = "mi-sidebar-collapsed";
 
@@ -26,12 +28,15 @@ export function AppSidebar({
   credits,
   logout,
   isAdmin = false,
+  learnLocked = false,
 }: {
   name: string;
   email: string;
   credits: number;
   logout: () => Promise<void>;
   isAdmin?: boolean;
+  /** Conteúdo de aprendizado ainda bloqueado pelo plano atual. */
+  learnLocked?: boolean;
 }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -111,19 +116,9 @@ export function AppSidebar({
         </Link>
       </div>
 
-      <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
-        <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong>{credits.toLocaleString("pt-BR")}</strong></div>
-        <div className="sidebar-credits-bar" data-empty={credits <= 0} aria-hidden="true" />
-        <Link href="/app/creditos" className="sidebar-buy-credits" aria-label="Comprar créditos" title="Comprar créditos" aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
-          onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
-          <CreditCard size={16} aria-hidden="true" /><span data-hide={collapsed}>Comprar créditos</span>
-        </Link>
-      </div>
-
       <nav aria-label="Menu principal">
         {ITEMS.map((item) => {
-          const active =
-            "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href) || (item.href === "/app/modulos" && pathname.startsWith("/app/criacao-ilimitada"));
+          const active = "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
             <Link
@@ -138,13 +133,47 @@ export function AppSidebar({
             >
               <Icon size={18} />
               <span data-hide={collapsed}>{item.label}</span>
-              {"badge" in item && item.badge && !collapsed ? (
-                <span className="badge-new">{item.badge}</span>
-              ) : null}
             </Link>
           );
         })}
+        <span className="nav-separator" role="separator" aria-orientation="horizontal" />
+        {(() => {
+          const active = pathname.startsWith(LEARN.href) || pathname.startsWith("/app/criacao-ilimitada");
+          const label = learnLocked ? `${LEARN.label} (disponível no Pro e no Max)` : LEARN.label;
+          return (
+            <Link
+              href={LEARN.href}
+              className="nav-item"
+              data-active={active}
+              aria-current={active ? "page" : undefined}
+              aria-label={label}
+              onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}
+              title={collapsed || learnLocked ? label : undefined}
+            >
+              <LEARN.icon size={18} />
+              <span data-hide={collapsed}>{LEARN.label}</span>
+              {learnLocked && !collapsed ? <span className="nav-tag">Pro</span> : null}
+            </Link>
+          );
+        })()}
       </nav>
+
+      <div className="sidebar-credits">
+        <Link
+          href="/app/creditos"
+          className="sidebar-credits-link"
+          aria-label={`${credits.toLocaleString("pt-BR")} créditos. Adicionar créditos`}
+          aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
+          title={collapsed ? `${credits.toLocaleString("pt-BR")} créditos · Adicionar créditos` : undefined}
+          onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}
+        >
+          <span className="sidebar-credits-icon" aria-hidden="true"><Coins size={17} /></span>
+          <span className="sidebar-credits-text" data-hide={collapsed}>
+            <strong>{credits.toLocaleString("pt-BR")} créditos</strong>
+            <span>Adicionar créditos <ArrowRight size={13} aria-hidden="true" /></span>
+          </span>
+        </Link>
+      </div>
 
       <div className="sidebar-footer" ref={profileRoot}>
         {profileOpen && <div id={profileId} className="profile-panel" ref={profilePanel}>
