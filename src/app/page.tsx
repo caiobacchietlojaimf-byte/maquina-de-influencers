@@ -96,7 +96,7 @@ export default function LandingPage() {
           {gallery.map((item, index) => <figure key={item.id} className={styles.galleryCard}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={item.preview.thumb || item.preview.url} alt={`Personagem de IA do catálogo, exemplo ${index + 1}`} loading="lazy" />
-            <figcaption><span>{typeLabel(item.tier)}</span><Plus size={16} aria-hidden /></figcaption>
+            <figcaption>{typeLabel(item.tier)}</figcaption>
           </figure>)}
         </div>
         <p className={styles.mediaNote}>Referências do catálogo Higgsfield integrado ao estúdio. A Máquina de Influencers é um produto independente. Exemplos ilustram possibilidades, não garantem resultado idêntico.</p>
