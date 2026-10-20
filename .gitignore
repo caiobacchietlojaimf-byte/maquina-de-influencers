@@ -20,3 +20,5 @@ Supabase.env
 supabase.env
 *.env
 !.env.example
+
+.vercel
