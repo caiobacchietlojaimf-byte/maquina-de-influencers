@@ -31,6 +31,9 @@ export type User = {
   /** Manual balance added by an administrator, keyed by the form submission. */
   adminCreditGrants?: Record<string, { credits: number; grantedAt: number; adminId: string }>;
   suspendedAt?: number;
+  /** Conta Google vinculada (claim `sub`, estável por usuário). Contas só-Google ficam sem senha. */
+  googleId?: string;
+  googleLinkedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   captionRequests?: number[];
   thumbnailWorkers?: Record<string, { claimId: string; expiresAt: number }>;
@@ -341,6 +344,26 @@ export async function findUserById(id: string): Promise<User | undefined> {
     return data ? rowData<User>(data) : undefined;
   }
   return load().users.find((u) => u.id === id);
+}
+
+export async function findUserByGoogleId(googleId: string): Promise<User | undefined> {
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_users").select("data").eq("data->>googleId", googleId).limit(1).maybeSingle();
+    if (error) fail("buscar usuário", error);
+    return data ? rowData<User>(data) : undefined;
+  }
+  return load().users.find((u) => u.googleId === googleId);
+}
+
+/** Vincula o Google a uma conta existente. Nunca troca um vínculo já feito com outra conta Google. */
+export async function linkGoogleAccount(userId: string, googleId: string): Promise<User> {
+  return mutateCredits(userId, user => {
+    if (user.googleId && user.googleId !== googleId) throw new Error("Esta conta já está vinculada a outro login Google.");
+    user.googleId = googleId;
+    user.googleLinkedAt ??= Date.now();
+    return user;
+  });
 }
 
 export async function createUser(input: Omit<User, "id" | "createdAt">): Promise<User> {

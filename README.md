@@ -52,6 +52,7 @@ Copie `.env.example` para `.env.local`:
 | `INSTAGRAM_APP_ID` + `INSTAGRAM_APP_SECRET` | Credenciais próprias do produto Instagram Login; callback em `/api/oauth/instagram/callback` |
 | `SOCIAL_TOKEN_SECRET` | Chave AES-256 de 32 bytes (base64 ou 64hex) estável para cifrar tokens sociais no banco |
 | `PUBLIC_BASE_URL` | Origem HTTPS pública e fixa usada nos callbacks OAuth |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Login com Google (OpenID Connect, credencial "Aplicativo da Web"); redirect exato em `PUBLIC_BASE_URL/api/auth/google/callback`. Sem o par, o botão avisa que o login está indisponível |
 | `TIKTOK_VERIFIED_MEDIA_PREFIXES` | Prefixos HTTPS do armazenamento verificados no painel TikTok, separados por vírgula |
 | `CRON_SECRET` + `PUBLICATION_CRON_CONFIGURED` | Autenticação do cron e confirmação de que o agendador foi ativado no ambiente |
 

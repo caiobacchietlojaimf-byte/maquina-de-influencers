@@ -1,20 +1,23 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { clearSessionCookie, hashPassword, setSessionCookie, verifyPassword } from "@/lib/auth";
-import { createUser, findUserByEmail } from "@/lib/db";
+import { createUser, findUserByEmail, linkGoogleAccount } from "@/lib/db";
+import { GOOGLE_LINK_COOKIE, googleLinkCookieOptions, openGoogleLink } from "@/lib/google-auth";
 import { rateLimit, requestIdentity } from "@/lib/rate-limit";
 import { getSystemSettings } from "@/lib/commerce";
 import { getPlan } from "@/lib/plans";
+import { initialCredits } from "@/lib/signup";
 
 export type AuthState = { error?: string } | null;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function initialCredits(): number {
-  const parsed = Number(process.env.INITIAL_CREDITS);
-  return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 10000 ? parsed : 0;
+function destination(planId: FormDataEntryValue | null | undefined): string {
+  const plan = getPlan(planId);
+  return plan ? `/app/planos?plano=${plan.id}` : "/app";
 }
 
 export async function registerAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
@@ -32,7 +35,7 @@ export async function registerAction(_prev: AuthState, formData: FormData): Prom
   const { hash, salt } = hashPassword(password);
   const user = await createUser({ name, email, passwordHash: hash, salt, credits: initialCredits() });
   await setSessionCookie(user.id);
-  redirect(getPlan(formData.get("planId")) ? `/app/planos?plano=${getPlan(formData.get("planId"))!.id}` : "/app");
+  redirect(destination(formData.get("planId")));
 }
 
 export async function loginAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
@@ -44,11 +47,23 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
   if (!await rateLimit("login-ip", ip, 40) || !await rateLimit("login-account", email, 12)) return { error: "Muitas tentativas. Aguarde alguns minutos antes de tentar novamente." };
 
   const user = await findUserByEmail(email);
-  if (!user || user.suspendedAt || !verifyPassword(password, user.salt, user.passwordHash)) {
+  // Contas criadas pelo Google não têm senha: o hash vazio nunca confere.
+  if (!user || user.suspendedAt || !user.passwordHash || !verifyPassword(password, user.salt, user.passwordHash)) {
     return { error: "E-mail ou senha incorretos" };
   }
+
+  // Vinculação pendente: o Google devolveu este mesmo e-mail e a senha acabou de ser provada.
+  const jar = await cookies();
+  const link = openGoogleLink(jar.get(GOOGLE_LINK_COOKIE)?.value);
+  if (link) {
+    jar.set(GOOGLE_LINK_COOKIE, "", { ...googleLinkCookieOptions, maxAge: 0 });
+    if (link.email === user.email) {
+      try { await linkGoogleAccount(user.id, link.sub); } catch { /* vínculo conflitante: login segue sem vincular */ }
+    }
+  }
+
   await setSessionCookie(user.id);
-  redirect(getPlan(formData.get("planId")) ? `/app/planos?plano=${getPlan(formData.get("planId"))!.id}` : "/app");
+  redirect(destination(formData.get("planId") || link?.planId));
 }
 
 export async function logoutAction() {
