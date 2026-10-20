@@ -1992,8 +1992,8 @@ textarea.input {
 
 .home {
   display: grid;
-  gap: 26px;
-  max-width: 1280px;
+  gap: 20px;
+  max-width: 1180px;
 }
 .home-head {
   display: flex;
@@ -2005,22 +2005,22 @@ textarea.input {
 .home-head h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(28px, 3.2vw, 40px);
+  font-size: clamp(24px, 2.4vw, 32px);
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.1;
 }
 .home-head h1 span { color: var(--accent-text); }
 .home-head p {
-  margin: 8px 0 0;
+  margin: 6px 0 0;
   color: var(--tx2);
-  font-size: 15px;
+  font-size: 14px;
 }
 .home-cta {
-  height: 50px;
-  padding: 0 22px;
-  font-size: 16px;
-  border-radius: 14px;
+  height: 44px;
+  padding: 0 18px;
+  font-size: 15px;
+  border-radius: 12px;
 }
 
 /* --- painel de apresentação --- */
@@ -2029,9 +2029,9 @@ textarea.input {
   position: relative;
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
-  min-height: 250px;
+  min-height: 196px;
   overflow: hidden;
-  border-radius: 24px;
+  border-radius: 20px;
   border: 1px solid var(--line);
   background: var(--panel);
 }
@@ -2039,8 +2039,8 @@ textarea.input {
   display: grid;
   align-content: center;
   justify-items: start;
-  gap: 10px;
-  padding: 32px 36px;
+  gap: 8px;
+  padding: 24px 28px;
   z-index: 1;
 }
 .home-eyebrow {
@@ -2053,7 +2053,7 @@ textarea.input {
 .home-hero-copy h2 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(26px, 2.8vw, 36px);
+  font-size: clamp(22px, 2.2vw, 28px);
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 1.08;
@@ -2061,16 +2061,16 @@ textarea.input {
 }
 .home-hero-copy p {
   margin: 0;
-  max-width: 400px;
+  max-width: 380px;
   color: var(--tx2);
-  font-size: 14.5px;
-  line-height: 1.6;
+  font-size: 13.5px;
+  line-height: 1.55;
 }
-.home-hero-link { margin-top: 8px; height: 42px; }
+.home-hero-link { margin-top: 6px; height: 38px; font-size: 14px; }
 .home-hero-art {
   position: relative;
   display: flex;
-  min-height: 250px;
+  min-height: 196px;
   overflow: hidden;
   background: var(--s1);
 }
@@ -2109,9 +2109,9 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 0;
-  margin: -8px 0 0;
+  margin: -6px 0 0;
   color: var(--tx2);
-  font-size: 13px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
 .home-stats span + span::before {
@@ -2161,7 +2161,7 @@ textarea.input {
 
 /* --- seções --- */
 
-.home-section { display: grid; gap: 14px; }
+.home-section { display: grid; gap: 12px; }
 .home-section-head {
   display: flex;
   align-items: baseline;
@@ -2170,7 +2170,7 @@ textarea.input {
 }
 .home-section-head h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -2189,13 +2189,13 @@ textarea.input {
 .home-works {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 .home-work {
   display: grid;
   grid-template-rows: auto 1fr;
   overflow: hidden;
-  border-radius: 20px;
+  border-radius: 16px;
   border: 1px solid var(--line);
   background: var(--panel);
   transition: border-color 0.15s var(--ease);
@@ -2204,7 +2204,7 @@ textarea.input {
 .home-work:focus-within { border-color: var(--line-2); }
 .home-work-media {
   position: relative;
-  aspect-ratio: 16 / 10;
+  aspect-ratio: 16 / 9;
   background: var(--s1);
 }
 .home-work-cover { position: absolute; inset: 0; height: 100%; }
@@ -2246,12 +2246,12 @@ textarea.input {
 .home-status[data-tone="danger"] i { background: var(--danger); }
 .home-work-body {
   display: grid;
-  gap: 4px;
-  padding: 14px 16px 16px;
+  gap: 3px;
+  padding: 12px 14px 13px;
 }
 .home-work-body h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   overflow: hidden;
   white-space: nowrap;
@@ -2269,10 +2269,10 @@ textarea.input {
   align-items: center;
   gap: 6px;
   justify-self: start;
-  min-height: 32px;
-  margin-top: 6px;
+  min-height: 28px;
+  margin-top: 4px;
   color: var(--tx);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
 }
 .home-work-action:hover { color: var(--accent-text); }
@@ -2290,17 +2290,17 @@ textarea.input {
   flex: 0 0 auto;
   display: grid;
   justify-items: center;
-  gap: 8px;
-  width: 104px;
-  padding: 8px 4px;
-  border-radius: 16px;
+  gap: 6px;
+  width: 88px;
+  padding: 6px 4px;
+  border-radius: 14px;
   transition: background 0.15s var(--ease);
 }
 .home-cast-item:hover { background: var(--s1); }
 .home-cast-avatar {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 60px;
+  height: 60px;
   overflow: hidden;
   border-radius: 50%;
   border: 2px solid var(--line-2);
@@ -2326,7 +2326,7 @@ textarea.input {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   color: var(--tx2);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   line-height: 1.25;
   text-align: center;
@@ -2339,10 +2339,10 @@ textarea.input {
 .home-empty {
   display: grid;
   justify-items: center;
-  gap: 8px;
-  padding: 36px 24px;
+  gap: 6px;
+  padding: 28px 22px;
   border: 1px dashed var(--line-2);
-  border-radius: 20px;
+  border-radius: 16px;
   text-align: center;
 }
 .home-empty-icon {
@@ -2386,7 +2386,7 @@ textarea.input {
 @media (max-width: 860px) {
   .home-hero { grid-template-columns: 1fr; }
   .home-hero-copy { padding: 24px 22px; }
-  .home-hero-art { min-height: 170px; }
+  .home-hero-art { min-height: 150px; }
   .home-hero-art::before { background: linear-gradient(180deg, var(--panel) 0%, rgba(19, 21, 23, 0) 30%); }
   :root[data-theme="light"] .home-hero-art::before { background: linear-gradient(180deg, var(--panel) 0%, rgba(255, 255, 255, 0) 30%); }
 }

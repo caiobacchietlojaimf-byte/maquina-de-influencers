@@ -133,6 +133,59 @@ export default async function HomePage() {
         </ol>
       ) : null}
 
+      <section className="home-section" aria-labelledby="home-cast-title">
+        <div className="home-section-head">
+          <h2 id="home-cast-title">Seus influencers</h2>
+          {families.length > CAST_LIMIT ? (
+            <Link href="/app/influencers" className="home-link">
+              Ver todos
+              <ArrowRight size={15} aria-hidden="true" />
+            </Link>
+          ) : null}
+        </div>
+
+        {families.length ? (
+          <div className="home-cast">
+            {families.slice(0, CAST_LIMIT).map((family) => {
+              const shown = family.versions.find((version) => version.status === "completed" && version.imageUrl) ?? family.root;
+              const ready = shown.status === "completed" && shown.imageUrl;
+              return (
+                <Link key={family.id} href="/app/influencers" className="home-cast-item" aria-label={`Abrir ${shown.name} no estúdio de influencers`}>
+                  <span className="home-cast-avatar" data-state={ready ? "ready" : shown.status}>
+                    {ready ? (
+                      <InfluencerImage src={shown.imageUrl!} alt="" />
+                    ) : shown.status === "failed" ? (
+                      <AlertTriangle size={18} aria-hidden="true" />
+                    ) : (
+                      <span className="spinner" aria-hidden="true" />
+                    )}
+                  </span>
+                  <span className="home-cast-name">{shown.name}</span>
+                </Link>
+              );
+            })}
+            <Link href="/app/influencers" className="home-cast-item home-cast-new" aria-label="Criar novo influencer">
+              <span className="home-cast-avatar">
+                <Plus size={22} aria-hidden="true" />
+              </span>
+              <span className="home-cast-name">Novo influencer</span>
+            </Link>
+          </div>
+        ) : (
+          <div className="home-empty home-empty-row">
+            <span className="home-empty-icon" aria-hidden="true">
+              <Users size={22} />
+            </span>
+            <div>
+              <b>Crie seu primeiro influencer</b>
+              <p>Monte um personagem com identidade própria para estrelar seus vídeos.</p>
+            </div>
+            <Link href="/app/influencers" className="btn btn-accent">
+              Criar influencer
+            </Link>
+          </div>
+        )}
+      </section>
       <section className="home-section" aria-labelledby="home-recent-title">
         <div className="home-section-head">
           <h2 id="home-recent-title">{videos.length ? "Continue de onde parou" : "Seus vídeos recentes"}</h2>
@@ -204,59 +257,6 @@ export default async function HomePage() {
         )}
       </section>
 
-      <section className="home-section" aria-labelledby="home-cast-title">
-        <div className="home-section-head">
-          <h2 id="home-cast-title">Seus influencers</h2>
-          {families.length > CAST_LIMIT ? (
-            <Link href="/app/influencers" className="home-link">
-              Ver todos
-              <ArrowRight size={15} aria-hidden="true" />
-            </Link>
-          ) : null}
-        </div>
-
-        {families.length ? (
-          <div className="home-cast">
-            {families.slice(0, CAST_LIMIT).map((family) => {
-              const shown = family.versions.find((version) => version.status === "completed" && version.imageUrl) ?? family.root;
-              const ready = shown.status === "completed" && shown.imageUrl;
-              return (
-                <Link key={family.id} href="/app/influencers" className="home-cast-item" aria-label={`Abrir ${shown.name} no estúdio de influencers`}>
-                  <span className="home-cast-avatar" data-state={ready ? "ready" : shown.status}>
-                    {ready ? (
-                      <InfluencerImage src={shown.imageUrl!} alt="" />
-                    ) : shown.status === "failed" ? (
-                      <AlertTriangle size={18} aria-hidden="true" />
-                    ) : (
-                      <span className="spinner" aria-hidden="true" />
-                    )}
-                  </span>
-                  <span className="home-cast-name">{shown.name}</span>
-                </Link>
-              );
-            })}
-            <Link href="/app/influencers" className="home-cast-item home-cast-new" aria-label="Criar novo influencer">
-              <span className="home-cast-avatar">
-                <Plus size={22} aria-hidden="true" />
-              </span>
-              <span className="home-cast-name">Novo influencer</span>
-            </Link>
-          </div>
-        ) : (
-          <div className="home-empty home-empty-row">
-            <span className="home-empty-icon" aria-hidden="true">
-              <Users size={22} />
-            </span>
-            <div>
-              <b>Crie seu primeiro influencer</b>
-              <p>Monte um personagem com identidade própria para estrelar seus vídeos.</p>
-            </div>
-            <Link href="/app/influencers" className="btn btn-accent">
-              Criar influencer
-            </Link>
-          </div>
-        )}
-      </section>
     </div>
   );
 }
