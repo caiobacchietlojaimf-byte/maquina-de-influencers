@@ -1,40 +1,18 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  BicepsFlexed,
-  Blend,
-  CalendarDays,
-  Check,
-  ChevronDown,
   Clock,
   Compass,
   Dices,
   Download,
-  Drama,
-  Eye,
-  Gem,
-  Glasses,
-  Globe,
-  MoveVertical,
-  Palette,
-  Proportions,
+  PenLine,
   RotateCcw,
-  Ruler,
-  ScanEye,
-  Scissors,
-  Shirt,
-  Skull,
-  Smile,
-  SmilePlus,
   Sparkles,
   Trash2,
   Upload,
-  VenusAndMars,
   X,
-  type LucideIcon,
 } from "lucide-react";
 
 import {
@@ -49,13 +27,15 @@ import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
 import { HeroReel } from "./hero-reel";
 import PRESETS from "@/data/influencer-presets.json";
-import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection, type TraitGroup } from "@/data/traits";
+import { PROMPT_STEPS, stepGroupsFor, WIZARD_STEPS } from "@/data/influencer-wizard";
+import { pruneSelection, randomSelection, type Selection, type TraitGroup } from "@/data/traits";
 import type { Influencer } from "@/lib/db";
 import { groupInfluencerVersions, influencerRootId } from "@/lib/influencer-versions";
 import { InfluencerDetails } from "./influencer-details";
 import { InfluencerImage } from "./influencer-image";
 import { InfluencerImportDialog } from "./influencer-import-dialog";
 import { ReferenceUpload } from "./influencer-reference-upload";
+import { buildSummary, StepHeading, StepIndicator, SummaryPanel, TraitGroupField, TypePicker, WizardNav } from "./influencer-wizard";
 import detailStyles from "./influencer-details.module.css";
 import styles from "./influencer-studio.module.css";
 
@@ -68,34 +48,15 @@ type Preset = {
   selection: Record<string, string[]>;
 };
 
-type RightTab = "explore" | "history";
+type View = "create" | "explore" | "history";
 
 const TIER_LABEL: Record<string, string> = {
   ...Object.fromEntries(CHARACTER_TYPES.map((t) => [t.id, t.label])),
   import: "Importado",
 };
 
-/** Ícone de cada grupo de traços (mesma linguagem visual do Higgsfield). */
-const GROUP_ICONS: Record<string, LucideIcon> = {
-  gender: VenusAndMars,
-  body_type: BicepsFlexed,
-  hair: Scissors,
-  hair_colour: Palette,
-  aesthetic: Shirt,
-  ethnicity_origin_base: Globe,
-  age: CalendarDays,
-  skin_tone: Blend,
-  height: Ruler,
-  proportions: Proportions,
-  freak_head: Skull,
-  freak_neck: MoveVertical,
-  eye_shape: Eye,
-  eye_color: ScanEye,
-  freak_face: SmilePlus,
-  facial_hair: Smile,
-  distinctive: Gem,
-  accessory: Glasses,
-};
+const LAST_FORM_STEP = WIZARD_STEPS.length - 1;
+const LAST_PROMPT_STEP = PROMPT_STEPS.length - 1;
 
 export function InfluencerStudio({
   initialInfluencers,
@@ -114,9 +75,12 @@ export function InfluencerStudio({
   const requestRef = useRef<{ signature: string; key: string } | null>(null);
   const refreshRef = useRef<Promise<void> | null>(null);
   const deletedIds = useRef(new Set<string>());
+  const stepTop = useRef<HTMLDivElement>(null);
 
-  /* ----- builder ----- */
+  /* ----- assistente ----- */
   const [creationMode, setCreationMode] = useState<"form" | "prompt">("form");
+  const [step, setStep] = useState(0);
+  const [completed, setCompleted] = useState<Set<number>>(() => new Set());
   const [prompt, setPrompt] = useState("");
   const [tier, setTier] = useState<CharacterTier>("total");
   const [selection, setSelection] = useState<Selection>({});
@@ -125,12 +89,12 @@ export function InfluencerStudio({
   const [styleReference, setStyleReference] = useState<string | null>(null);
   const [referenceLoading, setReferenceLoading] = useState(false);
   const [styleReferenceLoading, setStyleReferenceLoading] = useState(false);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ gender: true });
+  const [fieldErrors, setFieldErrors] = useState<{ image?: string; prompt?: string }>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  /* ----- lado direito ----- */
-  const [rightTab, setRightTab] = useState<RightTab>("explore");
+  /* ----- abas ----- */
+  const [view, setView] = useState<View>("create");
   const [viewer, setViewer] = useState<Preset | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -144,6 +108,9 @@ export function InfluencerStudio({
   const detail = influencers.find((influencer) => influencer.id === detailId);
   const hasPending = influencers.some((i) => i.status === "processing" || i.status === "queued");
   const busy = submitting || referenceLoading || styleReferenceLoading;
+  const steps = creationMode === "prompt" ? PROMPT_STEPS : WIZARD_STEPS;
+  const lastStep = creationMode === "prompt" ? LAST_PROMPT_STEP : LAST_FORM_STEP;
+  const summaryLines = useMemo(() => buildSummary(tier, selection), [tier, selection]);
 
   useEffect(() => {
     mounted.current = true;
@@ -204,7 +171,6 @@ export function InfluencerStudio({
 
   const rollDice = useCallback(() => {
     setSelection(randomSelection(tier));
-    setOpenGroups((prev) => ({ ...prev, gender: true }));
   }, [tier]);
 
   const changeTier = useCallback((next: CharacterTier) => {
@@ -212,12 +178,47 @@ export function InfluencerStudio({
     setSelection((prev) => pruneSelection(prev, next));
   }, []);
 
+  const scrollToStep = useCallback(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const top = stepTop.current?.getBoundingClientRect().top ?? 0;
+    if (top < 0 || top > 120) stepTop.current?.scrollIntoView({ behavior: reduced ? "instant" : "smooth", block: "start" });
+  }, []);
+
+  const goToStep = useCallback((index: number) => {
+    setStep(Math.max(0, Math.min(index, lastStep)));
+    setError(null);
+    scrollToStep();
+  }, [lastStep, scrollToStep]);
+
+  /** Validação da etapa atual; erros ficam junto do campo. */
+  const validateStep = useCallback((index: number): boolean => {
+    if (creationMode !== "prompt") return true;
+    const next: { image?: string; prompt?: string } = {};
+    if (index === 0 && !reference) next.image = "Envie a imagem do personagem para continuar.";
+    if (index === 1 && !prompt.trim()) next.prompt = "Descreva como quer seu influencer.";
+    setFieldErrors(next);
+    return !next.image && !next.prompt;
+  }, [creationMode, reference, prompt]);
+
+  const nextStep = useCallback(() => {
+    if (!validateStep(step)) return;
+    setCompleted((prev) => new Set(prev).add(step));
+    goToStep(step + 1);
+  }, [step, validateStep, goToStep]);
+
+  const switchMode = useCallback((mode: "form" | "prompt") => {
+    if (mode === creationMode) return;
+    setCreationMode(mode);
+    setStep(0);
+    setCompleted(new Set());
+    setFieldErrors({});
+    setError(null);
+  }, [creationMode]);
+
   const generateSheet = useCallback(async () => {
     if (submittingRef.current || referenceLoading || styleReferenceLoading) return;
-    if (creationMode === "prompt" && (!reference || !prompt.trim())) {
-      setError("Adicione a imagem e descreva como quer seu influencer.");
-      return;
-    }
+    if (creationMode === "prompt" && !validateStep(1)) return;
+    if (creationMode === "prompt" && !reference) { setFieldErrors({ image: "Envie a imagem do personagem." }); goToStep(0); return; }
     submittingRef.current = true;
     setSubmitting(true);
     setError(null);
@@ -246,7 +247,8 @@ export function InfluencerStudio({
         return;
       }
       requestRef.current = null;
-      setRightTab("history");
+      setView("history");
+      window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
       await refreshRef.current;
       await refreshInfluencers();
       router.refresh();
@@ -256,7 +258,7 @@ export function InfluencerStudio({
       submittingRef.current = false;
       if (mounted.current) setSubmitting(false);
     }
-  }, [name, tier, selection, creationMode, prompt, reference, styleReference, referenceLoading, styleReferenceLoading, rootInfluencers.length, refreshInfluencers, router]);
+  }, [name, tier, selection, creationMode, prompt, reference, styleReference, referenceLoading, styleReferenceLoading, rootInfluencers.length, refreshInfluencers, router, validateStep, goToStep]);
 
   const recreate = useCallback((preset: Preset) => {
     setCreationMode("form");
@@ -267,276 +269,270 @@ export function InfluencerStudio({
     setReference(null);
     setStyleReference(null);
     setError(null);
+    setFieldErrors({});
     setViewer(null);
+    setView("create");
+    setCompleted(new Set([0, 1, 2]));
+    setStep(LAST_FORM_STEP);
     window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, []);
 
-  const groups = useMemo(() => groupsFor(tier), [tier]);
+  const blocked = credits < generationCost ? `Você precisa de ${generationCost} ${generationCost === 1 ? "crédito" : "créditos"} para gerar (saldo: ${credits.toLocaleString("pt-BR")}).` : null;
+  const currentStep = steps[step];
+
+  /* ----- conteúdo de cada etapa ----- */
+
+  function renderFormStep() {
+    const definition = WIZARD_STEPS[step];
+    if (!definition) return null;
+    if (definition.id === "identity") {
+      return (
+        <>
+          <StepHeading title={definition.label} description={definition.description} />
+          <div className={styles.field}>
+            <label htmlFor={`${studioId}-name`}>Nome do influencer <span className={styles.optionalLabel}>Opcional</span></label>
+            <input id={`${studioId}-name`} className="input" placeholder="Ex.: Lola Turbo" value={name} maxLength={80} disabled={busy} onChange={(event) => setName(event.target.value)} />
+            <span className={styles.fieldHint}>Sem nome, usamos “Influencer {rootInfluencers.length + 1}”. Dá para renomear depois.</span>
+          </div>
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Foto de referência <span className={styles.optionalLabel}>Opcional</span></span>
+            <span className={styles.fieldHint}>Com uma foto, o rosto serve de identidade e é adaptado ao tipo e aos traços escolhidos.</span>
+            <ReferenceUpload label="Envie sua foto" previewLabel="Sua foto de referência" value={reference} onChange={setReference} onLoadingChange={setReferenceLoading} disabled={busy} />
+          </div>
+          <TypePicker value={tier} disabled={busy} onChange={changeTier} />
+        </>
+      );
+    }
+    const groups = stepGroupsFor(definition, tier);
+    return (
+      <>
+        <StepHeading
+          title={definition.label}
+          description={definition.description}
+          action={
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={rollDice} title="Sorteia todas as características do tipo atual">
+              <Dices size={15} aria-hidden="true" /> Sortear visual
+            </button>
+          }
+        />
+        {groups.map((group) => (
+          <TraitGroupField
+            key={group.id}
+            group={group}
+            tier={tier}
+            picked={selection[group.id] ?? []}
+            disabled={busy}
+            onToggle={(optionId) => toggleOption(group, optionId)}
+            before={group.id === "aesthetic" ? (
+              <div className={styles.styleUpload}>
+                <ReferenceUpload label="Adicionar referência de estilo" previewLabel="Foto de referência de estilo" value={styleReference} onChange={setStyleReference} onLoadingChange={setStyleReferenceLoading} disabled={busy} />
+              </div>
+            ) : undefined}
+          />
+        ))}
+        {definition.id === "style" ? (
+          <>
+            <div className={styles.field}>
+              <label htmlFor={`${studioId}-prompt`}>Roupa e detalhes extras <span className={styles.optionalLabel}>Opcional</span></label>
+              <textarea id={`${studioId}-prompt`} className={`input ${styles.promptInput}`} rows={3} maxLength={3000} value={prompt} disabled={busy} placeholder="Ex.: jaqueta vermelha aberta, camiseta branca e calça preta." onChange={(event) => setPrompt(event.target.value)} />
+            </div>
+            <ReviewBlock />
+          </>
+        ) : null}
+      </>
+    );
+  }
+
+  function renderPromptStep() {
+    const definition = PROMPT_STEPS[step];
+    if (!definition) return null;
+    if (definition.id === "image") {
+      return (
+        <>
+          <StepHeading title={definition.label} description={definition.description} />
+          <div className={styles.field} data-invalid={Boolean(fieldErrors.image)}>
+            <span className={styles.fieldLabel}>Imagem do personagem <span className={styles.requiredLabel}>Obrigatória</span></span>
+            <span className={styles.fieldHint}>O rosto desta imagem é a identidade; a descrição na próxima etapa diz o resto.</span>
+            <ReferenceUpload label="Adicionar imagem do personagem" required previewLabel="Imagem do personagem" value={reference} onChange={(value) => { setReference(value); if (value) setFieldErrors((prev) => ({ ...prev, image: undefined })); }} onLoadingChange={setReferenceLoading} disabled={busy} />
+            {fieldErrors.image ? <p className={styles.fieldError} role="alert">{fieldErrors.image}</p> : null}
+          </div>
+          <div className={styles.field}>
+            <label htmlFor={`${studioId}-name`}>Nome do influencer <span className={styles.optionalLabel}>Opcional</span></label>
+            <input id={`${studioId}-name`} className="input" placeholder="Ex.: Lola Turbo" value={name} maxLength={80} disabled={busy} onChange={(event) => setName(event.target.value)} />
+          </div>
+        </>
+      );
+    }
+    return (
+      <>
+        <StepHeading title={definition.label} description={definition.description} />
+        <div className={styles.field} data-invalid={Boolean(fieldErrors.prompt)}>
+          <label htmlFor={`${studioId}-prompt`}>Como será seu influencer? <span className={styles.requiredLabel}>Obrigatório</span></label>
+          <textarea id={`${studioId}-prompt`} className={`input ${styles.promptInput}`} rows={5} maxLength={3000} value={prompt} disabled={busy} required aria-invalid={Boolean(fieldErrors.prompt)} aria-describedby={fieldErrors.prompt ? `${studioId}-prompt-error` : undefined} placeholder="Use o rosto da imagem. Corpo inteiro, camiseta preta, calça jeans e tênis branco…" onChange={(event) => { setPrompt(event.target.value); if (event.target.value.trim()) setFieldErrors((prev) => ({ ...prev, prompt: undefined })); }} />
+          {fieldErrors.prompt ? <p id={`${studioId}-prompt-error`} className={styles.fieldError} role="alert">{fieldErrors.prompt}</p> : null}
+        </div>
+        <ReviewBlock />
+      </>
+    );
+  }
+
+  function ReviewBlock() {
+    return (
+      <section className={styles.review} aria-labelledby={`${studioId}-review`}>
+        <h3 id={`${studioId}-review`}>Revisão</h3>
+        <p className={styles.fieldHint}>Confira as escolhas. A geração custa ✦ {generationCost} {generationCost === 1 ? "crédito" : "créditos"} e só acontece ao clicar em “Gerar personagem”.</p>
+        <div className={styles.reviewSummary}>
+          <SummaryPanel name={name} tier={tier} reference={reference} styleReference={styleReference} prompt={prompt} mode={creationMode} lines={summaryLines} cost={generationCost} credits={credits} disabled={busy} onEdit={goToStep} />
+        </div>
+      </section>
+    );
+  }
+
   /* =========================================================== */
 
   return (
-    <div className={`studio ${styles.studio}`}>
-      {/* ------------------- construtor (esquerda) ------------------- */}
-      <aside className="builder">
-        <div className="builder-head">
-          <div className="kicker">Crie seu próprio personagem com</div>
-          <h2>Influenciador de IA</h2>
-        </div>
-        <div className={styles.creationModes} role="group" aria-label="Como criar o influencer">
-          <button type="button" aria-pressed={creationMode === "form"} disabled={busy} onClick={() => { setCreationMode("form"); setError(null); }}>Formulário</button>
-          <button type="button" aria-pressed={creationMode === "prompt"} disabled={busy} onClick={() => { setCreationMode("prompt"); setError(null); }}>Imagem + prompt</button>
-        </div>
-        <div className="builder-scroll">
-          <ReferenceUpload
-            label={creationMode === "prompt" ? "Adicionar imagem do personagem" : "Envie sua foto"}
-            required={creationMode === "prompt"}
-            previewLabel="Sua foto de referência"
-            value={reference}
-            onChange={setReference}
-            onLoadingChange={setReferenceLoading}
-            disabled={busy}
-          />
-
-          <div className="field">
-            <label htmlFor={`${studioId}-name`}>Nome do influencer</label>
-            <input
-              id={`${studioId}-name`}
-              className="input"
-              placeholder="Ex.: Lola Turbo"
-              value={name}
-              maxLength={80}
-              disabled={busy}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </div>
-
-          <div className="field">
-            <label htmlFor={`${studioId}-prompt`}>{creationMode === "prompt" ? "Como será seu influencer?" : "Roupa e detalhes extras"}{creationMode === "form" ? <span className={styles.optionalLabel}>Opcional</span> : null}</label>
-            <textarea id={`${studioId}-prompt`} className={`input ${styles.promptInput}`} rows={4} maxLength={3000} value={prompt} disabled={busy} required={creationMode === "prompt"} placeholder={creationMode === "prompt" ? "Use o rosto da imagem. Corpo inteiro, camiseta preta, calça jeans e tênis branco…" : "Ex.: jaqueta vermelha aberta, camiseta branca e calça preta."} onChange={(event) => setPrompt(event.target.value)} />
-          </div>
-
-          {creationMode === "form" ? <>
-          <section className="trait-section" data-open="true">
-            <div className="trait-head" style={{ cursor: "default" }}>
-              <Drama size={15} style={{ color: "var(--tx3)" }} />
-              <span>Tipo de personagem</span>
-              <span className="count">⋅ {CHARACTER_TYPES.length}</span>
-            </div>
-            <div className={styles.optionGrid} role="group" aria-label="Tipo de personagem">
-              {CHARACTER_TYPES.map((type) => (
-                <button
-                  type="button"
-                  key={type.id}
-                  className={styles.optionCard}
-                  data-kind="media"
-                  data-active={tier === type.id}
-                  aria-pressed={tier === type.id}
-                  disabled={busy}
-                  onClick={() => changeTier(type.id)}
-                >
-                  <span className={styles.optionVisual}>
-                    <Image src={type.icon} alt="" width={96} height={96} unoptimized />
-                    {tier === type.id ? <Check className={styles.selectedMark} size={16} aria-hidden="true" /> : null}
-                  </span>
-                  <span>{type.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {groups.map((group) => {
-            const opts = optionsFor(group, tier);
-            const picked = selection[group.id] ?? [];
-            const open = openGroups[group.id] ?? false;
-            const pickedLabels = picked
-              .map((id) => opts.find((opt) => opt.id === id)?.label)
-              .filter(Boolean)
-              .join(", ");
-            const GroupIcon = GROUP_ICONS[group.id];
-            return (
-              <section key={group.id} className="trait-section" data-open={open}>
-                <button
-                  type="button"
-                  className="trait-head"
-                  disabled={referenceLoading || styleReferenceLoading}
-                  aria-expanded={open}
-                  aria-controls={`${studioId}-${group.id}`}
-                  onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))}
-                >
-                  {GroupIcon ? <GroupIcon size={15} style={{ color: "var(--tx3)", flexShrink: 0 }} /> : null}
-                  <span>{group.label}</span>
-                  <span className="count">⋅ {opts.length}</span>
-                  {pickedLabels ? <span className="picked">{pickedLabels}</span> : null}
-                  <ChevronDown className="chev" size={16} />
-                </button>
-                <div id={`${studioId}-${group.id}`} hidden={!open}>
-                  {open ? <>
-                  {group.max > 1 ? <p className={styles.choiceHint}>Escolha até {group.max}</p> : null}
-                  {group.id === "aesthetic" ? <div className={styles.styleUpload}>
-                    <ReferenceUpload
-                      label="Adicionar referência de estilo"
-                      previewLabel="Foto de referência de estilo"
-                      value={styleReference}
-                      onChange={setStyleReference}
-                      onLoadingChange={setStyleReferenceLoading}
-                      disabled={busy}
-                    />
-                  </div> : null}
-                  <div className={styles.optionGrid} role="group" aria-label={group.label}>
-                    {opts.map((opt) => (
-                      <button
-                        type="button"
-                        key={opt.id}
-                        className={styles.optionCard}
-                        data-kind={opt.image ? "media" : opt.swatch ? "color" : "text"}
-                        data-active={picked.includes(opt.id)}
-                        aria-pressed={picked.includes(opt.id)}
-                        disabled={busy}
-                        onClick={() => toggleOption(group, opt.id)}
-                      >
-                        {opt.image || opt.swatch ? <span className={styles.optionVisual}>
-                          {opt.image ? <Image src={opt.image} alt="" width={96} height={96} style={{ objectFit: opt.imageFit ?? "cover" }} unoptimized /> : <span className={styles.swatch} style={{ backgroundColor: opt.swatch }} />}
-                          {picked.includes(opt.id) ? <Check className={styles.selectedMark} size={16} aria-hidden="true" /> : null}
-                        </span> : null}
-                        <span>{opt.label}</span>
-                        {!opt.image && !opt.swatch && picked.includes(opt.id) ? <Check size={14} aria-hidden="true" /> : null}
-                      </button>
-                    ))}
-                  </div>
-                  </> : null}
-                </div>
-              </section>
-            );
-          })}
-          </> : null}
-        </div>
-
-        <div className="builder-footer">
-          {creationMode === "form" ? <button type="button" className="dice-btn" title="Sortear visual" aria-label="Sortear visual" disabled={busy} onClick={rollDice}>
-            <Dices size={20} />
-          </button> : null}
-          <button type="button" className="generate-btn" disabled={busy || credits < generationCost || (creationMode === "prompt" && (!reference || !prompt.trim()))} onClick={generateSheet}>
-            {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar <span className="cost">✦ {generationCost}</span></>}
+    <div className={styles.studio}>
+      <div className={styles.topBar}>
+        <div className={styles.viewTabs} role="tablist" aria-label="Área do estúdio">
+          <button type="button" role="tab" className="chip" data-active={view === "create"} aria-selected={view === "create"} onClick={() => setView("create")}>
+            <PenLine size={14} aria-hidden="true" /> Criar
+          </button>
+          <button type="button" role="tab" className="chip" data-active={view === "explore"} aria-selected={view === "explore"} onClick={() => setView("explore")}>
+            <Compass size={14} aria-hidden="true" /> Explorar
+          </button>
+          <button type="button" role="tab" className="chip" data-active={view === "history"} aria-selected={view === "history"} onClick={() => setView("history")}>
+            <Clock size={14} aria-hidden="true" /> Meus influencers{rootInfluencers.length ? <span className={styles.tabCount}>{rootInfluencers.length}</span> : null}
           </button>
         </div>
-        {credits < generationCost ? <p className={styles.builderNotice}>Você precisa de {generationCost} créditos para gerar.</p> : null}
-        {error ? (
-          <div className="auth-error" role="alert" style={{ margin: "0 14px 14px" }}>
-            {error}
-          </div>
-        ) : null}
-      </aside>
-
-      {/* ------------------- explorar / histórico (direita) ------------------- */}
-      <section>
-        <div className="explore-bar">
-          <button type="button" className="chip" data-active={rightTab === "explore"} aria-pressed={rightTab === "explore"} onClick={() => setRightTab("explore")}>
-            <Compass size={14} />
-            Explorar
-          </button>
-          <button type="button" className="chip" data-active={rightTab === "history"} aria-pressed={rightTab === "history"} onClick={() => setRightTab("history")}>
-            <Clock size={14} />
-            Meus Influencers
-          </button>
-          {rightTab === "history" ? (
+        <div className={styles.topActions}>
+          {view === "history" ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportOpen(true)}>
-              <Upload size={14} aria-hidden="true" />
-              Importar influencer
+              <Upload size={14} aria-hidden="true" /> Importar influencer
             </button>
           ) : null}
-          <span style={{ marginLeft: "auto", color: "var(--tx3)", fontSize: 12.5 }}>
-            ✦ {credits.toLocaleString("pt-BR")} créditos
-          </span>
+          <span className={styles.creditsPill}>✦ {credits.toLocaleString("pt-BR")} créditos</span>
         </div>
-        {refreshError ? <div className={styles.refreshNotice} role="status">
-          <span>{refreshError}</span>
-          <button type="button" className="btn btn-sm btn-ghost" disabled={refreshing} onClick={() => { void refreshInfluencers(); }}>
-            <RotateCcw size={14} aria-hidden="true" />{refreshing ? "Atualizando…" : "Atualizar"}
-          </button>
-        </div> : null}
+      </div>
 
-        {rightTab === "explore" ? (
-          <>
-            <div className="studio-hero">
-              <HeroReel videos={HERO_VIDEOS} className="videos" />
-              <h2>
-                Seu influencer,
-                <br />
-                seu hit viral
-              </h2>
-              <p>
-                Monte seu influencer de IA com o rosto, corpo e estilo que você quiser.
-                Explore os personagens e use um deles como ponto de partida.
-              </p>
-              <div className="chips">
-                <span className={`chip ${styles.galleryLabel}`} data-active="true">
-                  <Sparkles size={13} />
-                  AI Influencers
-                </span>
+      {refreshError ? <div className={styles.refreshNotice} role="status">
+        <span>{refreshError}</span>
+        <button type="button" className="btn btn-sm btn-ghost" disabled={refreshing} onClick={() => { void refreshInfluencers(); }}>
+          <RotateCcw size={14} aria-hidden="true" />{refreshing ? "Atualizando…" : "Atualizar"}
+        </button>
+      </div> : null}
+
+      {view === "create" ? (
+        <div className={styles.wizard}>
+          <div className={styles.wizardMain}>
+            <div ref={stepTop} className={styles.wizardIntro}>
+              <div>
+                <span className={styles.kicker}>Crie seu próprio personagem</span>
+                <h1 className={styles.title}>Influenciador de IA</h1>
+              </div>
+              <div className={styles.creationModes} role="group" aria-label="Como criar o influencer">
+                <button type="button" aria-pressed={creationMode === "form"} disabled={busy} onClick={() => switchMode("form")}>Formulário</button>
+                <button type="button" aria-pressed={creationMode === "prompt"} disabled={busy} onClick={() => switchMode("prompt")}>Imagem + prompt</button>
               </div>
             </div>
 
-              <div className="masonry">
-                {(PRESETS as Preset[]).map((preset) => (
-                  <figure key={preset.id} className={`preset-card ${styles.presetCard}`}>
-                    <button type="button" className={styles.presetOpen} onClick={() => setViewer(preset)} aria-label={`Ver ${preset.name}`} />
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={preset.preview.thumb || preset.preview.url} alt={preset.name} loading="lazy" />
-                    <span className="tier-tag">{TIER_LABEL[preset.tier] ?? preset.tier}</span>
-                    <figcaption className="overlay">
-                      <span className="name">{preset.name}</span>
-                      <button
-                        type="button"
-                        className="recreate-btn"
-                        disabled={busy}
-                        onClick={() => recreate(preset)}
-                      >
-                        Recriar
-                      </button>
-                    </figcaption>
-                  </figure>
-                ))}
-              </div>
-          </>
-        ) : null}
+            <StepIndicator steps={steps} current={step} completed={completed} disabled={busy} onSelect={goToStep} />
 
-        {rightTab === "history" ? (
-          rootInfluencers.length ? (
-            <div className="history-grid">
-              {rootInfluencers.map((inf) => (
-                <InfluencerCard
-                  key={inf.id}
-                  influencer={inf}
-                  versionCount={(families.find((family) => family.id === influencerRootId(inf))?.versions.length ?? 1) - 1}
-                  onOpen={() => setDetailId(inf.id)}
-                  onDelete={async () => {
-                    await deleteInfluencerAction(inf.id);
-                    deletedIds.current.add(inf.id);
-                    setInfluencers((prev) => prev.filter((i) => i.id !== inf.id));
-                  }}
-                  onRetry={async (requestKey) => {
-                    const result = await retryInfluencerAction(inf.id, requestKey);
-                    await refreshRef.current;
-                    await refreshInfluencers();
-                    router.refresh();
-                    if ("error" in result) throw new Error(result.error);
-                  }}
-                  onUseMotion={() => router.push(`/app/criar-videos?influencer=${encodeURIComponent(inf.id)}`)}
-                />
-              ))}
+            <div key={`${creationMode}-${step}`} className={styles.stepPanel}>
+              {creationMode === "prompt" ? renderPromptStep() : renderFormStep()}
+              {error ? <div className="auth-error" role="alert">{error}</div> : null}
             </div>
-          ) : (
-            <div className="empty-state">
-              <div className="big">Nenhum influencer ainda</div>
-              <p>Monte o personagem na coluna da esquerda e aperte Gerar.</p>
-              <button type="button" className="btn btn-accent" disabled={busy} onClick={rollDice}>
-                <Dices size={16} />
-                Sortear um visual
-              </button>
+
+            <details className={styles.summaryMobile}>
+              <summary>Ver resumo das escolhas</summary>
+              <SummaryPanel name={name} tier={tier} reference={reference} styleReference={styleReference} prompt={prompt} mode={creationMode} lines={summaryLines} cost={generationCost} credits={credits} disabled={busy} onEdit={goToStep} />
+            </details>
+
+            <WizardNav canBack={step > 0} isLast={step === lastStep} disabled={busy} busy={submitting} cost={generationCost} blocked={step === lastStep ? blocked : null} onBack={() => goToStep(step - 1)} onNext={nextStep} onGenerate={generateSheet} />
+          </div>
+
+          <aside className={styles.wizardAside} aria-label="Resumo das escolhas">
+            <SummaryPanel name={name} tier={tier} reference={reference} styleReference={styleReference} prompt={prompt} mode={creationMode} lines={summaryLines} cost={generationCost} credits={credits} disabled={busy} onEdit={goToStep} />
+            <p className={styles.asideHint}>{currentStep ? `Etapa ${step + 1} de ${steps.length}: ${currentStep.label}.` : null} O resultado aparece em “Meus influencers” assim que ficar pronto.</p>
+          </aside>
+        </div>
+      ) : null}
+
+      {view === "explore" ? (
+        <>
+          <div className="studio-hero">
+            <HeroReel videos={HERO_VIDEOS} className="videos" />
+            <h2>
+              Seu influencer,
+              <br />
+              seu hit viral
+            </h2>
+            <p>
+              Monte seu influencer de IA com o rosto, corpo e estilo que você quiser.
+              Explore os personagens e use um deles como ponto de partida.
+            </p>
+            <div className="chips">
+              <span className={`chip ${styles.galleryLabel}`} data-active="true">
+                <Sparkles size={13} />
+                AI Influencers · {PRESETS.length}
+              </span>
             </div>
-          )
-        ) : null}
-      </section>
+          </div>
+
+          <div className="masonry">
+            {(PRESETS as Preset[]).map((preset) => (
+              <figure key={preset.id} className={`preset-card ${styles.presetCard}`}>
+                <button type="button" className={styles.presetOpen} onClick={() => setViewer(preset)} aria-label={`Ver ${preset.name}`} />
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={preset.preview.thumb || preset.preview.url} alt={preset.name} loading="lazy" decoding="async" />
+                <span className="tier-tag">{TIER_LABEL[preset.tier] ?? preset.tier}</span>
+                <figcaption className="overlay">
+                  <span className="name">{preset.name}</span>
+                  <button type="button" className="recreate-btn" disabled={busy} onClick={() => recreate(preset)}>
+                    Recriar
+                  </button>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      {view === "history" ? (
+        rootInfluencers.length ? (
+          <div className="history-grid">
+            {rootInfluencers.map((inf) => (
+              <InfluencerCard
+                key={inf.id}
+                influencer={inf}
+                versionCount={(families.find((family) => family.id === influencerRootId(inf))?.versions.length ?? 1) - 1}
+                onOpen={() => setDetailId(inf.id)}
+                onDelete={async () => {
+                  await deleteInfluencerAction(inf.id);
+                  deletedIds.current.add(inf.id);
+                  setInfluencers((prev) => prev.filter((i) => i.id !== inf.id));
+                }}
+                onRetry={async (requestKey) => {
+                  const result = await retryInfluencerAction(inf.id, requestKey);
+                  await refreshRef.current;
+                  await refreshInfluencers();
+                  router.refresh();
+                  if ("error" in result) throw new Error(result.error);
+                }}
+                onUseMotion={() => router.push(`/app/criar-videos?influencer=${encodeURIComponent(inf.id)}`)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="big">Nenhum influencer ainda</div>
+            <p>Monte o personagem em quatro etapas e gere o primeiro.</p>
+            <button type="button" className="btn btn-accent" disabled={busy} onClick={() => { rollDice(); setView("create"); setStep(LAST_FORM_STEP); setCompleted(new Set([0, 1, 2])); }}>
+              <Dices size={16} />
+              Sortear um visual
+            </button>
+          </div>
+        )
+      ) : null}
 
       {importOpen ? <InfluencerImportDialog userId={userId} onClose={() => setImportOpen(false)} onImported={async (id) => {
         setImportOpen(false);
@@ -554,7 +550,6 @@ export function InfluencerStudio({
         router.refresh();
       }} /> : null}
 
-      {/* ------------------- visualizador de preset ------------------- */}
       {viewer ? <PresetViewer preset={viewer} disabled={busy} onClose={() => setViewer(null)} onRecreate={() => recreate(viewer)} /> : null}
     </div>
   );

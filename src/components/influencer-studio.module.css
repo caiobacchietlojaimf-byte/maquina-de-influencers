@@ -1,37 +1,93 @@
-.studio { --trait-surface: #fff; }
-.studio > *, .studio :global(.builder-scroll) > * { min-width: 0; }
-.studio :global(.builder-scroll) { grid-template-columns: minmax(0, 1fr); }
+/* Estúdio de influencers: assistente em etapas (criar), catálogo (explorar)
+   e biblioteca (meus influencers). Tokens do tema em globals.css. */
+
+.studio { --trait-surface: #fff; --motion: 0.18s var(--ease); display: grid; gap: 18px; max-width: 1280px; }
+.studio > * { min-width: 0; }
 .studio :global(.input) { min-width: 0; max-width: 100%; }
-.creationModes { display: flex; gap: 4px; padding: 4px; margin: 0 14px 12px; border-radius: 12px; background: var(--s1); border: 1px solid var(--line); }
-.creationModes button { flex: 1; min-width: 0; border: 0; border-radius: 9px; padding: 10px 6px; background: transparent; color: var(--tx2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.studio :is(button, a, input, textarea, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.studio button:disabled { cursor: not-allowed; }
+
+/* ---------- barra superior ---------- */
+
+.topBar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.viewTabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.viewTabs .chip { min-height: 38px; }
+.tabCount { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--s3); color: var(--tx2); font-size: 11px; }
+.viewTabs .chip[data-active="true"] .tabCount { background: rgba(0, 0, 0, 0.14); color: inherit; }
+.topActions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.creditsPill { color: var(--tx3); font-size: 12.5px; white-space: nowrap; }
+
+/* ---------- assistente ---------- */
+
+.wizard { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
+.wizardMain { display: grid; gap: 18px; min-width: 0; }
+.wizardIntro { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px 20px; flex-wrap: wrap; scroll-margin-top: 16px; }
+.kicker { color: var(--tx2); font-size: 12.5px; }
+.title { margin: 2px 0 0; font-family: var(--font-display); text-transform: uppercase; font-size: clamp(22px, 2.4vw, 30px); letter-spacing: -0.03em; line-height: 1.1; }
+
+.creationModes { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--s1); border: 1px solid var(--line); }
+.creationModes button { min-width: 0; min-height: 40px; padding: 0 16px; border: 0; border-radius: 9px; background: transparent; color: var(--tx2); font-size: 13px; font-weight: 600; cursor: pointer; transition: background var(--motion), color var(--motion); }
 .creationModes button[aria-pressed="true"] { background: var(--tx); color: var(--bg); }
 .creationModes button:disabled { opacity: 0.6; }
-.promptInput { min-height: 108px; resize: vertical; line-height: 1.6; }
-.optionalLabel { margin-left: 7px; color: var(--tx3); font-size: 11px; font-weight: 400; }
-.studio textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.studio :is(button, a, input):focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
 
-.studio button:disabled { cursor: not-allowed; }
-.optionGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 4px 10px 12px; }
-.optionCard { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 7px; min-width: 0; padding: 5px 5px 8px; border: 2px solid transparent; border-radius: 14px; background: var(--s2); color: var(--tx2); font-size: 11.5px; font-weight: 500; line-height: 1.25; text-align: center; cursor: pointer; }
+/* indicador de etapas */
+.stepper { display: grid; gap: 8px; }
+.stepperCompact { display: none; margin: 0; color: var(--tx2); font-size: 13px; font-weight: 600; }
+.stepperList { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 0; list-style: none; counter-reset: none; }
+.stepperItem { min-width: 0; }
+.stepperButton { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 8px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--tx2); font-size: 13px; font-weight: 600; text-align: left; transition: border-color var(--motion), background var(--motion), color var(--motion); }
+.stepperButton:hover:not(:disabled) { border-color: var(--line-2); color: var(--tx); }
+.stepperButton:disabled { cursor: default; opacity: 0.7; }
+.stepperItem[data-state="current"] .stepperButton { border-color: var(--accent); background: var(--accent-08); color: var(--tx); opacity: 1; }
+.stepperItem[data-state="done"] .stepperButton { color: var(--tx); }
+.stepperDot { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--s2); color: var(--tx2); font-size: 12px; font-weight: 700; transition: background var(--motion), color var(--motion); }
+.stepperItem[data-state="current"] .stepperDot, .stepperItem[data-state="done"] .stepperDot { background: var(--accent); color: var(--accent-ink); }
+.stepperLabel { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.stepperShort { display: none; }
+
+/* painel da etapa */
+.stepPanel { display: grid; gap: 22px; padding: 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); animation: stepIn 0.2s var(--ease); }
+@keyframes stepIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.stepHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; }
+.stepHead h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; }
+.stepHead p { margin: 4px 0 0; color: var(--tx2); font-size: 13.5px; line-height: 1.55; }
+
+.field { display: grid; gap: 6px; }
+.field > label, .fieldLabel { font-size: 13.5px; font-weight: 600; color: var(--tx); }
+.field[data-invalid="true"] :global(.input), .field[data-invalid="true"] :global(.upload-box) { border-color: var(--danger-line); }
+.optionalLabel { margin-left: 7px; color: var(--tx3); font-size: 11px; font-weight: 500; }
+.requiredLabel { margin-left: 7px; color: var(--accent-text); font-size: 11px; font-weight: 600; }
+.fieldHint { margin: 0; color: var(--tx3); font-size: 12.5px; line-height: 1.5; }
+.fieldError { margin: 2px 0 0; color: var(--danger); font-size: 12.5px; line-height: 1.5; }
+.promptInput { min-height: 96px; resize: vertical; line-height: 1.6; }
+
+.fieldset { margin: 0; padding: 0; border: 0; min-width: 0; display: grid; gap: 8px; }
+.legend { padding: 0; font-size: 14.5px; font-weight: 700; color: var(--tx); }
+.legendMeta { color: var(--tx3); font-size: 12px; font-weight: 500; }
+
+/* grades de opções */
+.typeGrid, .optionGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.optionGrid[data-kind="text"] { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.optionGrid[data-kind="color"] { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+.optionCard { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 7px; min-width: 0; min-height: 44px; padding: 5px 5px 8px; border: 2px solid transparent; border-radius: 14px; background: var(--s2); color: var(--tx2); font-size: 12px; font-weight: 500; line-height: 1.25; text-align: center; cursor: pointer; transition: border-color var(--motion), background var(--motion), color var(--motion), transform var(--motion), box-shadow var(--motion); }
 .optionCard > span:last-child { overflow-wrap: anywhere; }
-.optionCard:hover:not(:disabled) { border-color: var(--line-2); color: var(--tx); }
+.optionCard:hover:not(:disabled) { border-color: var(--line-2); color: var(--tx); transform: translateY(-2px); box-shadow: var(--shadow-2); }
+.optionCard:active:not(:disabled) { transform: translateY(0) scale(0.985); }
 .optionCard[data-active="true"], .optionCard[data-active="true"]:hover { border-color: var(--accent); background: var(--accent-08); color: var(--tx); }
 .optionCard[data-kind="media"] { background: var(--trait-surface); color: var(--accent-ink); }
 .optionCard[data-kind="media"]:hover:not(:disabled) { color: var(--accent-ink); }
 .optionCard[data-kind="media"][data-active="true"] { background: var(--accent); color: var(--accent-ink); }
 .optionCard[data-kind="media"] .optionVisual { background: var(--trait-surface); }
+.optionCard[data-kind="text"] { flex-direction: row; justify-content: center; gap: 6px; min-height: 48px; padding: 10px 12px; }
 .optionCard:disabled { opacity: 0.65; }
 .optionVisual { position: relative; display: block; width: 100%; aspect-ratio: 1; border-radius: 9px; overflow: hidden; background: var(--s3, var(--s1)); }
 .optionVisual > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .selectedMark { position: absolute; right: 3px; bottom: 3px; width: 19px; height: 19px; padding: 3px; border-radius: 50%; color: var(--accent-ink); background: var(--accent); stroke-width: 3; }
 .swatch { display: block; width: 100%; height: 100%; }
 .optionCard[data-kind="color"] .optionVisual { aspect-ratio: 1.45; }
-.optionCard[data-kind="text"] { min-height: 58px; align-items: center; justify-content: center; }
-.choiceHint { margin: 0; padding: 0 12px 9px; color: var(--tx3); font-size: 11.5px; }
+
+.styleUpload { margin-bottom: 4px; }
+.styleUpload :global(.upload-box) { min-height: 96px; }
 .referenceUpload { display: grid; gap: 8px; }
 .uploadBox { text-align: center; }
 .uploadBox:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
@@ -39,10 +95,50 @@
 .uploadBox > b { color: var(--tx); }
 .uploadHint { font-size: 11px; color: var(--tx3); }
 .uploadError, .cardError { margin: 0; color: var(--danger); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.styleUpload { padding: 0 10px 12px; }
-.styleUpload .uploadBox { min-height: 110px; }
-.builderNotice { color: var(--tx2); font-size: 12px; padding: 0 14px 14px; margin: 0; }
-.refreshNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0 0 16px; color: var(--tx2); font-size: 13px; }
+
+/* revisão dentro da última etapa */
+.review { display: grid; gap: 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+.review h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.reviewSummary { display: none; }
+
+/* navegação do assistente */
+.wizardNav { display: flex; align-items: center; justify-content: space-between; gap: 10px 14px; flex-wrap: wrap; }
+.navBack { min-height: 46px; }
+.navNext { min-height: 46px; margin-left: auto; padding: 0 22px; font-size: 15px; }
+.navCost { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.14); font-size: 12px; font-weight: 700; }
+.navNotice { flex: 1 1 100%; order: 3; color: var(--tx2); font-size: 12.5px; }
+
+/* painel lateral de resumo */
+.wizardAside { position: sticky; top: 16px; display: grid; gap: 10px; }
+.asideHint { margin: 0; padding: 0 4px; color: var(--tx3); font-size: 12px; line-height: 1.5; }
+.summary { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+.summaryHead { display: flex; align-items: center; gap: 12px; }
+.summaryHead > div { display: grid; gap: 2px; min-width: 0; }
+.summaryHead b { font-size: 14.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.summaryHead span { color: var(--tx3); font-size: 12px; }
+.summaryAvatar { flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%; overflow: hidden; background: var(--trait-surface); display: grid; place-items: center; }
+.summaryAvatar img { width: 100%; height: 100%; object-fit: cover; }
+.summaryList { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; max-height: 44vh; overflow-y: auto; scrollbar-width: thin; }
+.summaryRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
+.summaryLabel { color: var(--tx3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.summaryValue { grid-row: 2; color: var(--tx); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.summaryEdit { grid-row: 1 / span 2; width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--tx3); transition: background var(--motion), color var(--motion); }
+.summaryEdit:hover:not(:disabled) { background: var(--s2); color: var(--accent-text); }
+.summaryEmpty { padding: 8px 0; color: var(--tx3); font-size: 12.5px; line-height: 1.5; }
+.summaryCost { display: grid; gap: 3px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--tx2); }
+.summaryCost b { color: var(--accent-text); font-size: 15px; }
+.summaryCost small { color: var(--tx3); font-size: 11.5px; line-height: 1.5; }
+
+.summaryMobile { display: none; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.summaryMobile > summary { min-height: 46px; padding: 12px 16px; cursor: pointer; font-weight: 600; font-size: 14px; color: var(--tx); list-style: none; display: flex; align-items: center; justify-content: space-between; }
+.summaryMobile > summary::-webkit-details-marker { display: none; }
+.summaryMobile > summary::after { content: "+"; color: var(--tx3); font-size: 18px; }
+.summaryMobile[open] > summary::after { content: "–"; }
+.summaryMobile .summary { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 16px 16px; }
+
+/* ---------- explorar / biblioteca (classes compartilhadas) ---------- */
+
+.refreshNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; color: var(--tx2); font-size: 13px; }
 .refreshNotice > span { flex: 1 1 220px; }
 .galleryLabel { cursor: default; }
 .presetOpen { position: absolute; inset: 0; z-index: 1; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
@@ -58,29 +154,55 @@
 .presetPreview > img { width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line); }
 .cardError { padding: 0 14px 14px; }
 
-@media (max-width: 1060px) {
-  .studio { grid-template-columns: minmax(0, 1fr); }
+/* ---------- responsivo ---------- */
+
+@media (max-width: 1100px) {
+  .wizard { grid-template-columns: minmax(0, 1fr); }
+  .wizardAside { display: none; }
+  .summaryMobile { display: block; }
 }
 
-@media (max-width: 430px) {
-  .studio :global(.builder-head) { padding-inline: 12px; }
-  .studio :global(.builder-head h2) { font-size: 19px; }
-  .studio :global(.builder-scroll) { padding: 10px; }
-  .studio :global(.trait-head) { gap: 6px; padding: 12px 10px; }
-  .studio :global(.trait-head) > span:first-of-type { min-width: 0; overflow-wrap: anywhere; }
-  .studio :global(.trait-head .count), .studio :global(.trait-head svg) { flex-shrink: 0; }
-  .studio :global(.trait-head .picked) { display: none; }
-  .optionGrid { gap: 6px; padding-inline: 8px; }
-  .optionCard { padding-inline: 3px; font-size: 11px; }
-  .uploadBox { padding-inline: 10px; padding-top: 30px; }
+@media (max-width: 760px) {
+  .studio { gap: 14px; }
+  .stepperCompact { display: block; }
+  .stepperList { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+  .stepperButton { justify-content: center; min-height: 44px; padding: 6px 4px; font-size: 12px; }
+  .stepperLabel { display: none; }
+  .stepperShort { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .stepperDot { width: 22px; height: 22px; font-size: 11px; }
+  .stepPanel { padding: 16px 14px; gap: 18px; border-radius: 16px; }
+  .typeGrid, .optionGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .optionGrid[data-kind="text"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .optionCard { padding-inline: 3px; font-size: 11.5px; }
+  .wizardIntro { align-items: stretch; flex-direction: column; }
+  .creditsPill { display: none; } /* a barra superior do celular já mostra o saldo */
+  .stepHead :global(.btn-sm) { min-height: 44px; }
+  .summaryEdit { width: 40px; height: 40px; }
+  .viewTabs .chip { min-height: 44px; }
+  .creationModes button { flex: 1; }
+  /* Navegação inferior: segue a rolagem e respeita a área segura; nunca cobre o último campo. */
+  .wizardNav { position: sticky; bottom: 0; z-index: 20; margin: 0 -14px -14px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); background: var(--bg); }
+  .navBack, .navNext { min-height: 48px; }
+  .navNext { flex: 1; margin-left: 0; }
+  .navNotice { order: -1; }
+  .summaryList { max-height: none; }
+}
+
+@media (max-width: 380px) {
+  .typeGrid, .optionGrid, .optionGrid[data-kind="text"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stepperShort { display: none; }
 }
 
 @media (hover: none) {
   .presetCard :global(.overlay) { opacity: 1; }
   .studio :global(.gen-card .actions) { opacity: 1; }
+  .optionCard:hover:not(:disabled) { transform: none; box-shadow: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .studio { --motion: 0s; }
+  .stepPanel { animation: none; }
   .presetDialog { animation: none; }
   .presetCard :global(.overlay) { transition: none; }
+  .optionCard:hover:not(:disabled) { transform: none; }
 }
