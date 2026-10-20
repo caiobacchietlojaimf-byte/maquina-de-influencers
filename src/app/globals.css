@@ -2771,22 +2771,90 @@ textarea.input {
   }
 }
 
+/* Celular: barra superior fixa + menu em gaveta (fechado por padrão). */
+.app-topbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 0 12px 0 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.app-topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.topbar-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--s1);
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.topbar-credits svg { color: var(--accent-text); }
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+}
+
 @media (max-width: 760px) {
   .app-shell {
-    grid-template-columns: 66px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
-  .app-sidebar[data-collapsed="false"] {
+  .app-topbar {
+    display: flex;
+  }
+  .app-sidebar {
     position: fixed;
-    z-index: 40;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 60;
+    height: 100dvh;
+    width: min(288px, 86vw);
+    padding: 14px 12px;
+    transform: translateX(-104%);
+    transition: transform 0.22s var(--ease);
+    overflow-y: auto;
+  }
+  .app-sidebar[data-mobile-open="true"] {
+    transform: none;
     box-shadow: var(--shadow-3);
   }
   .app-main {
-    grid-column: 2;
-    padding: 18px 14px 56px;
+    grid-column: 1;
+    grid-row: 2;
+    padding: 16px 14px 56px;
   }
   .landing-nav .links {
     display: none;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar { transition: none; }
 }
 
 /* capa do reel (player carrega no clique) */
