@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import "./globals.css";
 import { siteUrl } from "@/lib/site-url";
+import { Analytics } from "@vercel/analytics/next";
 
 const ui = Geist({
   subsets: ["latin"],
@@ -57,7 +58,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         {/* Os temas nativos dispensam reprocessamento por extensões. */}
         <meta name="darkreader-lock" />
       </head>
-      <body>{children}</body>
+      <body>{children}<Analytics /></body>
     </html>
   );
 }
