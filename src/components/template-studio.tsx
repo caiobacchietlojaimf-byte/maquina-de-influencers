@@ -1,42 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ChevronDown, ImagePlus, Info, RefreshCw, Sparkles, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ImagePlus, Info, Sparkles } from "lucide-react";
 import { VIRAIS_PROPRIOS, viralVideo, type ViralProprio } from "@/data/virais-proprios";
 import { PlanModal } from "./plan-modal";
 import styles from "./template-studio.module.css";
 
 export function TemplateStudio({ viral }: { viral: ViralProprio }) {
   const router = useRouter();
-  const [photos, setPhotos] = useState<(string | null)[]>(() => viral.slots.map(() => null));
-  const [agreed, setAgreed] = useState(false);
-  const [plansOpen, setPlansOpen] = useState(false);
-  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [plans, setPlans] = useState<null | "photo" | "generate">(null);
   const available = useMemo(() => VIRAIS_PROPRIOS.filter((item) => item.status !== "soon"), []);
-
-  const urls = useRef(photos);
-  urls.current = photos;
-  useEffect(() => () => { urls.current.forEach((url) => url && URL.revokeObjectURL(url)); }, []);
-
-  const filled = photos.filter(Boolean).length;
   const total = viral.slots.length;
-  const ready = filled === total && agreed;
   const [first, ...rest] = viral.title.split(" ");
-
-  const setPhoto = (index: number, file: File | undefined) => {
-    if (!file || !file.type.startsWith("image/")) return;
-    const next = URL.createObjectURL(file);
-    const previous = photos[index];
-    if (previous) URL.revokeObjectURL(previous);
-    setPhotos((current) => current.map((url, i) => (i === index ? next : url)));
-  };
-  const clearPhoto = (index: number) => {
-    const previous = photos[index];
-    if (previous) URL.revokeObjectURL(previous);
-    setPhotos((current) => current.map((url, i) => (i === index ? null : url)));
-  };
 
   return <main className={styles.page}>
     <Link href="/#templates" className={styles.back}><ArrowLeft size={16} /> Início</Link>
@@ -66,24 +43,14 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
 
     <div className={styles.sectionHead}>
       <span>Fotos</span>
-      <span className={styles.counter} data-complete={filled === total}>{filled}/{total}</span>
+      <span className={styles.counter}>0/{total}</span>
     </div>
 
     <div className={styles.slots} data-count={total}>
       {viral.slots.map((slot, index) => <div key={slot.label + index} className={styles.slot}>
-        <label className={styles.drop} data-filled={photos[index] ? "true" : undefined}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={(event) => { event.preventDefault(); setPhoto(index, event.dataTransfer.files[0]); }}>
-          <input ref={(node) => { inputs.current[index] = node; }} type="file" accept="image/*" className="sr-only" onChange={(event) => setPhoto(index, event.target.files?.[0])} />
-          {photos[index]
-            // eslint-disable-next-line @next/next/no-img-element
-            ? <img src={photos[index]!} alt={`Foto para ${slot.label}`} />
-            : <span className={styles.dropEmpty}><span className={styles.dropIcon}><ImagePlus size={18} /></span>Enviar foto</span>}
-        </label>
-        {photos[index] ? <div className={styles.slotActions}>
-          <button type="button" onClick={() => inputs.current[index]?.click()} aria-label={`Trocar foto de ${slot.label}`}><RefreshCw size={14} /></button>
-          <button type="button" onClick={() => clearPhoto(index)} aria-label={`Remover foto de ${slot.label}`}><X size={14} /></button>
-        </div> : null}
+        <button type="button" className={styles.drop} onClick={() => setPlans("photo")} aria-label={`Enviar foto: ${slot.label}`}>
+          <span className={styles.dropEmpty}><span className={styles.dropIcon}><ImagePlus size={18} /></span>Enviar foto</span>
+        </button>
         <strong>{slot.label}</strong>
         <small>{slot.hint}</small>
       </div>)}
@@ -109,19 +76,20 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
       </ul>
     </details>
 
-    <label className={styles.consent}>
-      <input type="checkbox" checked={agreed} onChange={(event) => setAgreed(event.target.checked)} />
-      <span>Sei que o resultado pode variar, tenho autorização de quem está nas fotos e aceito os <Link href="/termos">Termos de Uso</Link> e a <Link href="/privacidade">Política de Privacidade</Link>.</span>
-    </label>
-
     <p className={styles.order}>As fotos seguem a ordem das caixas: {viral.slots.map((slot) => slot.hint.charAt(0).toLowerCase() + slot.hint.slice(1)).join(" → ")}.</p>
 
-    <button type="button" className={styles.generate} disabled={!ready} onClick={() => setPlansOpen(true)}>
+    <button type="button" className={styles.generate} onClick={() => setPlans("generate")}>
       <Sparkles size={18} /> Gerar meu vídeo
     </button>
-    <p className={styles.hint}>{ready ? "Tudo pronto. Escolha um plano para gerar." : `Envie ${total === 1 ? "a foto" : `as ${total} fotos`} e marque a caixa para gerar.`}</p>
-    <p className={styles.privacy}>Suas fotos ficam só neste aparelho até você criar a conta.</p>
+    <p className={styles.hint}>Escolha um plano, envie {total === 1 ? "a foto" : `as ${total} fotos`} e gere o seu. Ao enviar, você confirma que tem autorização de quem está nas fotos e aceita os <Link href="/termos">Termos de Uso</Link> e a <Link href="/privacidade">Política de Privacidade</Link>.</p>
 
-    <PlanModal open={plansOpen} onClose={() => setPlansOpen(false)} video={viralVideo(viral.slug)} poster={viral.poster} template={viral.slug} />
+    <PlanModal
+      open={plans !== null}
+      onClose={() => setPlans(null)}
+      video={viralVideo(viral.slug)}
+      poster={viral.poster}
+      template={viral.slug}
+      subtitle={plans === "photo" ? `Para enviar ${total === 1 ? "a sua foto" : "as fotos"} e gerar este vídeo, escolha um plano.` : undefined}
+    />
   </main>;
 }

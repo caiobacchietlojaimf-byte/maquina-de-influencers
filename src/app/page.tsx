@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen, Check, Clapperboard, Infinity, Layers3, Plus, ScanFace, Send, Sparkles, Wand2 } from "lucide-react";
+import { ArrowRight, BookOpen, Check, Clapperboard, Infinity, Layers3, Plus, ScanFace, Send, Sparkle, Sparkles, Wand2 } from "lucide-react";
 import PRESETS from "@/data/influencer-presets.json";
 import { PLAN_CATALOG } from "@/lib/plans";
 import { LogoMark } from "@/components/logo";
@@ -32,10 +32,9 @@ const motionItems: TrendingItem[] = MOTIONS.flatMap(([name, title, description, 
 const effectItems: TrendingItem[] = VIRAL_EFFECTS.slice(0, 6).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
 const heroVideos = VIRAIS_PROPRIOS.filter((item) => item.status !== "soon").map((item) => ({ src: viralVideo(item.slug), poster: item.poster }));
 const ownItems: TrendingItem[] = VIRAIS_PROPRIOS.map((item) => ({ id: item.slug, name: item.title, description: item.description, thumbnail: item.poster, preview: viralVideo(item.slug), people: item.people, badge: item.status, href: `/v/${item.slug}` }));
-const trending: TrendingItem[] = [
-  ...ownItems.filter((item) => item.badge !== "soon"),
-  ...motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item])),
-];
+const catalogItems = motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item]));
+const readyOwn = ownItems.filter((item) => item.badge !== "soon");
+const trending: TrendingItem[] = catalogItems.flatMap((item, index) => (index % 2 === 0 && readyOwn[index / 2] ? [readyOwn[index / 2], item] : [item]));
 const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
 const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.preview.thumb || item.preview.url, label: typeLabel(item.tier) }));
 const faces = PRESETS.slice(12, 16);
@@ -56,9 +55,9 @@ const stats = [
 ];
 
 const steps = [
-  { title: "Dê identidade à sua ideia", text: "Escolha os traços do personagem, envie uma foto e acrescente uma referência de estilo.", icon: ScanFace },
-  { title: "Escolha uma boa referência", text: "Explore o catálogo ou envie seu vídeo. Confira duração, modelo e custo antes de gerar.", icon: Clapperboard },
-  { title: "Revise. Ajuste. Publique.", text: "Compare com o original, baixe seus arquivos e organize a publicação nas contas conectadas.", icon: Send },
+  { title: "Escolha o viral", text: "Pegue um template do Em alta ou explore os movimentos e efeitos do catálogo.", icon: Clapperboard },
+  { title: "Coloque você no vídeo", text: "Envie uma foto por pessoa ou use o influencer que você criou no estúdio, com seus traços.", icon: ScanFace },
+  { title: "Gere, revise e publique", text: "Compare com o original, baixe o vídeo e publique no TikTok ou no Instagram.", icon: Send },
 ];
 
 const faq = [
@@ -143,7 +142,7 @@ export default function LandingPage() {
         <div className={styles.templatesHead}>
           <h2>Escolha um <mark>template</mark></h2>
           <p>Toque no vídeo, mande as fotos e gere o seu.</p>
-          <Sparkles size={26} className={styles.templatesSpark} aria-hidden />
+          <Sparkle size={26} className={styles.templatesSpark} aria-hidden />
         </div>
         <TrendingRow items={ownItems.filter((item) => item.badge !== "soon")} more={ownItems.filter((item) => item.badge === "soon")} href="/login?modo=cadastro" layout="grid" />
       </section>
@@ -151,8 +150,8 @@ export default function LandingPage() {
       <section className={`${styles.section} ${styles.workflow}`} id="como-funciona">
         <div className={styles.sectionHeading}>
           <span className={styles.eyebrow}>Como funciona</span>
-          <h2>Do personagem ao post em três passos.</h2>
-          <p>Ferramentas conectadas para você trabalhar com intenção e revisar cada etapa.</p>
+          <h2>Do viral ao seu post em <em className={styles.hl}>três passos.</em></h2>
+          <p>Tudo no mesmo estúdio: você escolhe, troca e publica sem pular de ferramenta.</p>
         </div>
         <ol className={styles.steps}>
           {steps.map((step, index) => <li key={step.title}>

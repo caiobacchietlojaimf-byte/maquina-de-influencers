@@ -31,18 +31,12 @@
 .slot { position: relative; display: grid; gap: 2px; padding: 6px 6px 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--panel); }
 .slot > strong { margin: 10px 6px 0; font-size: 14px; font-weight: 800; }
 .slot > small { margin: 0 6px; color: var(--tx2); font-size: 12px; line-height: 1.4; }
-.drop { position: relative; display: grid; place-items: center; aspect-ratio: 1; overflow: hidden; border: 1.5px dashed var(--line-2); border-radius: 14px; background: var(--s1); cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
+.drop { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1; overflow: hidden; border: 1.5px dashed var(--line-2); border-radius: 14px; background: var(--s1); cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
 .drop:hover { border-color: var(--tx3); background: var(--s2); }
-.drop:focus-within { outline: 2px solid var(--tx); outline-offset: 2px; }
-.drop[data-filled="true"] { border-style: solid; border-color: transparent; }
-.drop img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; animation: reveal .3s var(--ease); }
-@keyframes reveal { from { opacity: 0; transform: scale(1.04); } }
+.drop:focus-visible { outline: 2px solid var(--tx); outline-offset: 2px; }
 .dropEmpty { display: grid; justify-items: center; gap: 10px; color: var(--tx2); font-size: 12px; font-weight: 700; }
 .dropIcon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #ff2e8a; color: #fff; box-shadow: 0 6px 16px rgba(255, 46, 138, .35); transition: transform .15s var(--ease); }
 .drop:hover .dropIcon { transform: scale(1.08); }
-.slotActions { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; }
-.slotActions button { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: rgba(255, 255, 255, .95); color: #0f0f12; box-shadow: 0 2px 8px rgba(15, 15, 18, .2); }
-.slotActions button:hover { background: #fff; transform: scale(1.05); }
 
 .info { border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
 .info summary { display: flex; align-items: center; gap: 8px; padding: 14px 16px; font-size: 14px; font-weight: 800; cursor: pointer; list-style: none; }
@@ -57,17 +51,12 @@
 .warn { border-color: rgba(255, 46, 138, .3); background: rgba(255, 46, 138, .07); }
 .warn summary svg:first-child { color: #e0136f; }
 
-.consent { display: flex; align-items: start; gap: 10px; font-size: 14px; line-height: 1.5; cursor: pointer; }
-.consent input { flex-shrink: 0; width: 18px; height: 18px; margin-top: 2px; accent-color: var(--tx); }
-.consent a { text-decoration: underline; text-decoration-color: #ff2e8a; text-underline-offset: 3px; }
 .order { color: var(--tx3); font-size: 12px; line-height: 1.55; }
 
 .generate { display: flex; align-items: center; justify-content: center; gap: 8px; height: 58px; border-radius: 999px; background: var(--tx); color: var(--bg); font-size: 17px; font-weight: 800; box-shadow: 0 14px 30px -12px rgba(15, 15, 18, .55); transition: transform .15s var(--ease), opacity .15s var(--ease), background .15s var(--ease); }
 .generate svg { color: var(--accent); }
-.generate:not(:disabled):hover { transform: translateY(-1px); }
-.generate:not(:disabled):active { transform: scale(.98); }
-.generate:disabled { background: var(--s2); color: var(--tx3); box-shadow: none; cursor: not-allowed; opacity: 1; }
-.generate:disabled svg { color: var(--tx3); }
+.generate:hover { transform: translateY(-1px); }
+.generate:active { transform: scale(.98); }
 .generate:focus-visible { outline: 2px solid var(--tx); outline-offset: 3px; }
-.hint, .privacy { margin-top: -6px; text-align: center; color: var(--tx2); font-size: 13px; }
-.privacy { color: var(--tx3); font-size: 12px; margin-top: -10px; }
+.hint { margin-top: -4px; text-align: center; color: var(--tx3); font-size: 12px; line-height: 1.6; }
+.hint a { color: var(--tx2); text-decoration: underline; text-underline-offset: 3px; }

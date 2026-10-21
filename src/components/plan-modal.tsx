@@ -8,7 +8,7 @@ import styles from "./plan-modal.module.css";
 
 const brl = (value: number) => value.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
-export function PlanModal({ open, onClose, video, poster, template }: { open: boolean; onClose: () => void; video: string; poster: string; template: string }) {
+export function PlanModal({ open, onClose, video, poster, template, subtitle = "Escolha um plano para gerar o seu vídeo." }: { open: boolean; onClose: () => void; video: string; poster: string; template: string; subtitle?: string }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [plan, setPlan] = useState<PlanId>("pro");
   const selected = PLAN_CATALOG.find((item) => item.id === plan) ?? PLAN_CATALOG[1];
@@ -36,7 +36,7 @@ export function PlanModal({ open, onClose, video, poster, template }: { open: bo
         <div className={styles.heroText}>
           <span className={styles.chip}><QrCode size={14} /> Pagamento no PIX</span>
           <h2 id="plan-title">Você no <em>viral</em></h2>
-          <p>Escolha um plano para gerar o seu vídeo.</p>
+          <p>{subtitle}</p>
         </div>
       </header>
 
