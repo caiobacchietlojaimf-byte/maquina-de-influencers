@@ -5,12 +5,13 @@ import path from "node:path";
 import { serverDb } from "./server-db";
 import { grantPlanCredits, grantPurchasedCredits } from "./db";
 import type { PlanId } from "./plans";
+import { DEFAULT_SUPPORT_EMAIL } from "./support";
 
 export type OrderStatus = "creating" | "pending" | "paid" | "failed" | "refunded" | "review";
 export type Order = { id: string; userId: string; kind?: "plan" | "credits"; planId?: PlanId; packId?: string; usdAmountCents?: number; usdBrlRate?: number; exchangeRateDate?: string; amountCents: number; credits: number; status: OrderStatus; createdAt: number; updatedAt: number; referenceId?: string; pixCode?: string; paidAt?: number; error?: string };
 export type SystemSettings = { registrationsOpen: boolean; checkoutEnabled: boolean; supportEmail: string; announcement: string };
 export type AuditEntry = { id: string; actorId: string; action: string; targetId?: string; createdAt: number; details: Record<string, string | number | boolean> };
-const defaults: SystemSettings = { registrationsOpen: true, checkoutEnabled: true, supportEmail: "pulsecoding2026@gmail.com", announcement: "" };
+const defaults: SystemSettings = { registrationsOpen: true, checkoutEnabled: true, supportEmail: DEFAULT_SUPPORT_EMAIL, announcement: "" };
 type Local = { orders: Order[]; settings: SystemSettings; audit: AuditEntry[] };
 const file = () => path.join(process.env.DATA_DIR || path.join(process.cwd(), "data"), "commerce.json");
 function local(): Local { return existsSync(file()) ? JSON.parse(readFileSync(file(), "utf8")) : { orders: [], settings: { ...defaults }, audit: [] }; }

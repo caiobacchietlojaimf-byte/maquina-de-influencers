@@ -10,6 +10,7 @@ import { GalleryCarousel } from "@/components/gallery-carousel";
 import { CHARACTER_TYPES } from "@/data/character-types";
 import { VIRAL_EFFECTS } from "@/data/viral-effects";
 import { MOTION_PRESETS } from "@/data/motion-presets";
+import { DEFAULT_SUPPORT_EMAIL, supportMailto } from "@/lib/support";
 import { VIRAIS_PROPRIOS, viralVideo } from "@/data/virais-proprios";
 import { LandingMenu } from "@/components/landing-menu";
 import Image from "next/image";
@@ -222,8 +223,8 @@ export default function LandingPage() {
         <Link href="/" className={styles.brand}><LogoMark size={24} /><span>Máquina de Influencers</span></Link>
         <p>Personagens, referências e vídeos em um só lugar.</p>
       </div>
-      <nav aria-label="Produto" className={styles.footerCol}><b>Produto</b><a href="#exemplos">Exemplos</a><a href="#como-funciona">Como funciona</a><a href="#planos">Planos</a><Link href="/login">Entrar no estúdio</Link></nav>
-      <nav aria-label="Informações legais" className={styles.footerCol}><b>Legal</b><Link href="/privacidade">Privacidade</Link><Link href="/termos">Termos</Link><Link href="/exclusao-de-dados">Excluir dados</Link></nav>
+      <nav aria-label="Produto" className={styles.footerCol}><b>Produto</b><a href="#templates">Criar vídeo</a><a href="#exemplos">Em alta</a><a href="#influencers">Influencers</a><a href="#planos">Planos</a><Link href="/login">Entrar no estúdio</Link></nav>
+      <nav aria-label="Ajuda e informações legais" className={styles.footerCol}><b>Ajuda</b><a href={supportMailto(DEFAULT_SUPPORT_EMAIL, "Contato pelo site")}>Fale com a gente</a><a href="#faq">Dúvidas</a><Link href="/privacidade">Privacidade</Link><Link href="/termos">Termos</Link><Link href="/exclusao-de-dados">Excluir dados</Link></nav>
       <span className={styles.copy}>© {new Date().getFullYear()} Máquina de Influencers</span>
     </footer>
   </div>;

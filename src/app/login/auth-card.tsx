@@ -5,6 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 
 import { loginAction, registerAction, type AuthState } from "@/app/actions/auth";
 import type { PlanId } from "@/lib/plans";
+import { supportMailto } from "@/lib/support";
 
 function PasswordInput({
   id,
@@ -55,7 +56,7 @@ function PasswordInput({
   );
 }
 
-export function AuthCard({ initialMode, planId, planName, template }: { initialMode: "login" | "cadastro"; planId?: PlanId; planName?: string; template?: { slug: string; title: string; poster: string } }) {
+export function AuthCard({ initialMode, planId, planName, template, supportEmail }: { initialMode: "login" | "cadastro"; planId?: PlanId; planName?: string; template?: { slug: string; title: string; poster: string }; supportEmail: string }) {
   const [mode, setMode] = useState<"login" | "cadastro">(initialMode);
   const [loginState, login, loginPending] = useActionState<AuthState, FormData>(loginAction, null);
   const [registerState, register, registerPending] = useActionState<AuthState, FormData>(
@@ -102,6 +103,7 @@ export function AuthCard({ initialMode, planId, planName, template }: { initialM
           <button className="btn btn-accent" disabled={pending} type="submit">
             {pending ? <span className="spinner" /> : "Entrar"}
           </button>
+          <a className="auth-link" href={supportMailto(supportEmail, "Esqueci minha senha", "Olá! Esqueci a senha da minha conta na Máquina de Influencers. Meu e-mail de cadastro é: ")}>Esqueci minha senha</a>
         </form>
       ) : (
         <form className="auth-form" action={register}>

@@ -7,6 +7,8 @@ import { AuthCard } from "./auth-card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getPlan, getUserEntitlements, PLAN_RANK } from "@/lib/plans";
 import { getReadyTemplate } from "@/data/virais-proprios";
+import { getSystemSettings } from "@/lib/commerce";
+import { DEFAULT_SUPPORT_EMAIL } from "@/lib/support";
 
 export const metadata = { title: "Entrar" };
 
@@ -34,7 +36,7 @@ export default async function LoginPage({
           <LogoMark size={28} />
           <span>Máquina de Influencers</span>
         </Link>
-        <AuthCard initialMode={modo === "cadastro" ? "cadastro" : "login"} planId={plan?.id} planName={plan?.name} template={template ? { slug: template.slug, title: template.title, poster: template.poster } : undefined} />
+        <AuthCard supportEmail={(await getSystemSettings()).supportEmail || DEFAULT_SUPPORT_EMAIL} initialMode={modo === "cadastro" ? "cadastro" : "login"} planId={plan?.id} planName={plan?.name} template={template ? { slug: template.slug, title: template.title, poster: template.poster } : undefined} />
       </div>
     </div>
   );
