@@ -3,10 +3,10 @@
 import { useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Eye, Flame, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Flame, Sparkles, Users } from "lucide-react";
 import styles from "./trending-row.module.css";
 
-export type TrendingItem = { id: string; name: string; description: string; thumbnail: string; preview: string; views: number; badge: "hot" | "new" | null };
+export type TrendingItem = { id: string; name: string; description: string; thumbnail: string; preview: string; views?: number; tag?: string; badge: "hot" | "new" | null };
 
 const views = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 
@@ -68,7 +68,7 @@ export function TrendingRow({ items, href }: { items: ReadonlyArray<TrendingItem
           <video src={item.preview} muted loop playsInline preload="none" aria-hidden />
           {item.badge === "hot" ? <span className={`${styles.badge} ${styles.hot}`}><Flame size={12} /> Em alta</span> : null}
           {item.badge === "new" ? <span className={`${styles.badge} ${styles.new}`}><Sparkles size={12} /> Novo</span> : null}
-          <span className={styles.chip}><Eye size={13} /> {views.format(item.views)}</span>
+          {item.views ? <span className={styles.chip}><Eye size={13} /> {views.format(item.views)}</span> : <span className={styles.chip}><Users size={13} /> {item.tag ?? "Movimento"}</span>}
         </div>
         <strong>{item.name}</strong>
         <span className={styles.desc}>{item.description}</span>

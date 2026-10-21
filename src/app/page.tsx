@@ -8,11 +8,27 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { HeroCarousel } from "@/components/hero-carousel";
 import { TrendingRow, type TrendingItem } from "@/components/trending-row";
 import { VIRAL_EFFECTS } from "@/data/viral-effects";
+import { MOTION_PRESETS } from "@/data/motion-presets";
 import { LandingMenu } from "@/components/landing-menu";
 import Image from "next/image";
 import styles from "./landing.module.css";
 
-const trending: TrendingItem[] = VIRAL_EFFECTS.slice(0, 10).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
+const MOTIONS: ReadonlyArray<[name: string, title: string, description: string, tag: string]> = [
+  ["Studio Rap Performance", "No estúdio", "Você no microfone, mandando o verso no estúdio", "Solo"],
+  ["Urban Dance Trio", "Trio na rua", "3 amigos no passinho sincronizado na calçada", "Trio"],
+  ["Convertible Car Singalong", "Conversível", "Cantando junto no carro aberto, cabelo ao vento", "Grupo"],
+  ["Stage Performance Recast", "Holofote", "Você rouba a cena no palco com a plateia olhando", "Solo"],
+  ["Synchronized Crowd Bow", "Reverência", "A galera inteira se curvando no mesmo tempo", "Grupo"],
+  ["Nightclub Character Swap", "Na balada", "Você no lugar do personagem principal da pista", "Solo"],
+  ["Dance Duo", "Dupla dançante", "2 amigos na coreografia que está em todo lugar", "Duo"],
+  ["Poodle Dance Crew", "Pet na dança", "O seu pet puxando a coreografia da turma", "Pet"],
+];
+const motionItems: TrendingItem[] = MOTIONS.flatMap(([name, title, description, tag]) => {
+  const preset = MOTION_PRESETS.find((item) => item.name === name);
+  return preset ? [{ id: preset.id, name: title, description, thumbnail: preset.thumbnail, preview: preset.preview, tag, badge: preset.category === "trending" ? "hot" as const : null }] : [];
+});
+const effectItems: TrendingItem[] = VIRAL_EFFECTS.slice(0, 6).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
+const trending: TrendingItem[] = motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item]));
 const faces = PRESETS.slice(12, 16);
 const navLinks = [
   { href: "#exemplos", label: "Exemplos" },
