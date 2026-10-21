@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ChevronDown, ImagePlus, Info, Sparkles } from "lucide-react";
-import { VIRAIS_PROPRIOS, viralVideo, type ViralProprio } from "@/data/virais-proprios";
+import { VIRAIS_PROPRIOS, viralPreview, type ViralProprio } from "@/data/virais-proprios";
 import { PlanModal } from "./plan-modal";
 import styles from "./template-studio.module.css";
 
@@ -37,7 +37,7 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
     </details>
 
     <div className={styles.stage}>
-      <video key={viral.slug} src={viralVideo(viral.slug)} poster={viral.poster} muted loop playsInline autoPlay controls={false} aria-label={`Vídeo de referência: ${viral.title}`} />
+      <video key={viral.slug} src={viralPreview(viral.slug)} poster={viral.poster} muted loop playsInline autoPlay controls={false} aria-label={`Vídeo de referência: ${viral.title}`} />
       <h1 className={styles.stageTitle}>{first}{rest.length ? <> <mark>{rest.join(" ")}</mark></> : null}</h1>
     </div>
 
@@ -87,7 +87,7 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
     <PlanModal
       open={plans !== null}
       onClose={() => setPlans(null)}
-      video={viralVideo(viral.slug)}
+      video={viralPreview(viral.slug)}
       poster={viral.poster}
       template={viral.slug}
       subtitle={plans === "photo" ? `Para enviar ${total === 1 ? "a sua foto" : "as fotos"} e gerar este vídeo, escolha um plano.` : undefined}

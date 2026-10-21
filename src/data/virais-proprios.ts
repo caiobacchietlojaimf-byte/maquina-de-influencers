@@ -61,6 +61,8 @@ export const VIRAIS_PROPRIOS: readonly ViralProprio[] = [
 const DURATIONS: Record<string, number> = { "the-box": 13.8, "roadtrip-vibes": 14, "hotel-lobby": 14, "rain-dance": 14.1, spotlight: 15, "cowboy-crew": 8 };
 
 export const viralVideo = (slug: string) => `/virais/${slug}.mp4`;
+/** Versão leve (640px, sem áudio) só para exibição; a geração usa o original. */
+export const viralPreview = (slug: string) => `/virais/preview/${slug}.mp4`;
 export const viralDuration = (slug: string) => DURATIONS[slug] ?? 0;
 export const getViral = (slug: string) => VIRAIS_PROPRIOS.find((item) => item.slug === slug);
 /** Só templates liberados podem virar referência de geração. */
