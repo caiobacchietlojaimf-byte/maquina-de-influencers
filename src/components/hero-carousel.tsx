@@ -6,6 +6,8 @@ import styles from "./hero-carousel.module.css";
 
 const AUTO_ADVANCE_MS = 6000;
 const SWIPE_PX = 40;
+const CARD_WIDTH = 0.7;
+const SPREAD = 0.2;
 
 export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; poster: string }> }) {
   const count = videos.length;
@@ -18,7 +20,7 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
   const dragged = useRef(false);
   const move = useRef({ from: active, to: active, n: 0 });
 
-  const stepPx = () => (trackRef.current?.offsetWidth ?? 1) * 0.46 * 0.56;
+  const stepPx = () => (trackRef.current?.offsetWidth ?? 1) * CARD_WIDTH * SPREAD;
 
   const endDrag = (clientX: number | null) => {
     if (dragStart.current === null) return;
@@ -108,9 +110,9 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
           aria-current={d === 0}
           tabIndex={d === 0 ? 0 : -1}
           style={{
-            transform: `translate(-50%, -50%) translateX(${pos * 56}%) scale(${1 - abs * 0.13}) rotate(${pos * 3}deg)`,
+            transform: `translate(-50%, -50%) translateX(${pos * SPREAD * 100}%) scale(${1 - abs * 0.12}) rotate(${pos * 2.5}deg)`,
             zIndex: Math.round(100 - abs * 10),
-            opacity: abs > 2.4 ? 0 : 1,
+            opacity: abs > 2.4 ? 0 : abs > 1.5 ? 0.5 : 1,
             filter: abs < 0.05 ? "none" : `brightness(${1 - Math.min(abs, 2.5) * 0.28}) saturate(.85)`,
             ...(teleport ? { transition: "none", animation: `${moveCount % 2 ? styles.fadeA : styles.fadeB} .45s ease` } : null),
           }}

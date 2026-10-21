@@ -22,7 +22,7 @@
 .heroGlow { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .heroGlow::before { content: ""; position: absolute; inset: -30% -10% auto; height: 120%; background: radial-gradient(38% 45% at 72% 30%, var(--accent-14), transparent 70%), radial-gradient(30% 36% at 10% 10%, var(--accent-08), transparent 70%); }
 .heroGlow::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 64px 64px; mask-image: radial-gradient(70% 60% at 50% 30%, #000 20%, transparent 75%); -webkit-mask-image: radial-gradient(70% 60% at 50% 30%, #000 20%, transparent 75%); opacity: .6; }
-.hero { width: min(var(--wrap), 100%); margin-inline: auto; padding: clamp(40px, 6vw, 80px) var(--gutter) 40px; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: center; gap: clamp(32px, 4vw, 56px); }
+.hero { width: min(var(--wrap), 100%); margin-inline: auto; padding: clamp(40px, 6vw, 80px) var(--gutter) 40px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: clamp(32px, 4vw, 56px); }
 .badge { display: inline-flex; align-items: center; gap: 9px; padding: 7px 14px 7px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--s1); color: var(--tx2); font-size: 13px; font-weight: 500; }
 .badgeDot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-14); }
 .hero h1 { font-family: var(--font-display); font-size: clamp(42px, 5vw, 66px); font-weight: 700; letter-spacing: -.055em; line-height: .98; margin: 24px 0; text-wrap: balance; }
@@ -46,8 +46,8 @@
 .reel video:nth-child(2) { position: relative; z-index: 2; border-color: rgba(255, 255, 255, .18); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, .8), 0 0 0 6px rgba(255, 255, 255, .03); }
 .float { position: absolute; z-index: 120; pointer-events: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: 999px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow-2); color: var(--tx); font-size: 12px; font-weight: 700; white-space: nowrap; animation: bob 7s var(--ease) infinite; }
 .float svg { color: var(--accent-text); }
-.floatTop { top: 9%; left: 2%; }
-.floatBottom { bottom: 19%; right: 2%; animation-delay: -3.5s; }
+.floatTop { top: 2%; left: 0; }
+.floatBottom { bottom: 14%; right: 0; animation-delay: -3.5s; }
 .liveDot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-14); flex-shrink: 0; }
 @keyframes bob { 50% { transform: translateY(-8px); } }
 
@@ -168,7 +168,7 @@
   .actions { width: 100%; }
   .actions > * { width: 100%; }
   .proof { flex-direction: column; gap: 10px; }
-  .float { font-size: 11px; padding: 8px 10px; }
+  .float { display: none; }
   .future { padding: 26px; }
   .faqList details { padding: 0 16px; }
 }

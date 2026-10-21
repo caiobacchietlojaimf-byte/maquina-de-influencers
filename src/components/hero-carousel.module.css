@@ -1,9 +1,9 @@
 .carousel { position: relative; display: grid; gap: 18px; user-select: none; -webkit-user-select: none; }
-.track { position: relative; aspect-ratio: 1 / 1.02; touch-action: pan-y; cursor: grab; }
+.track { position: relative; aspect-ratio: 16 / 8.8; touch-action: pan-y; cursor: grab; }
 .track[data-dragging="true"] { cursor: grabbing; }
 .track[data-dragging="true"] .card { transition: none; }
-.card { position: absolute; top: 50%; left: 50%; width: 46%; aspect-ratio: 9 / 16; padding: 0; overflow: hidden; border: 1px solid rgba(255, 255, 255, .1); border-radius: 20px; background: var(--s1); box-shadow: var(--shadow-2); transition: transform .9s cubic-bezier(.22, .61, .36, 1), filter .9s cubic-bezier(.22, .61, .36, 1), opacity .6s ease, box-shadow .9s ease; will-change: transform; }
-.card[data-active="true"] { border-color: rgba(255, 255, 255, .18); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, .8), 0 0 0 6px rgba(255, 255, 255, .03); cursor: inherit; }
+.card { position: absolute; top: 50%; left: 50%; width: 70%; aspect-ratio: 16 / 9; padding: 0; overflow: hidden; border: 0; border-radius: 18px; background: var(--s1); box-shadow: 0 0 0 3px var(--panel), var(--shadow-2); transition: transform .9s cubic-bezier(.22, .61, .36, 1), filter .9s cubic-bezier(.22, .61, .36, 1), opacity .6s ease, box-shadow .9s ease; will-change: transform; }
+.card[data-active="true"] { box-shadow: 0 0 0 3px var(--panel), 0 0 0 4px var(--line), 0 30px 70px -20px rgba(15, 15, 18, .45); cursor: inherit; }
 @keyframes fadeA { from { opacity: 0; } }
 @keyframes fadeB { from { opacity: 0; } }
 .card video { width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
