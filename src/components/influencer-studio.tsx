@@ -753,8 +753,15 @@ function InfluencerCard({
         </div>
       </div>
       <div className="body">
-        <b>{influencer.name}</b>
-        <span>{versionCount ? `${versionCount + 1} versões` : date}</span>
+        <div className={styles.cardMeta}>
+          <b>{influencer.name}</b>
+          <span>{versionCount ? `${versionCount + 1} versões` : date}</span>
+        </div>
+        {influencer.status === "completed" && influencer.imageUrl ? (
+          <button type="button" className={`${styles.useInVideo} ${detailStyles.cardAction}`} disabled={action !== null} onClick={onUseMotion}>
+            <Sparkles size={13} aria-hidden="true" /> Criar vídeo
+          </button>
+        ) : null}
       </div>
       {error ? <p className={styles.cardError} role="alert">{error}</p> : null}
     </div>
