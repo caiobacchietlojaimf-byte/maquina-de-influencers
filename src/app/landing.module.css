@@ -1,6 +1,7 @@
 .landing { --wrap: 1240px; --gutter: clamp(20px, 4vw, 48px); min-height: 100dvh; background: var(--bg); color: var(--tx); overflow-x: clip; }
 .landing :is(a, button, summary):focus-visible { outline: 2px solid var(--accent-text); outline-offset: 4px; }
-.landing [id] { scroll-margin-top: 96px; }
+.landing [id] { scroll-margin-top: 84px; }
+:global(html):has(.landing) { scroll-behavior: smooth; }
 .skip { position: fixed; top: 8px; left: 12px; z-index: 100; padding: 12px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); transform: translateY(-150%); }
 .skip:focus { transform: translateY(0); }
 

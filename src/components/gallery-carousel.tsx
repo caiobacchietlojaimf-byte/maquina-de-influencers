@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import styles from "./gallery-carousel.module.css";
 
@@ -95,8 +96,7 @@ export function GalleryCarousel({ items }: { items: ReadonlyArray<{ id: string; 
       onPointerCancel={(event) => { drag.current = null; delete event.currentTarget.dataset.dragging; }}
     >
       {loop.map((item, index) => <figure key={`${item.id}-${index}`} className={styles.card} aria-hidden={index >= items.length} style={{ animationDelay: `${Math.min(index, 3) * 90}ms` }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={item.src} alt={index < items.length ? `Personagem de IA do catálogo, exemplo ${index + 1}` : ""} loading="lazy" draggable={false} />
+        <Image src={item.src} alt={index < items.length ? `Personagem de IA do catálogo, exemplo ${index + 1}` : ""} fill sizes="(max-width: 760px) 72vw, 400px" draggable={false} />
         <figcaption>{item.label}</figcaption>
       </figure>)}
     </div>

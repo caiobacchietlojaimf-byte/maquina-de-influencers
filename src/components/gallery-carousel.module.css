@@ -1,5 +1,5 @@
 .carousel { display: grid; gap: 20px; }
-.track { --gap: 16px; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * var(--gap)) / 3); column-gap: var(--gap); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: 20px; }
+.track { --gap: 16px; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * var(--gap)) / 3); column-gap: var(--gap); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; --fade: clamp(28px, 7%, 96px); mask-image: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent); -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent); }
 .track::-webkit-scrollbar { display: none; }
 .track { cursor: grab; }
 .track[data-dragging="true"] { cursor: grabbing; }

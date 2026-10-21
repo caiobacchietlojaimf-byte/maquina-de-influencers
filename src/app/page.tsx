@@ -8,11 +8,19 @@ import { LogoMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeroCarousel } from "@/components/hero-carousel";
 import { GalleryCarousel } from "@/components/gallery-carousel";
+import { LandingMenu } from "@/components/landing-menu";
+import Image from "next/image";
 import styles from "./landing.module.css";
 
 const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
 const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.preview.thumb || item.preview.url, label: typeLabel(item.tier) }));
 const faces = PRESETS.slice(12, 16);
+const navLinks = [
+  { href: "#exemplos", label: "Exemplos" },
+  { href: "#como-funciona", label: "Como funciona" },
+  { href: "#planos", label: "Planos" },
+  { href: "#faq", label: "Dúvidas" },
+];
 
 const stats = [
   { value: "9", label: "tipos de personagem", icon: ScanFace },
@@ -44,11 +52,12 @@ export default function LandingPage() {
     <header className={styles.navWrap}>
       <nav className={styles.nav} aria-label="Navegação principal">
         <Link href="/" className={styles.brand}><LogoMark size={28} /><span>Máquina de Influencers</span></Link>
-        <div className={styles.navLinks}><a href="#exemplos">Exemplos</a><a href="#como-funciona">Como funciona</a><a href="#planos">Planos</a><a href="#faq">Dúvidas</a></div>
+        <div className={styles.navLinks}>{navLinks.map((link) => <a key={link.href} href={link.href}>{link.label}</a>)}</div>
         <div className={styles.navActions}>
           <ThemeToggle compact />
           <Link href="/login" className={styles.login}>Entrar</Link>
           <Link href="/login?modo=cadastro" className={`btn btn-accent ${styles.navCta}`}>Começar <ArrowRight size={16} /></Link>
+          <LandingMenu links={navLinks} />
         </div>
       </nav>
     </header>
@@ -67,8 +76,7 @@ export default function LandingPage() {
             </div>
             <div className={styles.proof}>
               <div className={styles.faces} aria-hidden>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {faces.map((item) => <img key={item.id} src={item.preview.thumb || item.preview.url} alt="" />)}
+                {faces.map((item) => <Image key={item.id} src={item.preview.thumb || item.preview.url} alt="" width={34} height={34} sizes="34px" />)}
               </div>
               <span><strong>{PRESETS.length} personagens</strong> no catálogo · custo exibido antes de gerar</span>
             </div>
