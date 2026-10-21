@@ -3,6 +3,7 @@ import "server-only";
 import { listVirals, upsertVirals, type Viral } from "./db";
 import { AI_DISCOVERY_QUERIES, isAiCharacterVideo, isMotionReference, parseSocialVideoUrl, type DiscoveryCursors } from "./ai-discovery";
 import { AI_PROFILES } from "@/data/ai-profiles";
+import { YOUTUBE_MIN_VIEWS } from "@/data/youtube-channels";
 
 const TIKWM = "https://www.tikwm.com/api";
 const AI_REGION = "AI";
@@ -149,7 +150,7 @@ export async function seedProfileVirals(): Promise<number> {
 export async function listAiVirals(): Promise<Viral[]> {
   await seedProfileVirals();
   const local = new Map(catalogVirals().map((viral) => [viralKey(viral), viral]));
-  return (await listVirals(AI_REGION)).filter(isAiCharacterVideo).map((viral) => {
+  return (await listVirals(AI_REGION)).filter(isAiCharacterVideo).filter((viral) => viral.source !== "youtube" || viral.views >= YOUTUBE_MIN_VIEWS).map((viral) => {
     const catalog = local.get(viralKey(viral));
     return catalog ? { ...viral, playUrl: catalog.playUrl, coverUrl: catalog.coverUrl } : viral;
   });

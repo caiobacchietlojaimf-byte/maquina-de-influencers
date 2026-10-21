@@ -9,7 +9,7 @@ import { listAiVirals, mineTrending, MiningProviderError, refreshViralMedia } fr
 import { serverDb } from "./server-db";
 import type { DiscoveryCursors } from "./ai-discovery";
 import { fetchChannelShorts, searchYoutubeShorts, youtubeConfigured, YoutubeProviderError, YOUTUBE_QUERIES } from "./youtube-discovery";
-import { YOUTUBE_AI_CHANNELS } from "@/data/youtube-channels";
+import { YOUTUBE_AI_CHANNELS, YOUTUBE_MIN_VIEWS } from "@/data/youtube-channels";
 import { instagramDiscoveryAccount, runInstagramDiscovery, type InstagramRound } from "./instagram-discovery";
 
 /* Coleta contínua de vídeos de personagens de IA.
@@ -379,7 +379,8 @@ async function runYoutubeDiscovery(previous: SourceState, now: number, deadline:
     const channel = YOUTUBE_AI_CHANNELS[(feedStart + i) % YOUTUBE_AI_CHANNELS.length];
     attempted += 1;
     try {
-      for (const viral of await fetchChannelShorts(channel.id, Date.now())) collected.set(viral.videoId ?? viral.pageUrl, viral);
+      // Só guarda o que já viralizou; um Short novo entra numa rodada seguinte, quando passar do mínimo.
+      for (const viral of await fetchChannelShorts(channel.id, Date.now())) if (viral.views >= YOUTUBE_MIN_VIEWS) collected.set(viral.videoId ?? viral.pageUrl, viral);
     } catch (feedError) {
       failed += 1;
       error ??= errorMessage(feedError, "O feed do YouTube falhou.");

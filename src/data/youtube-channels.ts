@@ -1,35 +1,33 @@
 /* Canais do YouTube lidos pelo feed público (youtube.com/feeds/videos.xml),
-   sem chave e sem cota. Curadoria manual: só canais que publicam Shorts de
-   personagens ou influencers de IA; o feed traz os 15 envios mais recentes
-   de cada canal, com visualizações. Para trocar a lista, basta editar aqui. */
+   sem chave e sem cota. Curadoria manual: só canais brasileiros que publicam
+   Shorts virais feitos com IA; o feed traz os 15 envios mais recentes de cada
+   canal, com visualizações. Para trocar a lista, basta editar aqui. */
 
 export type YoutubeChannel = { id: string; name: string };
 
-/* Curadoria de 2026-10-21: feed respondendo, envio nos últimos 45 dias e
-   títulos de personagem/influencer de IA, com Shorts no feed (tutoriais,
-   cursos e canais só de vídeo longo ficaram de fora). */
+/* Curadoria de 2026-10-21: títulos em português, Shorts no feed, envio recente
+   e vídeos de IA no formato que viraliza no Brasil (novela das frutas, Rumi,
+   bebês e vovós de IA, paródias, humor). Ficaram de fora canais em inglês ou
+   espanhol, tutoriais e cursos, e os que não deixam claro que o vídeo é de IA. */
 export const YOUTUBE_AI_CHANNELS: readonly YoutubeChannel[] = [
-  { id: "UCEJOtlL7JpjmxMTuPsDRoSg", name: "Lara Valença" },
-  { id: "UCjJ0mgpTjNQOyOrgTxCEV5A", name: "DudaLyma IA Influencer" },
+  { id: "UCPJVLfFIK25bWEYYzAdv7qA", name: "ToonVerseIA" },
+  { id: "UC9ovZNfCpUGANQeYAx0MDKQ", name: "Phantom FC" },
+  { id: "UCq-9ZGcIjBCXGwTjFyUs6VQ", name: "AnimaToonIA" },
+  { id: "UC6GUHR-GQ_PiyXKxf1JONkQ", name: "Comida Falante Fit" },
+  { id: "UCFsE96z0W3ZxOv9yOpeezkw", name: "BoquenilceOficial" },
+  { id: "UC2HGllodnH9Ato2XhMww4dw", name: "BOQUENILCE" },
+  { id: "UCuSRxi6iJsLijufOc-KD7tQ", name: "BOQUENILCE FLIX" },
+  { id: "UCoge9w5zvzCXp_ZJiD-S1gQ", name: "Laerte Ia" },
+  { id: "UC8lKSH5nzL7wPeJba7hM6UQ", name: "Piadas IA br" },
+  { id: "UCgkchlOIk3fZ5Ww363yiY2A", name: "DR_Artificial" },
+  { id: "UCelcK8D6-WaB2-sZIk4oouA", name: "O Diário oficial" },
+  { id: "UCzHTPJGdvOKIYPaWdPIp-RA", name: "LindIA" },
+  { id: "UCmzQYxgA9nrWJwy5Hrxc5cg", name: "IA com Humor" },
   { id: "UCwBewRhDozV-EaM1PkmXyIw", name: "JoãoEmariaAI_BR" },
   { id: "UC4x54GkPxtyplzYmSCTUs2A", name: "Serie de Frutas" },
-  { id: "UC0JDuvhO2gSwN6fodqB4mfA", name: "IA NA RESENHA" },
-  { id: "UCdKiXn8fffvN5gt4u9WeNtg", name: "Toin i.a" },
-  { id: "UCPJVLfFIK25bWEYYzAdv7qA", name: "ToonVerseIA" },
-  { id: "UC8V9Hlob17z2XwDY4TLI87Q", name: "Mia Rose | AI Influencer" },
-  { id: "UCpePkTLGTpabvr4hEUvl34Q", name: "Mayra AI | Virtual Influencer" },
-  { id: "UCc6EbjyMRGNhRHyUUAeqYZw", name: "AI Influencer by Darla H. Cooper" },
-  { id: "UCyb2lwVcXWP48FnHvR05D7A", name: "QueenAI" },
-  { id: "UCEG-hkC-wrWsEuPEn1b2lOw", name: "Anna. Ai. Lifestyle Influencer" },
-  { id: "UCSIZt8JNpWHCZyMtPea1Iig", name: "Talitha Koum Bennett" },
-  { id: "UCWYSIzP4z5JN8DoYUsXqIkg", name: "Ashley Monroe Ai Cop" },
-  { id: "UCMihPt3yyuGRaPOlChPKQ9w", name: "Aira Around the World" },
-  { id: "UCAFSggwyvcUs7UhHxe4q_HA", name: "Maya / Virtual Influencer" },
-  { id: "UCih8k6HGZZCOgyUsgVwDIFQ", name: "Nika Storm" },
-  { id: "UC4lff59jWxbSlBHSXNJIKzA", name: "VogueVision AI" },
-  { id: "UCML6I5OGBpL1VjOmKqepJvA", name: "USA AI Baby" },
-  { id: "UClvGHurN2ZlF-nsH_ZBXpuw", name: "Fruta Drama" },
-  { id: "UCtoR90lvWQzJN-K1CPmgJaA", name: "AI Baby space" },
 ];
+
+/** Só entra no acervo (e na tela) o Short que já viralizou no canal. */
+export const YOUTUBE_MIN_VIEWS = 10_000;
 
 export const YOUTUBE_AI_CHANNEL_IDS: ReadonlySet<string> = new Set(YOUTUBE_AI_CHANNELS.map((channel) => channel.id));

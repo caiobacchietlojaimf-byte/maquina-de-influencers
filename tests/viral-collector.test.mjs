@@ -207,10 +207,10 @@ function setupYoutube(plan = { calls: [] }, env = {}, channels = []) {
     YoutubeProviderError,
     YOUTUBE_QUERIES: ["q1", "q2", "q3", "q4"],
     youtubeConfigured: () => Boolean(env.YOUTUBE_API_KEY),
-    async fetchChannelShorts(channelId) { plan.calls.push({ kind: "feed", channelId }); if (plan.feedError?.[channelId]) throw plan.feedError[channelId]; return (plan.feedVideos?.[channelId] ?? []).map((id) => ({ ...viral(id), source: "youtube", playUrl: "", pageUrl: `https://www.youtube.com/shorts/${id}`, authorHandle: channelId, title: "Cena do canal" })); },
+    async fetchChannelShorts(channelId) { plan.calls.push({ kind: "feed", channelId }); if (plan.feedError?.[channelId]) throw plan.feedError[channelId]; return (plan.feedVideos?.[channelId] ?? []).map((id) => ({ ...viral(id), source: "youtube", playUrl: "", pageUrl: `https://www.youtube.com/shorts/${id}`, authorHandle: channelId, title: "Cena do canal", views: plan.feedViews?.[id] ?? 50_000 })); },
     async searchYoutubeShorts(query) { plan.calls.push({ kind: "youtube", query }); if (plan.youtubeError) throw plan.youtubeError; return { virals: (plan.youtubeVideos ?? []).map((id) => ({ ...viral(id), source: "youtube", playUrl: "", pageUrl: `https://www.youtube.com/shorts/${id}`, title: "AI influencer character" })), units: 101 }; },
   };
-  const collector = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", TIKTOK_DISCOVERY_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./youtube-discovery": youtube, "@/data/youtube-channels": { YOUTUBE_AI_CHANNELS: channels }, "./instagram-discovery": fakeInstagram(plan) } })("src/lib/viral-collector.ts");
+  const collector = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", TIKTOK_DISCOVERY_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./youtube-discovery": youtube, "@/data/youtube-channels": { YOUTUBE_AI_CHANNELS: channels, YOUTUBE_MIN_VIEWS: 10_000 }, "./instagram-discovery": fakeInstagram(plan) } })("src/lib/viral-collector.ts");
   return { directory, db, collector, plan, YoutubeProviderError };
 }
 
@@ -297,6 +297,20 @@ test("without a key, public channel feeds feed the collection in rotation", asyn
     await collector.runViralCollection({ now: t0 + 15 * 60_000, budgetMs: 10_000 });
     assert.deepEqual(plan.calls.filter((call) => call.kind === "feed").slice(8).map((call) => call.channelId), [8, 9, 0, 1, 2, 3, 4, 5].map((i) => channels[i].id), "next round continues the rotation");
     assert.equal((await db.listVirals("AI")).filter((row) => row.source === "youtube").length, 3);
+  } finally { cleanup(directory); }
+});
+
+test("only Shorts that already went viral are stored; a low one enters once it crosses the minimum", async () => {
+  const channels = [{ id: `UC${"c".repeat(22)}`, name: "C" }];
+  const plan = { calls: [], feedVideos: { [channels[0].id]: ["hit", "flop"] }, feedViews: { hit: 250_000, flop: 900 } };
+  const { directory, db, collector } = setupYoutube(plan, { YOUTUBE_DISCOVERY_ENABLED: "true" }, channels);
+  try {
+    const t0 = Date.now();
+    await collector.runViralCollection({ now: t0, budgetMs: 10_000 });
+    assert.deepEqual(plain((await db.listVirals("AI")).map((row) => row.videoId)), ["hit"]);
+    plan.feedViews.flop = 12_000;
+    await collector.runViralCollection({ now: t0 + 15 * 60_000, budgetMs: 10_000 });
+    assert.deepEqual(plain((await db.listVirals("AI")).map((row) => row.videoId).sort()), ["flop", "hit"]);
   } finally { cleanup(directory); }
 });
 

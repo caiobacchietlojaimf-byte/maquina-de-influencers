@@ -38,7 +38,8 @@ async function minerFixture(seed = [], profiles = []) {
     .replace('import "server-only";', "")
     .replace('from "./db"', `from ${JSON.stringify(dbUrl)}`)
     .replace('from "./ai-discovery"', `from ${JSON.stringify(rulesUrl)}`)
-    .replace('from "@/data/ai-profiles"', `from ${JSON.stringify(profilesUrl)}`);
+    .replace('from "@/data/ai-profiles"', `from ${JSON.stringify(profilesUrl)}`)
+    .replace('from "@/data/youtube-channels"', `from ${JSON.stringify(channelsUrl)}`);
   return { miner: await import(asModule(compile(source))), db: await import(dbUrl) };
 }
 

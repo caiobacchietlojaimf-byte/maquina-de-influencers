@@ -6,7 +6,8 @@ export const AI_DISCOVERY_PROFILES = ["moroniduarte", "moroniceee", "red_cresty"
 const PROFILE_ALIASES: Record<string, readonly string[]> = { moroniduarte: ["moroniduarte0", "moroniduarte77", "moroni duarte"] };
 export const AI_DISCOVERY_QUERIES = [...AI_DISCOVERY_PROFILES, "moroniduarte0", "moroniduarte77", "personagem de IA influencer", "AI virtual influencer character", "AI generated character comedy"] as const;
 export type DiscoveryCursors = Record<string, string>;
-type Candidate = { title: string; authorHandle: string; authorName: string };
+type Candidate = { title: string; authorHandle: string; authorName: string; source?: string };
+const YOUTUBE_CHANNEL = /^UC[A-Za-z0-9_-]{22}$/;
 
 function normalize(value: string): string {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -25,9 +26,9 @@ export function isAiCharacterVideo(item: Candidate): boolean {
   const text = normalize(`${item.title} ${item.authorName} ${item.authorHandle}`);
   const tutorial = /tutorial|como\s+(?:criar|fazer|gerar)|how\s+to|curso|aprenda|passo\s+a\s+passo|prompt\s+guide/i;
   if (tutorial.test(text)) return false;
+  // YouTube por feed (handle = id do canal): só os canais da curadoria atual; quem sai da lista some da tela.
+  if (item.source === "youtube" && YOUTUBE_CHANNEL.test(item.authorHandle)) return YOUTUBE_AI_CHANNEL_IDS.has(item.authorHandle);
   if (AI_DISCOVERY_PROFILES.some((profile) => matchesAiProfile(item, profile))) return true;
-  // Canais do YouTube da curadoria (feed público): o canal inteiro é de personagem de IA.
-  if (YOUTUBE_AI_CHANNEL_IDS.has(item.authorHandle)) return true;
   const character = /(personage(?:m|ns)|influencer|avatar|character|digital\s+human|virtual\s+model)/i;
   const ai = /#(?:ai|ia)\b|\bai[ -]+(?:generated|character|influencer|avatar|model)|(?:personagem|influencer|avatar)\s+(?:(?:de|com|por)\s+)?ia\b|artificial\s+intelligence|inteligencia\s+artificial|ai(?:generated|character|influencer|avatar)|virtual\s+(?:influencer|character|model)|(?:personagem|influencer|avatar)virtual/i;
   return character.test(text) && ai.test(text);
