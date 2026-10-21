@@ -3,6 +3,7 @@ import { Bricolage_Grotesque, Geist } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
+import { siteUrl } from "@/lib/site-url";
 
 const ui = Geist({
   subsets: ["latin"],
@@ -17,6 +18,20 @@ const grotesk = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl()),
+  applicationName: "Máquina de Influencers",
+  openGraph: {
+    type: "website",
+    locale: "pt_BR",
+    siteName: "Máquina de Influencers",
+    title: "Máquina de Influencers — Crie o influencer. A IA faz o resto.",
+    description: "Escolha um viral, coloque você ou o seu influencer de IA e publique no TikTok e no Instagram. Tudo em um só estúdio.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Máquina de Influencers — Crie o influencer. A IA faz o resto.",
+    description: "Escolha um viral, coloque você ou o seu influencer de IA e publique no TikTok e no Instagram.",
+  },
   icons: { icon: [{ url: "/app-icon.svg", type: "image/svg+xml" }, { url: "/app-icon-v2-1024.png", type: "image/png" }], apple: "/app-icon-v2-1024.png" },
   title: {
     default: "Máquina de Influencers — Personagens e vídeos de IA",

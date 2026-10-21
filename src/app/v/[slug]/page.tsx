@@ -11,7 +11,15 @@ export const dynamicParams = false;
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const viral = getViral((await params).slug);
-  return viral ? { title: viral.title, description: viral.description } : {};
+  if (!viral) return {};
+  const title = `${viral.title}: coloque você no viral`;
+  return {
+    title,
+    description: `${viral.description}. Mande as fotos e gere o seu na Máquina de Influencers.`,
+    alternates: { canonical: `/v/${viral.slug}` },
+    openGraph: { title, description: viral.description, images: [{ url: viral.poster, width: 1280, height: 720, alt: viral.title }] },
+    twitter: { card: "summary_large_image", title, images: [viral.poster] },
+  };
 }
 
 export default async function TemplatePage({ params }: { params: Promise<{ slug: string }> }) {
