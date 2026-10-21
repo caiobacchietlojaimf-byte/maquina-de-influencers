@@ -8,14 +8,24 @@ import { BookOpen, ChevronUp, Clapperboard, CreditCard, Flame, Home, LogOut, Men
 import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
 
-const ITEMS = [
-  { href: "/app", label: "Início", icon: Home, exact: true },
-  { href: "/app/influencers", label: "Influencers", icon: Users, badge: "Novo" },
-  { href: "/app/virais", label: "Vídeos Virais", icon: Flame, badge: "Hot" },
-  { href: "/app/criar-videos", label: "Criar Vídeos", icon: Wand2, badge: "Novo" },
-  { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
-  { href: "/app/publicar", label: "Publicar", icon: Send, badge: "Novo" },
-  { href: "/app/modulos", label: "Módulos", icon: BookOpen, badge: "Pro" },
+const GROUPS = [
+  { label: null, items: [{ href: "/app", label: "Início", icon: Home, exact: true }] },
+  {
+    label: "Criar",
+    items: [
+      { href: "/app/virais", label: "Vídeos Virais", icon: Flame },
+      { href: "/app/influencers", label: "Influencers", icon: Users },
+      { href: "/app/criar-videos", label: "Criar Vídeos", icon: Wand2 },
+    ],
+  },
+  {
+    label: "Distribuir",
+    items: [
+      { href: "/app/videos", label: "Vídeos", icon: Clapperboard },
+      { href: "/app/publicar", label: "Publicar", icon: Send },
+    ],
+  },
+  { label: "Aprender", items: [{ href: "/app/modulos", label: "Módulos", icon: BookOpen, badge: "Pro" }] },
 ] as const;
 
 const STORAGE_KEY = "mi-sidebar-collapsed";
@@ -107,13 +117,12 @@ export function AppSidebar({
         </button>
         <Link href="/app" className="brand" data-hide={collapsed}>
           <LogoMark size={22} />
-          <span>MÁQUINA DE INFLUENCERS</span>
+          <span>Máquina de Influencers</span>
         </Link>
       </div>
 
       <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
-        <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong>{credits.toLocaleString("pt-BR")}</strong></div>
-        <div className="sidebar-credits-bar" data-empty={credits <= 0} aria-hidden="true" />
+        <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong data-empty={credits <= 0}>{credits.toLocaleString("pt-BR")}</strong></div>
         <Link href="/app/creditos" className="sidebar-buy-credits" aria-label="Comprar créditos" title="Comprar créditos" aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
           onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
           <CreditCard size={16} aria-hidden="true" /><span data-hide={collapsed}>Comprar créditos</span>
@@ -121,29 +130,34 @@ export function AppSidebar({
       </div>
 
       <nav aria-label="Menu principal">
-        {ITEMS.map((item) => {
-          const active =
-            "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href) || (item.href === "/app/modulos" && pathname.startsWith("/app/criacao-ilimitada"));
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="nav-item"
-              data-active={active}
-              aria-current={active ? "page" : undefined}
-              aria-label={item.label}
-              onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}
-              title={collapsed ? item.label : undefined}
-            >
-              <Icon size={18} />
-              <span data-hide={collapsed}>{item.label}</span>
-              {"badge" in item && item.badge && !collapsed ? (
-                <span className="badge-new">{item.badge}</span>
-              ) : null}
-            </Link>
-          );
-        })}
+        {GROUPS.map((group) => (
+          <div key={group.label ?? "home"} className="nav-group">
+            {group.label ? <span className="nav-label" data-hide={collapsed}>{group.label}</span> : null}
+            {group.items.map((item) => {
+              const active =
+                "exact" in item && item.exact ? pathname === item.href : pathname.startsWith(item.href) || (item.href === "/app/modulos" && pathname.startsWith("/app/criacao-ilimitada"));
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="nav-item"
+                  data-active={active}
+                  aria-current={active ? "page" : undefined}
+                  aria-label={item.label}
+                  onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}
+                  title={collapsed ? item.label : undefined}
+                >
+                  <Icon size={18} />
+                  <span data-hide={collapsed}>{item.label}</span>
+                  {"badge" in item && item.badge && !collapsed ? (
+                    <span className="nav-tag">{item.badge}</span>
+                  ) : null}
+                </Link>
+              );
+            })}
+          </div>
+        ))}
       </nav>
 
       <div className="sidebar-footer" ref={profileRoot}>

@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <AppSidebar name={user.name} email={user.email} credits={user.credits} logout={logoutAction} isAdmin={isAdmin(user)} />
-      <main className="app-main">{settings.announcement && <div role="status" style={{ padding: "12px 16px", marginBottom: 20, border: "1px solid var(--line)", borderRadius: 12, background: "var(--panel)" }}>{settings.announcement}</div>}{children}</main>
+      <main className="app-main"><div className="app-content">{settings.announcement && <div role="status" style={{ padding: "12px 16px", marginBottom: 20, border: "1px solid var(--line)", borderRadius: 12, background: "var(--panel)" }}>{settings.announcement}</div>}{children}</div></main>
     </div>
   );
 }
