@@ -17,7 +17,7 @@ const grotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  icons: { icon: "/app-icon-1024.png", apple: "/app-icon-1024.png" },
+  icons: { icon: [{ url: "/app-icon.svg", type: "image/svg+xml" }, { url: "/app-icon-v2-1024.png", type: "image/png" }], apple: "/app-icon-v2-1024.png" },
   title: {
     default: "Máquina de Influencers — Personagens e vídeos de IA",
     template: "%s — Máquina de Influencers",

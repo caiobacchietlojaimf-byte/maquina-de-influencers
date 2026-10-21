@@ -1,14 +1,9 @@
+const LOGO_PATH = "M130 955L130 695Q130 688 135 683L482 343Q518 312 560 340Q575 355 575 382L575 570Q577 590 598 593Q612 593 620 584L868 343Q905 312 947 340Q962 355 962 382L962 570Q964 590 985 593Q998 593 1006 585L1050 543Q1082 518 1112 545Q1125 557 1125 575L1125 872Q1125 880 1119 886L1002 1000Q970 1025 935 1003Q915 988 915 960L915 772Q912 748 890 745Q876 745 866 754L612 1000Q580 1025 545 1003Q527 988 527 960L527 772Q524 748 502 745Q488 745 478 754L225 1000Q193 1025 158 1003Q130 985 130 955Z";
+
 export function LogoMark({ size = 26 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" aria-hidden>
-      <rect x="1.5" y="1.5" width="29" height="29" rx="8.5" stroke="var(--accent-text)" strokeWidth="3" />
-      <path
-        d="M9 22V10l7 8 7-8v12"
-        stroke="var(--accent-text)"
-        strokeWidth="3.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width={size} height={size} viewBox="118 160 1020 1020" fill="none" aria-hidden>
+      <path d={LOGO_PATH} fill="var(--accent-text)" />
     </svg>
   );
 }
