@@ -28,7 +28,7 @@
 .plan:hover { border-color: var(--line-2); transform: translateY(-1px); }
 .plan[data-active="true"] { border-color: var(--tx); box-shadow: 0 12px 28px -14px rgba(15, 15, 18, .45); }
 .plan:focus-visible { outline: 2px solid var(--tx); outline-offset: 3px; }
-.ribbon { position: absolute; top: -11px; right: 16px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; background: #ff2e8a; color: #fff; font-size: 11px; font-weight: 800; box-shadow: 0 4px 10px rgba(255, 46, 138, .35); }
+.ribbon { position: absolute; top: -11px; right: 16px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; background: #d40f66; color: #fff; font-size: 11px; font-weight: 800; box-shadow: 0 4px 10px rgba(212, 15, 102, .35); }
 .radio { display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--line-2); border-radius: 50%; color: var(--panel); transition: background .15s var(--ease), border-color .15s var(--ease); }
 .plan[data-active="true"] .radio { background: var(--tx); border-color: var(--tx); }
 .planInfo { display: grid; gap: 3px; min-width: 0; }

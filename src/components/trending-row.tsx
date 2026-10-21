@@ -39,7 +39,7 @@ export function TrendingRow({ items: baseItems, more = [], href, layout = "row" 
     <div
       ref={trackRef}
       className={grid ? styles.grid : styles.track}
-      role="list"
+     
       onPointerDown={(event) => {
         if (grid || event.pointerType !== "mouse") return;
         drag.current = { x: event.clientX, left: event.currentTarget.scrollLeft, moved: false };
@@ -71,11 +71,10 @@ export function TrendingRow({ items: baseItems, more = [], href, layout = "row" 
           <strong>{item.name}</strong>
           <span className={styles.desc}>{item.description}</span>
         </>;
-        if (soon) return <div key={item.id} role="listitem" className={styles.card} data-soon="true">{content}</div>;
+        if (soon) return <div key={item.id} className={styles.card} data-soon="true">{content}</div>;
         return <Link
           key={item.id}
           href={item.href ?? href}
-          role="listitem"
           className={styles.card}
           draggable={false}
           onMouseEnter={(event) => play(event.currentTarget, true)}

@@ -38,7 +38,7 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
 
     <div className={styles.stage}>
       <video key={viral.slug} src={viralVideo(viral.slug)} poster={viral.poster} muted loop playsInline autoPlay controls={false} aria-label={`Vídeo de referência: ${viral.title}`} />
-      <span className={styles.stageTitle}>{first}{rest.length ? <> <mark>{rest.join(" ")}</mark></> : null}</span>
+      <h1 className={styles.stageTitle}>{first}{rest.length ? <> <mark>{rest.join(" ")}</mark></> : null}</h1>
     </div>
 
     <div className={styles.sectionHead}>
