@@ -5,7 +5,8 @@ import ts from "typescript";
 
 const asModule = (source) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 const compile = (source) => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const rulesUrl = asModule(compile(await readFile(new URL("../src/lib/ai-discovery.ts", import.meta.url), "utf8")));
+const channelsUrl = asModule(compile(await readFile(new URL("../src/data/youtube-channels.ts", import.meta.url), "utf8")));
+const rulesUrl = asModule(compile((await readFile(new URL("../src/lib/ai-discovery.ts", import.meta.url), "utf8")).replace('from "@/data/youtube-channels"', `from ${JSON.stringify(channelsUrl)}`)));
 const rules = await import(rulesUrl);
 const candidate = (title, authorHandle = "creator") => ({ title, authorHandle, authorName: authorHandle });
 

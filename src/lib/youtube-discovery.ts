@@ -96,6 +96,71 @@ async function request(path: string, params: Record<string, string>): Promise<Re
   try { return await response.json() as Record<string, unknown>; } catch { throw new YoutubeProviderError("O YouTube devolveu uma resposta inválida."); }
 }
 
+/* Feed público do canal (Atom): sem chave e sem cota. Traz os 15 envios mais
+   recentes com título, capa, data e visualizações; não traz duração. Só os
+   Shorts entram (o link alternativo do feed aponta para /shorts/). */
+const FEED = "https://www.youtube.com/feeds/videos.xml";
+const CHANNEL_ID = /^UC[A-Za-z0-9_-]{22}$/;
+
+function decodeXml(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number(dec)))
+    .replace(/&quot;/g, "\"").replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    .trim();
+}
+
+function tag(xml: string, name: string): string {
+  const match = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`).exec(xml);
+  return match ? decodeXml(match[1]) : "";
+}
+
+function attr(xml: string, name: string, attribute: string): string {
+  const match = new RegExp(`<${name}\\s[^>]*?${attribute}="([^"]*)"`).exec(xml);
+  return match ? decodeXml(match[1]) : "";
+}
+
+export function parseYoutubeFeed(xml: string, now = Date.now()): Omit<Viral, "id">[] {
+  const channelName = tag(xml.split("<entry>")[0] ?? "", "name");
+  const virals: Omit<Viral, "id">[] = [];
+  for (const entry of xml.split("<entry>").slice(1)) {
+    const videoId = tag(entry, "yt:videoId");
+    const channelId = tag(entry, "yt:channelId");
+    const link = /<link\s[^>]*rel="alternate"[^>]*href="([^"]+)"/.exec(entry)?.[1] ?? "";
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId) || !link.includes("/shorts/")) continue;
+    const title = tag(entry, "title") || tag(entry, "media:title");
+    const cover = attr(entry, "media:thumbnail", "url");
+    const published = Date.parse(tag(entry, "published"));
+    virals.push({
+      source: "youtube", videoId,
+      pageUrl: `https://www.youtube.com/shorts/${videoId}`,
+      playUrl: "", coverUrl: /^https:\/\//.test(cover) ? cover : "",
+      title: title.slice(0, 140) || "Sem título",
+      ...(title ? { sourceCaption: title.slice(0, 2200), sourceCaptionOrigin: "provider-title" as const } : {}),
+      authorName: tag(entry, "name") || channelName || "Canal", authorHandle: channelId,
+      duration: 0,
+      views: count(attr(entry, "media:statistics", "views")), likes: count(attr(entry, "media:starRating", "count")), comments: 0, shares: 0,
+      ...(Number.isFinite(published) ? { publishedAt: published } : {}),
+      region: "AI", minedAt: now, metricsUpdatedAt: now,
+    });
+  }
+  return virals;
+}
+
+/** Shorts recentes de um canal pelo feed público. */
+export async function fetchChannelShorts(channelId: string, now = Date.now()): Promise<Omit<Viral, "id">[]> {
+  if (!CHANNEL_ID.test(channelId)) return [];
+  let response: Response;
+  try {
+    response = await fetch(`${FEED}?channel_id=${channelId}`, { headers: { Accept: "application/atom+xml" }, cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch {
+    throw new YoutubeProviderError("O feed do YouTube demorou para responder.");
+  }
+  if (!response.ok) { await response.body?.cancel(); throw new YoutubeProviderError(`Feed do YouTube indisponível (HTTP ${response.status}).`); }
+  return parseYoutubeFeed(await response.text(), now);
+}
+
 /** Uma consulta: busca Shorts recentes pelo termo e completa duração e métricas. */
 export async function searchYoutubeShorts(query: string, now = Date.now()): Promise<{ virals: Omit<Viral, "id">[]; units: number }> {
   const search = await request("search", { part: "snippet", type: "video", videoDuration: "short", maxResults: "20", order: "date", q: query, safeSearch: "none" });

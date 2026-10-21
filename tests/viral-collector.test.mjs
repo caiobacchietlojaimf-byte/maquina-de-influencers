@@ -197,7 +197,7 @@ test("new-since-last-visit counts discoveries after the visit and ignores unavai
 });
 
 /* YouTube: fonte oficial, só quando configurada; uma rodada por hora; cota esgotada espera a virada do dia. */
-function setupYoutube(plan = { calls: [] }, env = {}) {
+function setupYoutube(plan = { calls: [] }, env = {}, channels = []) {
   const directory = mkdtempSync(path.join(tmpdir(), "mi-collector-test-"));
   const load = loader({ env: { DATA_DIR: directory } });
   const db = load("src/lib/db.ts");
@@ -207,9 +207,10 @@ function setupYoutube(plan = { calls: [] }, env = {}) {
     YoutubeProviderError,
     YOUTUBE_QUERIES: ["q1", "q2", "q3", "q4"],
     youtubeConfigured: () => Boolean(env.YOUTUBE_API_KEY),
+    async fetchChannelShorts(channelId) { plan.calls.push({ kind: "feed", channelId }); if (plan.feedError?.[channelId]) throw plan.feedError[channelId]; return (plan.feedVideos?.[channelId] ?? []).map((id) => ({ ...viral(id), source: "youtube", playUrl: "", pageUrl: `https://www.youtube.com/shorts/${id}`, authorHandle: channelId, title: "Cena do canal" })); },
     async searchYoutubeShorts(query) { plan.calls.push({ kind: "youtube", query }); if (plan.youtubeError) throw plan.youtubeError; return { virals: (plan.youtubeVideos ?? []).map((id) => ({ ...viral(id), source: "youtube", playUrl: "", pageUrl: `https://www.youtube.com/shorts/${id}`, title: "AI influencer character" })), units: 101 }; },
   };
-  const collector = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", TIKTOK_DISCOVERY_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./youtube-discovery": youtube, "./instagram-discovery": fakeInstagram(plan) } })("src/lib/viral-collector.ts");
+  const collector = loader({ env: { DATA_DIR: directory, VIRAL_COLLECTION_ENABLED: "true", TIKTOK_DISCOVERY_ENABLED: "true", ...env }, mocks: { "./miner": miner, "./db": db, "./server-db": { serverDb: () => null }, "./youtube-discovery": youtube, "@/data/youtube-channels": { YOUTUBE_AI_CHANNELS: channels }, "./instagram-discovery": fakeInstagram(plan) } })("src/lib/viral-collector.ts");
   return { directory, db, collector, plan, YoutubeProviderError };
 }
 
@@ -250,7 +251,7 @@ test("with a key YouTube runs two queries per hour, rotates terms and records pe
     assert.ok(status.sources.youtube.lastSuccessAt >= t0);
 
     const soon = await collector.runViralCollection({ now: t0 + 15 * 60_000, budgetMs });
-    assert.equal(soon.youtube.skipped, "interval", "15 minutes later the hourly budget is respected");
+    assert.equal(soon.youtube.skipped, undefined, "the round still runs (public feeds), but the search waits for the hourly budget");
     assert.equal(plan.calls.filter((call) => call.kind === "youtube").length, 2);
 
     plan.youtubeVideos = ["yt2", "yt3"];
@@ -271,15 +272,51 @@ test("YouTube quota exhaustion keeps the collection, records the error and waits
     const t0 = Date.now();
     const run = await collector.runViralCollection({ now: t0, budgetMs: 10_000 });
     assert.equal(run.errors.some((message) => message.startsWith("YouTube:")), true, JSON.stringify(run));
-    const reset = new Date(t0); reset.setUTCHours(8, 5, 0, 0); if (reset.getTime() <= t0) reset.setUTCDate(reset.getUTCDate() + 1);
     assert.equal((await db.listVirals("AI")).length, 1, "stored videos survive");
     const status = await collector.getCollectorStatus(t0);
     assert.match(status.sources.youtube.lastError, /cota/);
+    assert.equal(status.sources.youtube.backoffUntil, undefined, "quota only pauses the search, never the public feeds");
+    const again = await collector.runViralCollection({ now: t0 + 60_000, budgetMs: 10_000 });
+    assert.equal(again.youtube.skipped, undefined);
+    assert.equal(plan.calls.filter((call) => call.kind === "youtube").length, 1, "the search waits for the daily reset");
+  } finally { cleanup(directory); }
+});
+
+test("without a key, public channel feeds feed the collection in rotation", async () => {
+  const channels = Array.from({ length: 10 }, (_, i) => ({ id: `UC${String(i).padStart(22, "0")}`, name: `Canal ${i}` }));
+  const plan = { calls: [], feedVideos: { [channels[0].id]: ["f1", "f2"], [channels[9].id]: ["f9"] } };
+  const { directory, db, collector } = setupYoutube(plan, { YOUTUBE_DISCOVERY_ENABLED: "true" }, channels);
+  try {
+    const t0 = Date.now();
+    const first = await collector.runViralCollection({ now: t0, budgetMs: 10_000 });
+    assert.deepEqual(plan.calls.filter((call) => call.kind === "feed").map((call) => call.channelId), channels.slice(0, 8).map((channel) => channel.id), "8 channels per round");
+    assert.equal(plan.calls.filter((call) => call.kind === "youtube").length, 0, "no key, no search");
+    assert.equal(first.youtube.added, 2);
+    assert.equal((await collector.getCollectorStatus(t0)).sources.youtube.mode, "discovery");
+
+    await collector.runViralCollection({ now: t0 + 15 * 60_000, budgetMs: 10_000 });
+    assert.deepEqual(plan.calls.filter((call) => call.kind === "feed").slice(8).map((call) => call.channelId), [8, 9, 0, 1, 2, 3, 4, 5].map((i) => channels[i].id), "next round continues the rotation");
+    assert.equal((await db.listVirals("AI")).filter((row) => row.source === "youtube").length, 3);
+  } finally { cleanup(directory); }
+});
+
+test("one broken feed does not stop the others; all failing backs off", async () => {
+  const channels = [{ id: `UC${"a".repeat(22)}`, name: "A" }, { id: `UC${"b".repeat(22)}`, name: "B" }];
+  const plan = { calls: [], feedVideos: { [channels[1].id]: ["ok1"] }, feedError: { [channels[0].id]: new Error("Feed do YouTube indisponível (HTTP 500).") } };
+  const { directory, collector } = setupYoutube(plan, { YOUTUBE_DISCOVERY_ENABLED: "true" }, channels);
+  try {
+    const t0 = Date.now();
+    const run = await collector.runViralCollection({ now: t0, budgetMs: 10_000 });
+    assert.equal(run.youtube.added, 1);
+    let status = await collector.getCollectorStatus(t0);
+    assert.equal(status.sources.youtube.consecutiveFailures, 0);
+    assert.match(status.sources.youtube.lastError, /HTTP 500/);
+
+    plan.feedError[channels[1].id] = new Error("Feed do YouTube indisponível (HTTP 500).");
+    await collector.runViralCollection({ now: t0 + 15 * 60_000, budgetMs: 10_000 });
+    status = await collector.getCollectorStatus(t0 + 15 * 60_000);
     assert.equal(status.sources.youtube.consecutiveFailures, 1);
-    assert.equal(status.sources.youtube.backoffUntil, reset.getTime(), "next attempt after midnight Pacific (08:05 UTC covers PST and PDT)");
-    const again = await collector.runViralCollection({ now: t0 + 2 * 60 * 60_000, budgetMs: 10_000 });
-    assert.equal(again.youtube.skipped, "backoff");
-    assert.equal(plan.calls.filter((call) => call.kind === "youtube").length, 1);
+    assert.ok(status.sources.youtube.backoffUntil > t0 + 15 * 60_000);
   } finally { cleanup(directory); }
 });
 

@@ -8,7 +8,8 @@ import { listVirals, upsertVirals, type Viral } from "./db";
 import { listAiVirals, mineTrending, MiningProviderError, refreshViralMedia } from "./miner";
 import { serverDb } from "./server-db";
 import type { DiscoveryCursors } from "./ai-discovery";
-import { searchYoutubeShorts, youtubeConfigured, YoutubeProviderError, YOUTUBE_QUERIES } from "./youtube-discovery";
+import { fetchChannelShorts, searchYoutubeShorts, youtubeConfigured, YoutubeProviderError, YOUTUBE_QUERIES } from "./youtube-discovery";
+import { YOUTUBE_AI_CHANNELS } from "@/data/youtube-channels";
 import { instagramDiscoveryAccount, runInstagramDiscovery, type InstagramRound } from "./instagram-discovery";
 
 /* Coleta contínua de vídeos de personagens de IA.
@@ -23,10 +24,11 @@ import { instagramDiscoveryAccount, runInstagramDiscovery, type InstagramRound }
      importação manual), com status explícito.
    - TikTok: busca via tikwm.com (serviço público, sem chave, com limites),
      desligada por padrão porque a fonte responde 403; só
-     TIKTOK_DISCOVERY_ENABLED=true liga, para não repetir consultas bloqueadas. YouTube: complemento pela API oficial (Data API v3), só com
-     YOUTUBE_API_KEY e YOUTUBE_DISCOVERY_ENABLED=true; uma rodada por hora
-     com duas buscas (48/dia, dentro do bucket oficial de 100 search.list/dia).
-     Sem isso fica "inactive".
+     TIKTOK_DISCOVERY_ENABLED=true liga, para não repetir consultas bloqueadas. YouTube: com YOUTUBE_DISCOVERY_ENABLED=true, lê a
+     cada rodada os feeds públicos dos canais de src/data/youtube-channels.ts
+     (sem chave, sem cota, em rodízio). Com YOUTUBE_API_KEY também busca por
+     termo pela Data API v3, uma vez por hora com duas buscas (48/dia, dentro
+     do bucket oficial de 100 search.list/dia). Sem a flag fica "inactive".
    - As três áreas da página (Vídeos, Descobrir personagens, Efeitos) leem o
      mesmo acervo: nenhuma consulta externa se repete por aba. */
 
@@ -43,9 +45,10 @@ export function tiktokDiscoveryEnabled(): boolean {
   return process.env.TIKTOK_DISCOVERY_ENABLED?.trim().toLowerCase() === "true";
 }
 
-/** YouTube é complemento: além da chave, exige YOUTUBE_DISCOVERY_ENABLED=true. */
+/** YouTube liga com YOUTUBE_DISCOVERY_ENABLED=true: feeds públicos dos canais
+ *  sempre; a busca por termo pela API só quando também houver YOUTUBE_API_KEY. */
 export function youtubeDiscoveryEnabled(): boolean {
-  return youtubeConfigured() && process.env.YOUTUBE_DISCOVERY_ENABLED?.trim().toLowerCase() === "true";
+  return process.env.YOUTUBE_DISCOVERY_ENABLED?.trim().toLowerCase() === "true" && (youtubeConfigured() || YOUTUBE_AI_CHANNELS.length > 0);
 }
 export const COLLECT_INTERVAL_MS = 15 * 60_000;
 const LOCK_TTL_MS = 10 * 60_000;
@@ -57,6 +60,8 @@ const METRICS_BATCH = 6;
 const UNAVAILABLE_AFTER_FAILURES = 3;
 export const YOUTUBE_INTERVAL_MS = 60 * 60_000;
 const YOUTUBE_QUERIES_PER_RUN = 2;
+/** Feeds públicos lidos por rodada, em rodízio (sem cota; só limita o tempo da rodada). */
+const YOUTUBE_FEEDS_PER_RUN = 8;
 
 export type SourceId = "tiktok" | "instagram" | "youtube";
 export type SourceState = {
@@ -90,7 +95,7 @@ export type CollectorStatus = {
 export type CollectionRun = { skipped?: "disabled" | "locked" | "backoff"; added: number; metricsUpdated: number; errors: string[]; youtube?: { skipped?: "inactive" | "interval" | "backoff"; added: number; units: number }; instagram?: { skipped?: "catalog" | "backoff"; added: number; profiles: number; failed: number } };
 
 const TIKTOK_OFF = "fonte pública (tikwm) bloqueada com HTTP 403; descoberta desligada até haver fonte autorizada";
-const YOUTUBE_OFF = "complemento desligado: exige chave da API e YOUTUBE_DISCOVERY_ENABLED=true";
+const YOUTUBE_OFF = "complemento desligado: exige YOUTUBE_DISCOVERY_ENABLED=true (feeds dos canais; a chave da API só acrescenta a busca por termo)";
 const INSTAGRAM_CATALOG = "sem conta administradora conectada pela API oficial; só catálogo verificado e importação manual";
 
 const defaults = (): CollectorState => ({
@@ -344,37 +349,80 @@ export async function runViralCollection(options: { now?: number; budgetMs?: num
 
 type YoutubeRound = { skipped?: "inactive" | "interval" | "backoff"; added: number; units: number; error?: string; state?: Partial<SourceState> };
 
-/** Descoberta no YouTube dentro da mesma rodada: roda no máximo uma vez por hora,
- *  gira pelos termos de busca (cursor "next") e respeita a espera progressiva. */
+function cursorIndex(value: string | undefined): number {
+  const index = Number(value ?? 0);
+  return Number.isInteger(index) && index >= 0 ? index : 0;
+}
+
+function errorMessage(error: unknown, fallback: string): string {
+  return typeof (error as { message?: unknown } | null)?.message === "string" ? (error as Error).message : fallback;
+}
+
+/** Descoberta no YouTube dentro da mesma rodada:
+ *  1) feeds públicos dos canais acompanhados, alguns por rodada em rodízio (cursor "feed");
+ *  2) busca por termo pela API oficial, só com chave e no máximo uma vez por hora
+ *     (cursores "next" e "searchAt"; cota esgotada espera a virada do dia). */
 async function runYoutubeDiscovery(previous: SourceState, now: number, deadline: number): Promise<YoutubeRound> {
   if (previous.mode !== "discovery") return { skipped: "inactive", added: 0, units: 0 };
   if (previous.backoffUntil && previous.backoffUntil > now) return { skipped: "backoff", added: 0, units: 0 };
-  if (previous.lastAttemptAt && now - previous.lastAttemptAt < YOUTUBE_INTERVAL_MS) return { skipped: "interval", added: 0, units: 0 };
-  let index = Number(previous.cursors?.next ?? 0);
-  if (!Number.isInteger(index) || index < 0) index = 0;
-  let added = 0;
-  let units = 0;
+  const cursors: DiscoveryCursors = { ...previous.cursors };
   const collected = new Map<string, Omit<Viral, "id">>();
-  try {
-    for (let i = 0; i < YOUTUBE_QUERIES_PER_RUN; i++) {
-      if (Date.now() > deadline - 5_000) break;
-      const query = YOUTUBE_QUERIES[(index + i) % YOUTUBE_QUERIES.length];
-      const result = await searchYoutubeShorts(query, Date.now());
-      units += result.units;
-      for (const viral of result.virals) collected.set(viral.videoId ?? viral.pageUrl, viral);
+  let units = 0;
+  let attempted = 0;
+  let failed = 0;
+  let error: string | undefined;
+
+  const feedStart = cursorIndex(cursors.feed);
+  const feeds = Math.min(YOUTUBE_FEEDS_PER_RUN, YOUTUBE_AI_CHANNELS.length);
+  for (let i = 0; i < feeds; i++) {
+    if (Date.now() > deadline - 5_000) break;
+    const channel = YOUTUBE_AI_CHANNELS[(feedStart + i) % YOUTUBE_AI_CHANNELS.length];
+    attempted += 1;
+    try {
+      for (const viral of await fetchChannelShorts(channel.id, Date.now())) collected.set(viral.videoId ?? viral.pageUrl, viral);
+    } catch (feedError) {
+      failed += 1;
+      error ??= errorMessage(feedError, "O feed do YouTube falhou.");
     }
-    if (collected.size) added = await upsertVirals([...collected.values()]);
-    const next = String((index + YOUTUBE_QUERIES_PER_RUN) % YOUTUBE_QUERIES.length);
-    return { added, units, state: { lastAttemptAt: now, lastSuccessAt: Date.now(), lastError: undefined, lastAdded: added, consecutiveFailures: 0, backoffUntil: undefined, cursors: { next } } };
-  } catch (error) {
-    const message = typeof (error as { message?: unknown } | null)?.message === "string" ? (error as Error).message : "A busca do YouTube falhou.";
-    const failures = (previous.consecutiveFailures ?? 0) + 1;
-    const quota = error instanceof YoutubeProviderError && error.quotaExceeded;
-    // Cota esgotada (HTTP 403 quotaExceeded): espera a virada do dia no horário do
-    // Pacífico, que cai às 07:00 UTC (PDT) ou 08:00 UTC (PST); 08:05 UTC cobre os dois.
-    const backoffUntil = quota ? nextQuotaReset(now) : now + backoffFor(failures);
-    return { added, units, error: `YouTube: ${message}`, state: { lastAttemptAt: now, lastError: message, consecutiveFailures: failures, backoffUntil } };
   }
+  if (YOUTUBE_AI_CHANNELS.length) cursors.feed = String((feedStart + attempted) % YOUTUBE_AI_CHANNELS.length);
+
+  let quotaUntil: number | undefined;
+  const searchAt = Number(cursors.searchAt ?? 0);
+  if (youtubeConfigured() && (!Number.isFinite(searchAt) || now - searchAt >= YOUTUBE_INTERVAL_MS)) {
+    const index = cursorIndex(cursors.next);
+    cursors.searchAt = String(now);
+    try {
+      for (let i = 0; i < YOUTUBE_QUERIES_PER_RUN; i++) {
+        if (Date.now() > deadline - 5_000) break;
+        const result = await searchYoutubeShorts(YOUTUBE_QUERIES[(index + i) % YOUTUBE_QUERIES.length], Date.now());
+        units += result.units;
+        for (const viral of result.virals) collected.set(viral.videoId ?? viral.pageUrl, viral);
+      }
+      cursors.next = String((index + YOUTUBE_QUERIES_PER_RUN) % YOUTUBE_QUERIES.length);
+    } catch (searchError) {
+      error ??= errorMessage(searchError, "A busca do YouTube falhou.");
+      // Cota esgotada (HTTP 403 quotaExceeded): a busca espera a virada do dia no horário do
+      // Pacífico, que cai às 07:00 UTC (PDT) ou 08:00 UTC (PST); 08:05 UTC cobre os dois.
+      if (searchError instanceof YoutubeProviderError && searchError.quotaExceeded) quotaUntil = nextQuotaReset(now);
+      if (quotaUntil) cursors.searchAt = String(quotaUntil - YOUTUBE_INTERVAL_MS);
+    }
+  }
+
+  let added = 0;
+  try {
+    if (collected.size) added = await upsertVirals([...collected.values()]);
+  } catch (saveError) {
+    error ??= errorMessage(saveError, "Não foi possível salvar os vídeos do YouTube.");
+    failed = attempted || 1;
+  }
+
+  // Só conta como falha da fonte quando nada respondeu; um canal fora do ar não para os outros.
+  if (attempted > 0 && failed >= attempted && !collected.size) {
+    const failures = (previous.consecutiveFailures ?? 0) + 1;
+    return { added, units, error: `YouTube: ${error}`, state: { lastAttemptAt: now, lastError: error, consecutiveFailures: failures, backoffUntil: now + backoffFor(failures), cursors } };
+  }
+  return { added, units, ...(error ? { error: `YouTube: ${error}` } : {}), state: { lastAttemptAt: now, lastSuccessAt: Date.now(), lastError: error, lastAdded: added, consecutiveFailures: 0, backoffUntil: undefined, cursors } };
 }
 
 function nextQuotaReset(now: number): number {

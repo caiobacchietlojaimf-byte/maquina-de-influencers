@@ -1,3 +1,5 @@
+import { YOUTUBE_AI_CHANNEL_IDS } from "@/data/youtube-channels";
+
 /** Shared discovery rules: generic #viral, #fyp and #ai never qualify by themselves. */
 export const AI_DISCOVERY_PROFILES = ["moroniduarte", "moroniceee", "red_cresty", "phil_john_jean", "dahab.daddy"] as const;
 /** Related accounts observed in TikTok search; association is about the character, not account ownership. */
@@ -24,6 +26,8 @@ export function isAiCharacterVideo(item: Candidate): boolean {
   const tutorial = /tutorial|como\s+(?:criar|fazer|gerar)|how\s+to|curso|aprenda|passo\s+a\s+passo|prompt\s+guide/i;
   if (tutorial.test(text)) return false;
   if (AI_DISCOVERY_PROFILES.some((profile) => matchesAiProfile(item, profile))) return true;
+  // Canais do YouTube da curadoria (feed público): o canal inteiro é de personagem de IA.
+  if (YOUTUBE_AI_CHANNEL_IDS.has(item.authorHandle)) return true;
   const character = /(personage(?:m|ns)|influencer|avatar|character|digital\s+human|virtual\s+model)/i;
   const ai = /#(?:ai|ia)\b|\bai[ -]+(?:generated|character|influencer|avatar|model)|(?:personagem|influencer|avatar)\s+(?:(?:de|com|por)\s+)?ia\b|artificial\s+intelligence|inteligencia\s+artificial|ai(?:generated|character|influencer|avatar)|virtual\s+(?:influencer|character|model)|(?:personagem|influencer|avatar)virtual/i;
   return character.test(text) && ai.test(text);

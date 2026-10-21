@@ -51,7 +51,8 @@ export function viralItem(viral: Viral, seenAt: number | null): ExploreItem {
     id: `viral:${viral.id}`,
     platform: viral.source,
     title: viral.title,
-    authorHandle: viral.authorHandle,
+    // Feed do YouTube guarda o id do canal (UC…) como identificador; na tela vale o nome do canal.
+    authorHandle: viral.source === "youtube" && /^UC[A-Za-z0-9_-]{22}$/.test(viral.authorHandle) ? "" : viral.authorHandle,
     authorName: viral.authorName,
     pageUrl: viral.pageUrl,
     coverUrl: viral.coverUrl,
