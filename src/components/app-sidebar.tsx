@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { BookOpen, ChevronUp, Clapperboard, CreditCard, Flame, Home, LogOut, Menu, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
+import { BookOpen, ChevronUp, Clapperboard, Coins, CreditCard, Flame, Home, LogOut, Menu, Plus, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
 
 import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
@@ -29,6 +29,18 @@ const GROUPS = [
 ] as const;
 
 const STORAGE_KEY = "mi-sidebar-collapsed";
+
+/** Nome salvo todo em caixa alta aparece como "Paulo Victor" no menu. */
+function prettyName(name: string) {
+  const trimmed = name.trim();
+  if (trimmed !== trimmed.toUpperCase()) return trimmed;
+  return trimmed.toLocaleLowerCase("pt-BR").replace(/(^|\s)(\p{L})/gu, (_, space: string, letter: string) => space + letter.toLocaleUpperCase("pt-BR"));
+}
+
+/** Saldo curto para o menu recolhido (10.000 → 10 mil). */
+function compactNumber(value: number) {
+  return new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
 
 export function AppSidebar({
   name,
@@ -108,6 +120,7 @@ export function AppSidebar({
   };
 
   const initial = name.trim().charAt(0).toUpperCase() || "?";
+  const displayName = prettyName(name);
 
   return (
     <aside className="app-sidebar" data-collapsed={collapsed}>
@@ -122,10 +135,15 @@ export function AppSidebar({
       </div>
 
       <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
-        <div className="sidebar-credits-label"><span data-hide={collapsed}>Créditos</span><strong data-empty={credits <= 0}>{credits.toLocaleString("pt-BR")}</strong></div>
+        <span className="sidebar-credits-icon" aria-hidden="true"><Coins size={15} /></span>
+        <span className="sidebar-credits-label" data-hide={collapsed}>
+          <span>Créditos</span>
+          <strong data-empty={credits <= 0}>{credits.toLocaleString("pt-BR")}</strong>
+        </span>
+        <strong className="sidebar-credits-mini" data-empty={credits <= 0} aria-hidden="true">{compactNumber(credits)}</strong>
         <Link href="/app/creditos" className="sidebar-buy-credits" aria-label="Comprar créditos" title="Comprar créditos" aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
           onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
-          <CreditCard size={16} aria-hidden="true" /><span data-hide={collapsed}>Comprar créditos</span>
+          <Plus size={15} strokeWidth={2.4} aria-hidden="true" />
         </Link>
       </div>
 
@@ -162,7 +180,7 @@ export function AppSidebar({
 
       <div className="sidebar-footer" ref={profileRoot}>
         {profileOpen && <div id={profileId} className="profile-panel" ref={profilePanel}>
-          <div className="profile-heading"><strong>{name}</strong><span>{email}</span></div>
+          <div className="profile-heading"><strong>{displayName}</strong><span>{email}</span></div>
           <div className="profile-options" aria-label="Opções do perfil">
             <Link href="/app/planos" className="profile-action" aria-current={pathname.startsWith("/app/planos") ? "page" : undefined} onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}><CreditCard size={17} />Meu plano</Link>
             {isAdmin && <Link href="/app/admin" className="profile-action" aria-current={pathname.startsWith("/app/admin") ? "page" : undefined} onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}><ShieldCheck size={17} />Administração</Link>}
@@ -172,7 +190,7 @@ export function AppSidebar({
         </div>}
         <button type="button" className="user-row profile-trigger" ref={profileTrigger} aria-label={`Menu do perfil de ${name}`} aria-expanded={profileOpen} aria-controls={profileOpen ? profileId : undefined} title={collapsed ? name : undefined} onClick={() => setProfileOpen(open => !open)} onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); setProfileOpen(true); } }}>
           <span className="avatar" aria-hidden="true">{initial}</span>
-          <span className="who" data-hide={collapsed}><b>{name}</b><span>{email}</span></span>
+          <span className="who" data-hide={collapsed}><b>{displayName}</b><span>{email}</span></span>
           <ChevronUp size={16} className="profile-chevron" data-hide={collapsed} aria-hidden="true" />
         </button>
       </div>
