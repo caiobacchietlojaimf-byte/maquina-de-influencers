@@ -88,6 +88,7 @@ function fixture(overrides = {}) {
     } },
     "@/lib/db": db, "@/data/ai-profiles": { getProfile: () => ({ handle: "profile", posts: [{ code: "clip", video: receipt.sourceUrl, scene: "Scene", prompt: "Invent musicians on a white backdrop" }] }) },
     "@/data/motion-presets": { getMotionPreset: () => ({ drivingVideo: receipt.sourceUrl, name: "Preset", kind: "object_swap" }) },
+    "@/data/virais-proprios": { getReadyTemplate: () => undefined, viralVideo: slug => `/virais/${slug}.mp4` },
     "@/lib/ai-discovery": { isAiCharacterVideo: () => true },
     "@/lib/uploaded-reference": { readUploadedReference: (token, user) => { if (token !== "owned-upload" || user !== "owner") throw new Error("Invalid upload"); return { videoUrl: receipt.sourceUrl, name: "Upload" }; } },
     "@/lib/video-media": { publicMediaUrl: v => v, inspectPublicVideo: async url => overrides.inspect ? overrides.inspect(url, metadataByUrl.get(url)) : metadataByUrl.get(url), readPublicVideo: async (...args) => overrides.read ? overrides.read(...args) : overrides.bytes ?? original },

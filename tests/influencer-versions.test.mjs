@@ -44,7 +44,7 @@ test("video preparation freezes the selected outfit ID and image in its signed q
     "@vercel/blob": { put: async () => ({ url: "https://store.public.blob.vercel-storage.com/original.mp4" }) },
     "@/lib/auth": { requireUser: async () => ({ id: "owner" }) },
     "@/lib/db": { getInfluencer: async (owner, id) => { ownedReads.push([owner, id]); return owner === "owner" && id === outfit.id ? outfit : undefined; } },
-    "@/data/ai-profiles": {}, "@/lib/ai-discovery": {}, "@/lib/uploaded-reference": {},
+    "@/data/ai-profiles": {}, "@/data/virais-proprios": {}, "@/lib/ai-discovery": {}, "@/lib/uploaded-reference": {},
     "@/data/motion-presets": { getMotionPreset: () => ({ name: "Original video", drivingVideo: "https://video.example/original.mp4" }) },
     "@/lib/video-media": { publicMediaUrl: url => url, readPublicVideo: async () => Buffer.from("source video") },
     "@/lib/video-reference": { mp4Metadata: () => ({ duration: 10, width: 720, height: 1280, hasAudio: true }) },

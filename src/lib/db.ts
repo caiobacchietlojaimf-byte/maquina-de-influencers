@@ -30,7 +30,12 @@ export type User = {
   creditPurchases?: Record<string, { credits: number; grantedAt: number; revoked?: boolean }>;
   /** Manual balance added by an administrator, keyed by the form submission. */
   adminCreditGrants?: Record<string, { credits: number; grantedAt: number; adminId: string }>;
+  /** Última visita à página de virais; base do indicador "novo desde a última visita". */
+  viralsSeenAt?: number;
   suspendedAt?: number;
+  /** Conta Google vinculada (claim `sub`, estável por usuário). Contas só-Google ficam sem senha. */
+  googleId?: string;
+  googleLinkedAt?: number;
   influencerCredits?: Record<string, { cost: number; state: "reserved" | "refunded" }>;
   captionRequests?: number[];
   thumbnailWorkers?: Record<string, { claimId: string; expiresAt: number }>;
@@ -135,7 +140,7 @@ export type Video = {
 
 export type Viral = {
   id: string;
-  source: "tiktok" | "instagram" | "url";
+  source: "tiktok" | "instagram" | "youtube" | "url";
   videoId?: string;
   pageUrl: string;
   playUrl: string;
@@ -153,7 +158,18 @@ export type Viral = {
   shares: number;
   musicTitle?: string;
   region: string;
+  /** Última sincronização com o provedor (0 = snapshot do catálogo local). */
   minedAt: number;
+  /** Primeira vez que o vídeo entrou no acervo; nunca muda em atualizações. */
+  discoveredAt?: number;
+  /** Data de publicação informada pela plataforma, quando disponível. */
+  publishedAt?: number;
+  /** Última atualização bem-sucedida das métricas pelo provedor. */
+  metricsUpdatedAt?: number;
+  /** Falhas consecutivas ao renovar a mídia; a partir de 3, unavailableAt é definido. */
+  checkFailures?: number;
+  /** O provedor deixou de devolver o vídeo (removido ou indisponível). */
+  unavailableAt?: number;
 };
 
 export type SocialPlatform = "tiktok" | "instagram";
@@ -343,6 +359,26 @@ export async function findUserById(id: string): Promise<User | undefined> {
   return load().users.find((u) => u.id === id);
 }
 
+export async function findUserByGoogleId(googleId: string): Promise<User | undefined> {
+  const sb = remote();
+  if (sb) {
+    const { data, error } = await sb.from("mi_users").select("data").eq("data->>googleId", googleId).limit(1).maybeSingle();
+    if (error) fail("buscar usuário", error);
+    return data ? rowData<User>(data) : undefined;
+  }
+  return load().users.find((u) => u.googleId === googleId);
+}
+
+/** Vincula o Google a uma conta existente. Nunca troca um vínculo já feito com outra conta Google. */
+export async function linkGoogleAccount(userId: string, googleId: string): Promise<User> {
+  return mutateCredits(userId, user => {
+    if (user.googleId && user.googleId !== googleId) throw new Error("Esta conta já está vinculada a outro login Google.");
+    user.googleId = googleId;
+    user.googleLinkedAt ??= Date.now();
+    return user;
+  });
+}
+
 export async function createUser(input: Omit<User, "id" | "createdAt">): Promise<User> {
   const user: User = {
     ...input,
@@ -425,6 +461,11 @@ export async function grantAdminCredits(userId: string, grantId: string, credits
     user.adminCreditGrants = { ...user.adminCreditGrants, [grantId]: { credits, grantedAt: Date.now(), adminId } };
     return { applied: true, balance: user.credits };
   });
+}
+
+/** Registra a visita à página de virais; a leitura anterior fica com quem chamou. */
+export async function markViralsSeen(userId: string, at = Date.now()): Promise<void> {
+  await mutateCredits(userId, user => { if (!user.viralsSeenAt || user.viralsSeenAt < at) user.viralsSeenAt = at; });
 }
 
 export async function setUserSuspended(userId: string, suspended: boolean) {
@@ -998,7 +1039,7 @@ export async function deleteVideo(userId: string, id: string): Promise<boolean> 
 export async function listVirals(region?: string): Promise<Viral[]> {
   const sb = remote();
   if (sb) {
-    let query = sb.from("mi_virals").select("data").order("views", { ascending: false }).limit(240);
+    let query = sb.from("mi_virals").select("data").order("mined_at", { ascending: false }).limit(600);
     if (region) query = query.or(`region.eq.${region},source.eq.url`);
     const { data, error } = await query;
     if (error) fail("listar virais", error);
@@ -1037,7 +1078,9 @@ export async function lastMinedAt(region: string): Promise<number> {
 }
 
 function viralDedupeKey(item: Omit<Viral, "id">): string {
-  return item.videoId ? `tt:${item.videoId}` : `url:${item.pageUrl}`;
+  if (item.source === "youtube" && item.videoId) return `yt:${item.videoId}`;
+  if (item.source === "tiktok" && item.videoId) return `tt:${item.videoId}`;
+  return `url:${item.pageUrl}`;
 }
 
 export async function upsertVirals(items: Omit<Viral, "id">[]): Promise<number> {
@@ -1047,13 +1090,20 @@ export async function upsertVirals(items: Omit<Viral, "id">[]): Promise<number> 
     const keys = items.map(viralDedupeKey);
     const { data: existing, error: selectError } = await sb
       .from("mi_virals")
-      .select("dedupe_key,id")
+      .select("dedupe_key,id,data")
       .in("dedupe_key", keys);
     if (selectError) fail("dedupe virais", selectError);
-    const known = new Map((existing ?? []).map((row) => [row.dedupe_key as string, row.id as string]));
+    const known = new Map((existing ?? []).map((row) => [row.dedupe_key as string, { id: row.id as string, data: row.data as Viral }]));
     const rows = items.map((item) => {
       const key = viralDedupeKey(item);
-      const id = known.get(key) ?? randomUUID();
+      const saved = known.get(key);
+      const id = saved?.id ?? randomUUID();
+      // A descoberta é a primeira gravação pelo provedor; atualizações preservam a
+      // data. Itens do catálogo local (minedAt 0) nunca contam como descoberta.
+      const discoveredAt = saved
+        ? saved.data.discoveredAt ?? (saved.data.minedAt > 0 ? saved.data.minedAt : 0)
+        : item.discoveredAt ?? (item.minedAt > 0 ? item.minedAt : 0);
+      const data = { ...(saved?.data ?? {}), ...item, id, ...(discoveredAt ? { discoveredAt } : {}) };
       return {
         id,
         dedupe_key: key,
@@ -1061,7 +1111,7 @@ export async function upsertVirals(items: Omit<Viral, "id">[]): Promise<number> 
         source: item.source,
         mined_at: item.minedAt,
         views: item.views,
-        data: { ...item, id },
+        data,
       };
     });
     const { error } = await sb.from("mi_virals").upsert(rows, { onConflict: "dedupe_key" });
@@ -1071,14 +1121,16 @@ export async function upsertVirals(items: Omit<Viral, "id">[]): Promise<number> 
   return mutate((db) => {
     let added = 0;
     for (const item of items) {
-      const existing = item.videoId
-        ? db.virals.find((v) => v.videoId === item.videoId)
+      const existing = item.videoId && item.source !== "instagram"
+        ? db.virals.find((v) => v.videoId === item.videoId && v.source === item.source)
         : db.virals.find((v) => v.pageUrl === item.pageUrl);
       if (existing) {
-        Object.assign(existing, item);
+        const discoveredAt = existing.discoveredAt ?? (existing.minedAt > 0 ? existing.minedAt : 0);
+        Object.assign(existing, item, discoveredAt ? { discoveredAt } : {});
         continue;
       }
-      db.virals.push({ ...item, id: randomUUID() });
+      const discoveredAt = item.discoveredAt ?? (item.minedAt > 0 ? item.minedAt : 0);
+      db.virals.push({ ...item, ...(discoveredAt ? { discoveredAt } : {}), id: randomUUID() });
       added += 1;
     }
     if (db.virals.length > 400) {

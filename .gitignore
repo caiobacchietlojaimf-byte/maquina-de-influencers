@@ -19,6 +19,6 @@ next-env.d.ts
 Supabase.env
 supabase.env
 *.env
+.env*
 !.env.example
 .vercel
-.env*

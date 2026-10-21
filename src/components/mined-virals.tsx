@@ -1,84 +1,154 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import {
-  Clock3,
-  Download as DownloadIcon,
-  ExternalLink,
-  Eye,
-  Flame,
-  Heart,
-  Link2,
-  Music2,
-  Pickaxe,
-  RefreshCw,
-  Sparkles,
-} from "lucide-react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { ChevronDown, Link2, RefreshCw, Search, Sparkles } from "lucide-react";
 
 import {
+  checkViralsNewsAction,
   getMinedViralsAction,
   importViralAction,
+  markViralsSeenAction,
   refreshViralsAction,
-  refreshViralMediaAction,
   type MinedState,
 } from "@/app/actions/virals";
-import { AI_DISCOVERY_PROFILES, isAiCharacterVideo, isMotionReference, matchesAiProfile, type DiscoveryCursors } from "@/lib/ai-discovery";
-import { formatViews } from "@/data/viral-effects";
+import { AI_DISCOVERY_PROFILES, isAiCharacterVideo, matchesAiProfile, type DiscoveryCursors } from "@/lib/ai-discovery";
+import { AI_PROFILES } from "@/data/ai-profiles";
 import type { Viral } from "@/lib/db";
-import { ViralGrid } from "./viral-grid";
-import { ProfileVideos } from "./ai-profile-gallery";
+import { discoveredTrends } from "@/lib/effects-catalog";
+import { PLATFORM_LABEL, relativeTime, type ExplorePlatform } from "@/lib/explore-format";
+import { buildCharacterSections, viralItem, type ExploreItem } from "@/lib/explore-items";
+import type { CollectorStatus } from "@/lib/viral-collector";
+import { ExploreCard, ExploreDialog, PlatformMark } from "./explore-card";
+import { CharactersTab } from "./explore-characters";
+import { EffectsTab } from "./explore-effects";
+import styles from "./explore-virals.module.css";
+
+/* Explorar virais: três áreas sobre um único acervo.
+   - Vídeos: tudo o que a coleta encontrou + catálogo verificado.
+   - Descobrir personagens IA: o mesmo acervo agrupado por perfil/autor.
+   - Efeitos: presets executáveis + tendências descobertas (do mesmo acervo).
+   Nenhuma aba consulta fontes externas; o servidor coleta sozinho (cron) e a
+   página só lê o banco e verifica novidades de leve enquanto está aberta. */
 
 type MiniInfluencer = { id: string; name: string; imageUrl: string };
+type Tab = "videos" | "characters" | "effects";
+type Platform = "all" | ExplorePlatform;
+type Order = "discovered" | "published" | "views" | "likes";
 
-export function MinedVirals({
-  initialVirals,
-  influencers,
-}: {
+const PAGE_SIZE = 24;
+const NEWS_POLL_MS = 60_000;
+
+const PROFILE_CHIPS = (() => {
+  const seen = new Set<string>();
+  const list: { handle: string; name: string; avatar?: string }[] = [];
+  for (const profile of AI_PROFILES) {
+    if (seen.has(profile.handle)) continue;
+    seen.add(profile.handle);
+    list.push({ handle: profile.handle, name: profile.name, avatar: profile.avatar });
+  }
+  for (const handle of AI_DISCOVERY_PROFILES) if (!seen.has(handle)) list.push({ handle, name: `@${handle}` });
+  return list;
+})();
+
+function discoveredAt(viral: Viral): number {
+  return viral.discoveredAt ?? viral.minedAt;
+}
+
+export function MinedVirals({ initialVirals, initialStatus, seenAt, now: serverNow, influencers }: {
   initialVirals: Viral[];
+  initialStatus: CollectorStatus | null;
+  seenAt: number | null;
+  now: number;
   influencers: MiniInfluencer[];
 }) {
   const router = useRouter();
-  const [tab, setTab] = useState<"mined" | "effects" | "profiles">("profiles");
-  const [profileFilter, setProfileFilter] = useState("");
+  const baseId = useId();
+  const [tab, setTab] = useState<Tab>("videos");
+  const [platform, setPlatform] = useState<Platform>("all");
   const [search, setSearch] = useState("");
-  const [order, setOrder] = useState("views");
-  const [motionOnly, setMotionOnly] = useState(false);
+  const [order, setOrder] = useState<Order>("discovered");
+  const [onlyNew, setOnlyNew] = useState(false);
+  const [profileFilter, setProfileFilter] = useState("");
   const [virals, setVirals] = useState<Viral[]>(() => initialVirals.filter(isAiCharacterVideo));
+  const [status, setStatus] = useState<CollectorStatus | null>(initialStatus);
   const [cursors, setCursors] = useState<DiscoveryCursors>({});
   const [hasMore, setHasMore] = useState(false);
-  const [mining, startMining] = useTransition();
   const [notice, setNotice] = useState<string | null>(null);
-
-  // Mineração em background: a página carrega na hora com o cache do banco e
-  // o feed fresco chega sozinho (sem travar o primeiro render).
-  useEffect(() => {
-    let mounted = true;
-    startMining(async () => {
-      try {
-        const result = await getMinedViralsAction();
-        if (!mounted) return;
-        setVirals(result.virals);
-        setNotice(result.error ?? result.notice ?? null);
-        setCursors(result.cursors ?? {});
-        setHasMore(result.hasMore ?? false);
-      } catch { if (mounted) setNotice("Não foi possível consultar novos vídeos agora. Tente atualizar a busca."); }
-    });
-    return () => { mounted = false; };
-  }, [startMining]);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingNew, setPendingNew] = useState(0);
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
+  const [active, setActive] = useState<ExploreItem | null>(null);
+  const [now, setNow] = useState(serverNow);
+  const [mining, startMining] = useTransition();
+  const mounted = useRef(true);
 
-  const applyResult = (result: MinedState) => {
-    setVirals(result.virals);
-    setNotice(result.error ?? result.notice ?? null);
+  const latestKnown = useMemo(() => Math.max(0, ...virals.map(discoveredAt)), [virals]);
+  const newCount = useMemo(() => (seenAt ? virals.filter((viral) => discoveredAt(viral) > seenAt && !viral.unavailableAt).length : 0), [virals, seenAt]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const applyResult = useCallback((result: MinedState) => {
+    if (!mounted.current) return;
+    setVirals(result.virals.filter(isAiCharacterVideo));
+    setNotice(result.notice ?? null);
+    setError(result.error ?? null);
+    if (result.status) setStatus(result.status);
     if (result.cursors) setCursors(result.cursors);
     if (typeof result.hasMore === "boolean") setHasMore(result.hasMore);
+    setPendingNew(0);
+    setNow(Date.now());
+  }, []);
+
+  // Ao abrir: estado do acervo e do agendador (só banco) e registro da visita.
+  useEffect(() => {
+    startMining(async () => {
+      try { applyResult(await getMinedViralsAction()); }
+      catch { if (mounted.current) setError("Não foi possível consultar a coleta agora. O acervo salvo continua disponível."); }
+    });
+    void markViralsSeenAction().catch(() => undefined);
+  }, [applyResult, startMining]);
+
+  // Verificação leve de novidades enquanto a aba está visível (sem coleta externa).
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    let inFlight = false;
+    const tick = async () => {
+      if (document.visibilityState !== "visible" || inFlight) return;
+      inFlight = true;
+      try {
+        const result = await checkViralsNewsAction(latestKnown);
+        if (!mounted.current) return;
+        setStatus(result.status);
+        setNow(result.now);
+        setPendingNew(result.newCount);
+      } catch { /* a próxima verificação tenta de novo */ }
+      finally { inFlight = false; }
+    };
+    const start = () => { if (!timer) timer = setInterval(() => { void tick(); }, NEWS_POLL_MS); };
+    const stop = () => { if (timer) { clearInterval(timer); timer = undefined; } };
+    const visibility = () => { if (document.visibilityState === "visible") { start(); void tick(); } else stop(); };
+    document.addEventListener("visibilitychange", visibility);
+    start();
+    return () => { stop(); document.removeEventListener("visibilitychange", visibility); };
+  }, [latestKnown]);
+
+  const reload = () => {
+    startMining(async () => {
+      try { applyResult(await getMinedViralsAction()); }
+      catch { if (mounted.current) setError("Não foi possível atualizar a galeria agora."); }
+    });
   };
 
-  const refresh = (more = false) => {
+  const searchMore = (more = false) => {
     startMining(async () => {
       try { applyResult(await refreshViralsAction("AI", more ? cursors : undefined)); }
-      catch { setNotice("Não foi possível atualizar a busca agora. Tente novamente."); }
+      catch { if (mounted.current) setError("Não foi possível buscar novos vídeos agora."); }
     });
   };
 
@@ -88,229 +158,188 @@ export function MinedVirals({
       try {
         const result = await importViralAction(importUrl);
         applyResult(result);
-        if (!result.error) { setImportUrl(""); setProfileFilter(""); setSearch(""); }
-      } catch { setNotice("Não foi possível importar esse vídeo agora."); }
+        if (!result.error) { setImportUrl(""); setImportOpen(false); setProfileFilter(""); setSearch(""); setPlatform("all"); setTab("videos"); }
+      } catch { if (mounted.current) setError("Não foi possível importar esse vídeo agora."); }
     });
   };
 
-  const list = useMemo(() => virals
-    .filter((viral) => !profileFilter || matchesAiProfile(viral, profileFilter))
-    .filter((viral) => !motionOnly || isMotionReference(viral.duration))
-    .filter((viral) => !search.trim() || `${viral.title} ${viral.authorHandle} ${viral.authorName}`.toLowerCase().includes(search.trim().toLowerCase()))
-    .sort((a, b) => order === "recent" ? b.minedAt - a.minedAt : order === "likes" ? b.likes - a.likes : b.views - a.views),
-  [virals, profileFilter, motionOnly, search, order]);
+  // Itens das três áreas derivam do mesmo acervo; nada se busca duas vezes.
+  const items = useMemo(() => new Map(virals.map((viral) => [viral.id, viralItem(viral, seenAt)])), [virals, seenAt]);
+  const sections = useMemo(() => buildCharacterSections(virals, seenAt), [virals, seenAt]);
+  const trends = useMemo(() => discoveredTrends(virals, 12), [virals]);
+  const youtubeActive = status?.sources.youtube?.mode === "discovery";
+  const availablePlatforms = useMemo(() => {
+    const list: ExplorePlatform[] = ["instagram", "tiktok"];
+    if (youtubeActive || virals.some((viral) => viral.source === "youtube")) list.push("youtube");
+    return list;
+  }, [virals, youtubeActive]);
+
+  const profileCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const chip of PROFILE_CHIPS) counts.set(chip.handle, virals.filter((viral) => matchesAiProfile(viral, chip.handle)).length);
+    return counts;
+  }, [virals]);
+
+  const list = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase("pt-BR");
+    const filtered = virals
+      .filter((viral) => platform === "all" || viral.source === platform)
+      .filter((viral) => !profileFilter || matchesAiProfile(viral, profileFilter))
+      .filter((viral) => !onlyNew || (seenAt !== null && discoveredAt(viral) > seenAt))
+      .filter((viral) => !query || `${viral.title} ${viral.authorHandle} ${viral.authorName}`.toLocaleLowerCase("pt-BR").includes(query));
+    const byDiscovery = (a: Viral, b: Viral) => discoveredAt(b) - discoveredAt(a);
+    return filtered.sort((a, b) => {
+      if (order === "published") return (b.publishedAt ?? 0) - (a.publishedAt ?? 0) || byDiscovery(a, b);
+      if (order === "views") return b.views - a.views || byDiscovery(a, b);
+      if (order === "likes") return b.likes - a.likes || byDiscovery(a, b);
+      return byDiscovery(a, b);
+    });
+  }, [virals, platform, profileFilter, onlyNew, seenAt, search, order]);
+
+  const visible = list.slice(0, limit);
+  const hasPublishDates = virals.some((viral) => viral.publishedAt);
+  const activeProfile = PROFILE_CHIPS.find((chip) => chip.handle === profileFilter);
+  const openItem = (item: ExploreItem) => setActive(item);
+  const useHref = (href: string) => router.push(href);
+  const clearFilters = () => { setPlatform("all"); setSearch(""); setProfileFilter(""); setOnlyNew(false); };
+
+  const lastTrend = trends[0]?.discoveredAt;
+  const trendStatus = `${trends.length} ${trends.length === 1 ? "vídeo" : "vídeos"} da coleta que citam efeito${lastTrend ? `, o mais recente ${relativeTime(lastTrend, now)}` : ""}`;
 
   return (
-    <div>
-      <div className="explore-bar" style={{ flexWrap: "wrap" }}>
-        <button type="button" className="chip" data-active={tab === "profiles"} onClick={() => setTab("profiles")}>
-          <Sparkles size={14} />
-          Perfis de IA em alta
+    <div className={styles.page}>
+      <header className={styles.head}>
+        <div>
+          <h1>Encontre sua próxima ideia.</h1>
+          <p>Explore referências do Instagram, TikTok{youtubeActive ? " e YouTube" : ""} e crie com seu influencer.</p>
+        </div>
+        <button type="button" className="btn btn-outline" aria-expanded={importOpen} aria-controls={`${baseId}-import`} onClick={() => setImportOpen((open) => !open)}>
+          <Link2 size={16} aria-hidden="true" /> Importar link
         </button>
-        <button type="button" className="chip" data-active={tab === "mined"} onClick={() => setTab("mined")}>
-          <Pickaxe size={14} />
-          Descobrir personagens IA
-        </button>
-        <button type="button" className="chip" data-active={tab === "effects"} onClick={() => setTab("effects")}>
-          <Sparkles size={14} />
-          Efeitos virais
-        </button>
-      </div>
+      </header>
 
-      {tab === "profiles" ? <ProfileVideos /> : null}
-
-      {tab === "effects" ? (
-        <ViralGrid influencers={influencers} />
+      {importOpen ? (
+        <form id={`${baseId}-import`} className={styles.importRow} onSubmit={(event) => { event.preventDefault(); importByUrl(); }}>
+          <label className="sr-only" htmlFor={`${baseId}-import-url`}>Link do vídeo</label>
+          <input id={`${baseId}-import-url`} className="input" placeholder="Cole o link de um vídeo do TikTok ou de um Reel dos perfis acompanhados" value={importUrl} onChange={(event) => setImportUrl(event.target.value)} />
+          <button type="submit" className="btn btn-accent" disabled={mining || !importUrl.trim()}>Importar</button>
+          <p className={styles.importHint}>TikTok: qualquer vídeo de personagem de IA (sujeito à disponibilidade da fonte). Instagram: só Reels dos perfis acompanhados com mídia verificada.</p>
+        </form>
       ) : null}
 
-      {tab === "mined" ? (
+      <div className={styles.tabs} role="tablist" aria-label="Áreas de exploração">
+        {([["videos", "Vídeos", "Perfis de IA em alta"], ["characters", "Descobrir personagens IA", "perfis acompanhados e novos"], ["effects", "Efeitos virais", "presets e tendências"]] as const).map(([id, label, hint]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} data-active={tab === id} className={styles.tab} onClick={() => setTab(id)}>
+            {label}<small>{hint}</small>
+          </button>
+        ))}
+      </div>
+
+      {pendingNew > 0 ? (
+        <div className={styles.newsBanner} role="status">
+          <span>Há {pendingNew} {pendingNew === 1 ? "novo vídeo" : "novos vídeos"} desde que você abriu a página.</span>
+          <button type="button" className="btn btn-accent btn-sm" disabled={mining} onClick={reload}><RefreshCw size={14} className={mining ? "spin" : undefined} aria-hidden="true" /> Atualizar</button>
+        </div>
+      ) : null}
+      {error ? <div className="notice" role="alert">{error}</div> : notice ? <div className="notice" role="status">{notice}</div> : null}
+
+      {tab === "characters" ? <CharactersTab sections={sections} now={now} availablePlatforms={availablePlatforms} onOpen={openItem} onUse={useHref} /> : null}
+      {tab === "effects" ? <EffectsTab influencers={influencers} trends={trends} trendItems={items} now={now} trendStatus={trendStatus} onOpen={openItem} onUse={useHref} /> : null}
+
+      {tab === "videos" ? (
         <>
-          <div className="explore-bar" style={{ flexWrap: "wrap" }}>
-            <button type="button" className="chip" data-active={!profileFilter} onClick={() => setProfileFilter("")}>Todos os personagens</button>
-            {AI_DISCOVERY_PROFILES.map((handle) => (
-              <button
-                key={handle}
-                type="button"
-                className="chip"
-                data-active={profileFilter === handle}
-                onClick={() => setProfileFilter(handle)}
-              >
-                @{handle}
-              </button>
-            ))}
-            <button type="button" className="chip" onClick={() => refresh()} disabled={mining} title="Buscar novos vídeos de personagens de IA">
-              <RefreshCw size={14} className={mining ? "spin" : undefined} />
-              {mining ? "Buscando…" : "Atualizar busca"}
-            </button>
-          </div>
-          <p style={{ color: "var(--tx3)", fontSize: 13, margin: "0 0 16px" }}>
-            Busca por nomes dos personagens e termos de influencers virtuais. Só entram vídeos relacionados a IA; as métricas são as informadas pela fonte.
-          </p>
-          <div className="explore-bar" style={{ flexWrap: "wrap", alignItems: "center" }}>
-            <input className="input" aria-label="Buscar nos vídeos captados" placeholder="Buscar nos vídeos captados…" value={search} onChange={(event) => setSearch(event.target.value)} style={{ width: 240, maxWidth: "100%", height: 36 }} />
-            <select className="input" aria-label="Ordenar vídeos" value={order} onChange={(event) => setOrder(event.target.value)} style={{ width: "auto", height: 36 }}>
-              <option value="views">Mais vistos</option><option value="likes">Mais curtidos</option><option value="recent">Captados recentemente</option>
-            </select>
-            <label style={{ fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={motionOnly} onChange={(event) => setMotionOnly(event.target.checked)} /> Movimento de 3–30s</label>
-            <div style={{ marginLeft: "auto", display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", maxWidth: "100%" }}>
-              <div style={{ position: "relative" }}>
-                <Link2 size={15} style={{ position: "absolute", left: 12, top: 10, color: "var(--tx3)" }} />
-                <input
-                  className="input"
-                  style={{ height: 36, paddingLeft: 34, width: 280, maxWidth: "100%", borderRadius: 999 }}
-                  aria-label="Link de vídeo de personagem IA"
-                  placeholder="Link do TikTok ou Reel captado…"
-                  value={importUrl}
-                  onChange={(event) => setImportUrl(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") importByUrl();
-                  }}
-                />
-              </div>
-              <button type="button" className="btn btn-sm btn-ghost" onClick={importByUrl} disabled={mining || !importUrl.trim()}>
-                Importar
-              </button>
-            </div>
-          </div>
-
-          {notice ? <div className="notice" role="status">{notice}</div> : null}
-          <p style={{ color: "var(--tx3)", fontSize: 12 }} aria-live="polite">{list.length} vídeos de IA encontrados{mining ? " · Consultando novas páginas…" : ""}</p>
-
-          {list.length ? (
-            <div className="viral-grid">
-              {list.map((viral) => (
-                <MinedCard key={viral.id} viral={viral} onDuplicate={() => router.push(`/app/criar-videos?${new URLSearchParams({ viral: viral.id })}`)} />
+          <div className={styles.filters}>
+            <div className={styles.platforms} role="group" aria-label="Plataforma">
+              {(["all", ...availablePlatforms] as Platform[]).map((id) => (
+                <button key={id} type="button" className={styles.platformChip} data-active={platform === id} aria-pressed={platform === id} onClick={() => { setPlatform(id); setLimit(PAGE_SIZE); }}>
+                  {id !== "all" ? <PlatformMark platform={id} size={14} /> : null}
+                  {id === "all" ? "Todos" : PLATFORM_LABEL[id]}
+                </button>
               ))}
             </div>
-          ) : (
-            <div className="empty-state">
-              <div className="big">{virals.length ? "Nenhum vídeo com esses filtros" : "Busque os personagens de IA"}</div>
-              <p>{virals.length ? "Ajuste a busca ou escolha todos os personagens." : "Atualize a busca para consultar os perfis acompanhados e novas referências de influencers virtuais."}</p>
-              <button type="button" className="btn btn-accent" onClick={() => refresh()} disabled={mining}>
-                <Pickaxe size={16} />
-                Buscar vídeos de IA
+            <label className={styles.search}>
+              <Search size={16} aria-hidden="true" />
+              <input className="input" aria-label="Buscar por perfil, personagem ou cena" placeholder="Buscar por perfil, personagem ou cena" value={search} onChange={(event) => { setSearch(event.target.value); setLimit(PAGE_SIZE); }} />
+            </label>
+            <label className={styles.sort}>
+              <span className="sr-only">Ordenar</span>
+              <select className="input" value={order} onChange={(event) => setOrder(event.target.value as Order)}>
+                <option value="discovered">Descobertos recentemente</option>
+                {hasPublishDates ? <option value="published">Publicados recentemente</option> : null}
+                <option value="views">Mais vistos</option>
+                <option value="likes">Mais curtidos</option>
+              </select>
+            </label>
+            {seenAt !== null && newCount > 0 ? (
+              <button type="button" className={styles.newFilter} data-active={onlyNew} aria-pressed={onlyNew} onClick={() => { setOnlyNew((value) => !value); setLimit(PAGE_SIZE); }}>
+                <Sparkles size={14} aria-hidden="true" /> Novos desde sua última visita <b>{newCount}</b>
               </button>
+            ) : null}
+          </div>
+
+          <details className={styles.profiles}>
+            <summary>
+              <span className={styles.avatars} aria-hidden="true">
+                {PROFILE_CHIPS.filter((chip) => chip.avatar).slice(0, 4).map((chip) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={chip.handle} src={chip.avatar} alt="" />
+                ))}
+              </span>
+              <span>Explorar por perfil{activeProfile ? `: @${activeProfile.handle}` : ""}</span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div className={styles.profileChips} role="group" aria-label="Filtrar por perfil">
+              <button type="button" className="chip" data-active={!profileFilter} aria-pressed={!profileFilter} onClick={() => { setProfileFilter(""); setLimit(PAGE_SIZE); }}>Todos os personagens</button>
+              {PROFILE_CHIPS.map((chip) => (
+                <button key={chip.handle} type="button" className="chip" data-active={profileFilter === chip.handle} aria-pressed={profileFilter === chip.handle} onClick={() => { setProfileFilter(chip.handle); setLimit(PAGE_SIZE); }}>
+                  {chip.avatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={chip.avatar} alt="" width={22} height={22} style={{ borderRadius: "50%", objectFit: "cover" }} />
+                  ) : null}
+                  @{chip.handle}
+                  <span className={styles.chipCount}>{profileCounts.get(chip.handle) ?? 0}</span>
+                </button>
+              ))}
+            </div>
+          </details>
+
+
+          <div className={styles.resultsRow}>
+            <h2>Referências para sua próxima criação</h2>
+            <span>{list.length} resultado{list.length === 1 ? "" : "s"}{mining ? " · consultando…" : ""}</span>
+          </div>
+
+          {visible.length ? (
+            <div className={styles.grid}>
+              {visible.map((viral) => {
+                const item = items.get(viral.id);
+                return item ? <ExploreCard key={item.id} item={item} now={now} onOpen={() => openItem(item)} onUse={useHref} /> : null;
+              })}
+            </div>
+          ) : (
+            <div className={styles.empty}>
+              <b>{virals.length ? "Nenhum vídeo com esses filtros" : "Nenhum vídeo no acervo ainda"}</b>
+              <p>{virals.length ? "Ajuste a busca, a plataforma ou o perfil." : "O acervo vem do catálogo verificado, da leitura dos perfis acompanhados no Instagram e da importação manual de links."}</p>
+              <div className={styles.emptyActions}>
+                {virals.length ? <button type="button" className="btn btn-ghost" onClick={clearFilters}>Limpar filtros</button> : null}
+                {status?.sources.tiktok.mode === "discovery" ? <button type="button" className="btn btn-accent" disabled={mining} onClick={() => searchMore()}><RefreshCw size={15} className={mining ? "spin" : undefined} aria-hidden="true" /> Buscar no TikTok agora</button> : null}
+              </div>
             </div>
           )}
-          {hasMore ? <div style={{ display: "flex", justifyContent: "center", paddingTop: 24 }}><button type="button" className="btn btn-ghost" onClick={() => refresh(true)} disabled={mining}><RefreshCw size={15} className={mining ? "spin" : undefined} />{mining ? "Buscando…" : "Buscar mais vídeos"}</button></div> : null}
+
+          <div className={styles.more}>
+            {visible.length < list.length ? <button type="button" className="btn btn-ghost" onClick={() => setLimit((value) => value + PAGE_SIZE)}>Carregar mais ({list.length - visible.length})</button> : null}
+            {hasMore && status?.sources.tiktok.mode === "discovery" ? <button type="button" className="btn btn-ghost" disabled={mining} onClick={() => searchMore(true)}><RefreshCw size={15} className={mining ? "spin" : undefined} aria-hidden="true" /> Buscar mais no TikTok</button> : null}
+          </div>
         </>
       ) : null}
 
-    </div>
-  );
-}
-
-function MinedCard({ viral, onDuplicate }: { viral: Viral; onDuplicate: () => void }) {
-  return (
-    <article className="viral-card">
-      <div className="media">
-        <MinedVideo key={`${viral.id}:${viral.playUrl}`} viral={viral} />
-        {viral.views > 0 ? <span className="views" style={{ pointerEvents: "none" }}>
-          <Eye size={13} />
-          {formatViews(viral.views)}
-        </span> : null}
-        <span className="platform" style={{ pointerEvents: "none" }}>
-          {viral.source === "tiktok" ? "TikTok" : viral.source === "instagram" ? "Instagram" : "URL"}
-        </span>
-        {viral.duration ? (
-          <span className="dur-tag" style={{ pointerEvents: "none", top: 44, bottom: "auto" }}>
-            <Clock3 size={11} />
-            {viral.duration}s
-          </span>
-        ) : null}
-      </div>
-      <div className="body">
-        <h3 style={{ fontSize: 14, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-          {viral.title}
-        </h3>
-        <p style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span>@{viral.authorHandle || viral.authorName}</span>
-          {viral.likes > 0 ? <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <Heart size={12} /> {formatViews(viral.likes)}
-          </span> : null}
-        </p>
-        {viral.musicTitle ? (
-          <p style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5 }}>
-            <Music2 size={11} />
-            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {viral.musicTitle}
-            </span>
-          </p>
-        ) : null}
-        <div className="foot">
-          <button type="button" className="btn btn-accent btn-sm" style={{ flex: 1 }} onClick={onDuplicate} disabled={!isMotionReference(viral.duration)} title={isMotionReference(viral.duration) ? "Usar o movimento com meu influencer" : "A transferência de movimento exige vídeo de 3 a 30 segundos"}>
-            <Flame size={14} />
-            {isMotionReference(viral.duration) ? "Duplicar" : "Só referência"}
-          </button>
-          <a
-            className="btn btn-ghost btn-sm"
-            href={viral.pageUrl}
-            target="_blank"
-            rel="noreferrer"
-            title="Ver original"
-          >
-            <ExternalLink size={14} />
-          </a>
-          <a
-            className="btn btn-ghost btn-sm"
-            href={viral.playUrl}
-            target="_blank"
-            rel="noreferrer"
-            title="Baixar vídeo"
-          >
-            <DownloadIcon size={14} />
-          </a>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-/** Native controls work on touch and keyboard too. Expiring TikTok links get one automatic renewal. */
-function MinedVideo({ viral, modal = false }: { viral: Viral; modal?: boolean }) {
-  const [src, setSrc] = useState(viral.playUrl);
-  const [message, setMessage] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const attempted = useRef(false);
-  const video = useRef<HTMLVideoElement>(null);
-
-  const renew = async () => {
-    if (refreshing) return;
-    attempted.current = true;
-    setRefreshing(true);
-    setMessage(null);
-    try {
-      const result = await refreshViralMediaAction(viral.id);
-      if ("error" in result) { setMessage(result.error); return; }
-      setSrc(result.viral.playUrl);
-      if (video.current) {
-        video.current.src = result.viral.playUrl;
-        video.current.load();
-        void video.current.play().catch(() => undefined);
-      }
-    } catch { setMessage("Não foi possível carregar o vídeo agora."); }
-    finally { setRefreshing(false); }
-  };
-
-  const failed = () => {
-    if (viral.source === "tiktok" && !attempted.current) { void renew(); return; }
-    setMessage("O arquivo deste vídeo não carregou. Tente novamente ou abra o original.");
-  };
-
-  return (
-    <div style={{ position: modal ? "relative" : "absolute", inset: modal ? undefined : 0, width: "100%", height: modal ? "auto" : "100%", background: "#000", borderRadius: modal ? 14 : undefined, overflow: "hidden" }}>
-      <video ref={video} src={src} poster={viral.coverUrl || undefined} controls preload="none" playsInline autoPlay={modal} onError={failed}
-        onPlay={() => { document.querySelectorAll("video").forEach((other) => { if (other !== video.current) other.pause(); }); }}
-        aria-label={viral.title} style={{ display: "block", width: "100%", height: modal ? "auto" : "100%", maxHeight: modal ? 340 : undefined, objectFit: "contain" }} />
-      {refreshing || message ? (
-        <div role="status" style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: 20, textAlign: "center", background: "rgba(0,0,0,.8)", color: "#fff", fontSize: 13, zIndex: 2 }}>
-          {refreshing ? <><span className="spinner" />Atualizando o vídeo…</> : <>
-            <span>{message}</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void renew()}><RefreshCw size={14} />Tentar novamente</button>
-            <a className="btn btn-ghost btn-sm" href={viral.pageUrl} target="_blank" rel="noreferrer"><ExternalLink size={14} />Ver original</a>
-          </>}
-        </div>
+      {active ? (
+        <ExploreDialog item={active} now={now} onClose={() => setActive(null)} onUse={useHref}>
+          {tab === "effects" && active.origin === "collected" ? <p className={styles.dialogText}>Tendência descoberta: inspiração com métricas e data da origem. Não é um efeito executável.</p> : null}
+        </ExploreDialog>
       ) : null}
     </div>
   );
 }
+

@@ -68,6 +68,16 @@ App Meta: `2156021122019663`; produto Instagram Login: `2216110872297651`. Em 09
 
 TikTok também depende de credenciais/aprovação próprias, creator_info, domínio de mídia verificado e confirmação das opções de privacidade. Não é apresentado como conectado quando faltam requisitos.
 
+## Login com Google
+
+O botão "Continuar com Google" da tela de login usa OpenID Connect (Authorization Code + PKCE) inteiramente no servidor, com as mesmas sessões (cookie `mi_session`), créditos, planos e suspensões das contas por senha.
+
+- Variáveis exclusivas do servidor: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` (credencial OAuth do tipo "Aplicativo da Web" no Google Cloud, com a tela de consentimento configurada e os escopos `openid`, `email` e `profile`).
+- Origem JavaScript autorizada: `https://maquina-de-influencers.vercel.app`. URI de redirecionamento exato: `https://maquina-de-influencers.vercel.app/api/auth/google/callback`. No dev local: `http://localhost:3000/api/auth/google/callback`.
+- Sem o par de variáveis, o botão continua visível e devolve a mensagem "login com Google ainda não está disponível neste ambiente"; e-mail e senha seguem funcionando.
+- Conta já vinculada (campo `googleId`) entra direto. E-mail que já tem conta com senha **não** é vinculado automaticamente: a tela pede a senha e só então grava o vínculo. E-mail novo cria a conta respeitando "cadastros pausados" e o limite por IP; contas suspensas são bloqueadas em todos os caminhos.
+- Migração `supabase/migrations/20261020120000_google_login.sql` cria o índice único de `data->>googleId` em `mi_users`. Aplicar antes de ativar o login em produção.
+
 ## Vídeos e Wan
 
 Novas requisições fal recebem callback assinado Ed25519, validado por chave oficial. O callback apenas reconcilia os IDs existentes do banco: não confia em URLs recebidas nem solicita novas gerações. Polling da galeria não empilha chamadas; erros de consulta são visíveis e não viram uma geração fictícia.

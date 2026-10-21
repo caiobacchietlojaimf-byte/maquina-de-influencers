@@ -1,12 +1,11 @@
 import "server-only";
 
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
-import path from "node:path";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { authSecret } from "./auth-secret";
 import { findUserById, type User } from "./db";
 
 /* Sessão: cookie httpOnly com "userId.expiro.assinatura" (HMAC-SHA256).
@@ -14,21 +13,6 @@ import { findUserById, type User } from "./db";
 
 export const SESSION_COOKIE = "mi_session";
 const SESSION_TTL_S = 60 * 60 * 24 * 30;
-
-function secret(): string {
-  const env = process.env.AUTH_SECRET?.trim();
-  if (env) return env;
-  if (process.env.VERCEL) throw new Error("Autenticação indisponível");
-  const dataDir =
-    process.env.DATA_DIR ||
-    (process.env.VERCEL ? "/tmp/maquina-data" : path.join(process.cwd(), "data"));
-  const file = path.join(dataDir, ".secret");
-  if (existsSync(file)) return readFileSync(file, "utf8").trim();
-  mkdirSync(path.dirname(file), { recursive: true });
-  const generated = randomBytes(32).toString("hex");
-  writeFileSync(file, generated, "utf8");
-  return generated;
-}
 
 export function hashPassword(password: string): { hash: string; salt: string } {
   const salt = randomBytes(16).toString("hex");
@@ -43,7 +27,7 @@ export function verifyPassword(password: string, salt: string, expected: string)
 }
 
 function sign(payload: string): string {
-  return createHmac("sha256", secret()).update(payload).digest("base64url");
+  return createHmac("sha256", authSecret()).update(payload).digest("base64url");
 }
 
 export function mintSession(userId: string): string {
@@ -88,6 +72,14 @@ export async function setSessionCookie(userId: string) {
 export async function clearSessionCookie() {
   const jar = await cookies();
   jar.set(SESSION_COOKIE, "", { ...SESSION_COOKIE_OPTIONS, maxAge: 0 });
+}
+
+/** Id de usuário do cookie assinado, sem consultar o banco. Serve para disparar
+    as consultas da página em paralelo com a validação do usuário; quem chama
+    ainda precisa aguardar requirePageUser() antes de renderizar. */
+export async function sessionUserId(): Promise<string | null> {
+  const jar = await cookies();
+  return readSessionToken(jar.get(SESSION_COOKIE)?.value);
 }
 
 /** Usuário logado ou null. Cacheado por requisição (layout + página = 1 query). */

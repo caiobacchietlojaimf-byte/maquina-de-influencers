@@ -114,6 +114,7 @@ function fixture(overrides = {}) {
     },
     "@/data/ai-profiles": { getProfile: handle => handle === "profile" ? { handle, posts: [{ code: "clip", video: sourceUrl, scene: "Supercar" }] } : undefined },
     "@/data/motion-presets": { getMotionPreset: id => id === "preset" ? { name: overrides.name ?? "Supercar", drivingVideo: sourceUrl } : undefined },
+    "@/data/virais-proprios": { getReadyTemplate: () => undefined, viralVideo: slug => `/virais/${slug}.mp4` },
     "@/lib/ai-discovery": { isAiCharacterVideo: () => overrides.aiVideo !== false },
     "@/lib/uploaded-reference": { readUploadedReference: (token, owner) => {
       assert.equal(owner, "owner");

@@ -602,6 +602,7 @@ textarea.input {
 
 /* ================= AUTH ================= */
 
+/* Tela centralizada com brilho de fundo (página 404). */
 .auth-shell {
   min-height: 100dvh;
   display: grid;
@@ -619,60 +620,362 @@ textarea.input {
     radial-gradient(34% 40% at 12% 86%, rgba(255, 46, 154, 0.07), transparent 70%);
   pointer-events: none;
 }
-.auth-card {
+.auth-shell > * { position: relative; }
+
+/* Tela dividida: vídeo à esquerda, formulário à direita. No celular o vídeo
+   some e o formulário ocupa a tela inteira. */
+
+.auth-split {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  background: var(--bg);
+}
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  border-radius: 10px;
+}
+
+/* --- vitrine (vídeo) ---
+   Card flutuante arredondado; fica escura nos dois temas, como as outras
+   sobreposições de mídia. */
+
+.auth-showcase {
+  position: sticky;
+  top: 16px;
+  height: calc(100dvh - 32px);
+  margin: 16px 0 16px 16px;
+  border-radius: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(24px, 3.5vw, 48px);
+  color: #f0f2f2;
+  background: #0a0a0b;
+  box-shadow: var(--shadow-2);
+  isolation: isolate;
+}
+.auth-showcase .auth-brand { color: #f0f2f2; }
+.auth-showcase .auth-brand svg rect,
+.auth-showcase .auth-brand svg path { stroke: var(--accent); }
+.auth-media {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: #0a0a0b;
+}
+.auth-media-poster,
+.auth-media-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 30%;
+}
+.auth-media-video {
+  opacity: 0;
+  transition: opacity 0.6s var(--ease);
+}
+.auth-media-video[data-playing="true"] { opacity: 1; }
+.auth-media-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(10, 10, 11, 0.55) 0%, rgba(10, 10, 11, 0.05) 30%, rgba(10, 10, 11, 0.12) 60%, rgba(10, 10, 11, 0.88) 100%),
+    radial-gradient(60% 40% at 20% 100%, rgba(219, 249, 2, 0.16), transparent 70%),
+    radial-gradient(34% 40% at 88% 8%, rgba(255, 46, 154, 0.1), transparent 70%);
+}
+.auth-showcase-top { position: relative; }
+.auth-showcase-copy {
   position: relative;
-  width: min(420px, 100%);
+  max-width: 520px;
+  display: grid;
+  gap: 14px;
+}
+/* Selo lima pequeno, como os selos das telas do app. */
+.auth-eyebrow {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+.auth-eyebrow::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pink);
+}
+.auth-showcase-copy h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 2.6vw, 40px);
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.08;
+  text-wrap: balance;
+}
+.auth-showcase-copy p {
+  margin: 0;
+  max-width: 440px;
+  color: rgba(240, 242, 242, 0.78);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* --- painel do formulário --- */
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 20px clamp(20px, 4vw, 56px) 32px;
+}
+.auth-panel-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-height: 44px;
+}
+.auth-brand-mobile { display: none; margin-right: auto; }
+.auth-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+  padding: 28px 0;
+}
+.auth-card {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+  border-radius: 24px;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 24px;
-  padding: 32px;
-  box-shadow: var(--shadow-3);
+  box-shadow: var(--shadow-2);
   animation: rise 0.4s var(--ease);
 }
-.auth-card h1 {
+.auth-head { display: grid; gap: 8px; }
+.auth-head h1 {
+  margin: 0;
   font-family: var(--font-display);
-  font-size: 26px;
-  letter-spacing: -0.03em;
+  font-size: clamp(26px, 2.4vw, 32px);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+}
+.auth-head p {
+  margin: 0;
+  color: var(--tx2);
+  font-size: 15px;
+  line-height: 1.55;
 }
 .auth-link { justify-self: center; color: var(--tx2); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .auth-link:hover { color: var(--tx); }
-.auth-context { display: flex; align-items: center; gap: 12px; margin: -8px -8px 20px; padding: 8px 12px 8px 8px; border-radius: 16px; background: var(--s1); border: 1px solid var(--line); }
+.auth-context { display: flex; align-items: center; gap: 12px; padding: 8px 12px 8px 8px; border-radius: 16px; background: var(--s1); border: 1px solid var(--line); }
 .auth-context img { width: 64px; height: 36px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
 .auth-context span { display: grid; line-height: 1.3; min-width: 0; }
 .auth-context small { color: var(--tx3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .auth-context b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Entrar com Google: botão em pílula que acompanha o tema (painel + texto). */
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 50px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  color: var(--tx);
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: var(--shadow-1);
+  transition: background 0.15s var(--ease), transform 0.12s var(--ease), box-shadow 0.15s var(--ease);
+}
+.btn-google:hover { background: var(--s1); box-shadow: var(--shadow-2); }
+.btn-google:active { transform: scale(0.99); }
+.btn-google:disabled { opacity: 0.75; cursor: progress; }
+.spinner-dark { border-color: var(--line-2); border-top-color: var(--tx); }
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--tx3);
+  font-size: 13px;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 .auth-tabs {
-  margin-top: 18px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   background: var(--s1);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 999px;
   padding: 4px;
   gap: 4px;
 }
 .auth-tabs button {
   height: 38px;
-  border-radius: 9px;
-  font-weight: 600;
+  border-radius: 999px;
+  font-weight: 700;
   color: var(--tx2);
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
 }
+.auth-tabs button:hover { color: var(--tx); }
 .auth-tabs button[data-active="true"] {
   background: var(--s3);
   color: var(--tx);
 }
+/* No claro, a aba ativa vira pílula preta, como o item ativo da sidebar. */
+:root[data-theme="light"] .auth-tabs button[data-active="true"] {
+  background: var(--tx);
+  color: var(--panel);
+}
 .auth-form {
-  margin-top: 20px;
   display: grid;
   gap: 14px;
+}
+.auth-submit { height: 50px; font-size: 16px; }
+.auth-eye {
+  position: absolute;
+  right: 6px;
+  top: 5px;
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--tx3);
+}
+.auth-eye:hover,
+.auth-eye[aria-pressed="true"] { color: var(--accent-text); }
+.auth-hint {
+  color: var(--tx3);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .auth-error {
   background: var(--danger-bg);
   border: 1px solid var(--danger-line);
   color: var(--danger);
-  border-radius: 10px;
+  border-radius: 14px;
   padding: 10px 12px;
   font-size: 13px;
+  line-height: 1.5;
+}
+.auth-info {
+  background: var(--accent-08);
+  border: 1px solid var(--accent-14);
+  color: var(--tx);
+  border-radius: 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.auth-legal {
+  margin: 0;
+  max-width: 440px;
+  color: var(--tx3);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+.auth-legal a { color: var(--tx2); text-decoration: underline; text-underline-offset: 3px; }
+.auth-legal a:hover { color: var(--tx); }
+
+/* Foco visível em tudo que é clicável no login, inclusive campos. */
+.auth-split :is(a, button):focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 3px;
+}
+.auth-showcase :is(a, button):focus-visible { outline-color: var(--accent); }
+.auth-form .input:focus-visible {
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--accent-14);
+}
+
+@media (max-width: 900px) {
+  .auth-split { grid-template-columns: minmax(0, 1fr); }
+  .auth-showcase { display: none; }
+  .auth-brand-mobile { display: inline-flex; }
+  .auth-panel { padding: 16px 16px 28px; }
+  .auth-panel-body { justify-content: flex-start; padding-top: 24px; }
+  .auth-card { padding: 22px 18px; border-radius: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card { animation: none; }
+  .auth-media-video { transition: none; }
+}
+
+/* ================= ESQUELETO DE PÁGINA ================= */
+
+.page-skeleton {
+  display: grid;
+  gap: 20px;
+}
+.page-skeleton-head { display: grid; gap: 10px; }
+.page-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.skeleton-block {
+  display: block;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--s1) 0%, var(--s3) 50%, var(--s1) 100%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+@media (max-width: 760px) {
+  .page-skeleton-grid { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block { animation: none; background: var(--s1); }
 }
 
 /* ================= APP SHELL ================= */
@@ -1309,7 +1612,7 @@ textarea.input {
 
 .masonry {
   margin-top: 18px;
-  columns: 4 220px;
+  columns: 7 220px;
   column-gap: 14px;
 }
 .masonry > * {
@@ -1551,106 +1854,6 @@ textarea.input {
   border-color: var(--accent);
 }
 
-/* ================= VIRAIS ================= */
-
-.viral-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
-}
-.viral-card {
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  display: flex;
-  flex-direction: column;
-  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
-}
-.viral-card:hover {
-  border-color: var(--line-2);
-  transform: translateY(-2px);
-}
-.viral-card .media {
-  position: relative;
-  aspect-ratio: 4 / 5;
-  background: var(--s1);
-}
-.viral-card .media img,
-.viral-card .media video {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.viral-card .views {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(6, 9, 8, 0.7);
-  backdrop-filter: blur(6px);
-  color: #fff;
-  font-size: 11.5px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.viral-card .views svg {
-  color: var(--accent-text);
-}
-.viral-card .platform {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: rgba(6, 9, 8, 0.7);
-  backdrop-filter: blur(6px);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: capitalize;
-}
-.viral-card .body {
-  padding: 14px;
-  display: grid;
-  gap: 8px;
-}
-.viral-card .body h3 {
-  font-size: 15.5px;
-  font-weight: 700;
-}
-.viral-card .body p {
-  color: var(--tx2);
-  font-size: 12.5px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.viral-card .tags {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.viral-card .tags span {
-  font-size: 11px;
-  color: var(--tx3);
-  border: 1px solid var(--line);
-  padding: 2px 8px;
-  border-radius: 999px;
-}
-.viral-card .foot {
-  margin-top: 2px;
-  display: flex;
-  gap: 8px;
-}
-
 /* ================= MODAL ================= */
 
 .modal-backdrop {
@@ -1823,9 +2026,6 @@ textarea.input {
   color: var(--tx);
 }
 
-/* ================= INÍCIO ================= */
-/* layout do Início em src/app/app/home.module.css */
-
 .notice {
   border: 1px solid var(--accent-14);
   background: var(--accent-08);
@@ -1833,7 +2033,6 @@ textarea.input {
   border-radius: 14px;
   padding: 12px 16px;
   font-size: 13px;
-  margin-bottom: 18px;
 }
 .notice b {
   color: var(--accent-text);
@@ -2195,22 +2394,93 @@ textarea.input {
   }
 }
 
+/* Celular: barra superior fixa + menu em gaveta (fechado por padrão). */
+.app-topbar {
+  display: none;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 0 12px 0 6px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.app-topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+.topbar-credits {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--s1);
+  color: var(--tx);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.topbar-credits svg { color: var(--accent-text); }
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(15, 15, 18, 0.5);
+  backdrop-filter: blur(2px);
+}
+
 @media (max-width: 760px) {
   .app-shell {
-    grid-template-columns: 66px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
-  .app-sidebar[data-collapsed="false"] {
+  .app-topbar {
+    display: flex;
+  }
+  .app-sidebar {
     position: fixed;
-    z-index: 40;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 60;
+    height: 100dvh;
+    width: min(288px, 86vw);
+    padding: 14px 12px;
+    background: var(--panel);
+    border-radius: 0 22px 22px 0;
+    transform: translateX(-104%);
+    transition: transform 0.22s var(--ease);
+    overflow-y: auto;
+  }
+  .app-sidebar[data-mobile-open="true"] {
+    transform: none;
     box-shadow: var(--shadow-3);
   }
   .app-main {
-    grid-column: 2;
-    padding: 18px 14px 56px;
+    grid-column: 1;
+    grid-row: 2;
+    padding: 16px 14px 56px;
   }
   .landing-nav .links {
     display: none;
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar { transition: none; }
 }
 
 /* capa do reel (player carrega no clique) */
@@ -2250,7 +2520,7 @@ textarea.input {
 }
 
 /* As sobreposições de mídia permanecem escuras nos dois temas. */
-.reel-fs, .viral-card .views, .gen-card .actions, .status-tag { --accent-text: var(--accent); }
+.reel-fs, .gen-card .actions, .status-tag { --accent-text: var(--accent); }
 :root[data-theme="light"] .chip[data-active="true"],
 :root[data-theme="light"] .mode-tabs button[data-active="true"],
 :root[data-theme="light"] .builder-tabs button[data-active="true"] { background: var(--tx); border-color: var(--tx); color: var(--panel); }

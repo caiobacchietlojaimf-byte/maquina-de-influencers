@@ -1,4 +1,4 @@
-import { requirePageUser } from "@/lib/auth";
+import { requirePageUser, sessionUserId } from "@/lib/auth";
 import {
   listInfluencers,
   listPosts,
@@ -17,14 +17,14 @@ export default async function PublicarPage({
 }: {
   searchParams: Promise<{ video?: string; conectado?: string; erro?: string }>;
 }) {
-  const user = await requirePageUser();
-  const { video, conectado, erro } = await searchParams;
-
-  const [videosAll, accounts, posts, influencers] = await Promise.all([
-    listVideos(user.id),
-    listSocialAccounts(user.id),
-    listPosts(user.id),
-    listInfluencers(user.id),
+  const userId = (await sessionUserId()) ?? "";
+  const [user, { video, conectado, erro }, videosAll, accounts, posts, influencers] = await Promise.all([
+    requirePageUser(),
+    searchParams,
+    userId ? listVideos(userId) : [],
+    userId ? listSocialAccounts(userId) : [],
+    userId ? listPosts(userId) : [],
+    userId ? listInfluencers(userId) : [],
   ]);
   const completed = videosAll.filter(
     (v) => v.status === "completed" && !v.deletedAt && v.resultUrl,

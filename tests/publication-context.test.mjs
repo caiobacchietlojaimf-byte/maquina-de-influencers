@@ -20,6 +20,7 @@ function setup() {
     if (id.includes('ai-profiles')) return { AI_PROFILES: profiles };
     if (id.includes('motion-presets')) return { MOTION_PRESETS: presets };
     if (id.includes('viral-effects')) return { VIRAL_EFFECTS: effects };
+    if (id.includes('virais-proprios')) return { getReadyTemplate: () => undefined };
     if (id === './db') return { getViral: async id => { reads.push(id); return id === viral.id ? viral : undefined; } };
     throw new Error(`Unexpected import: ${id}`);
   } });

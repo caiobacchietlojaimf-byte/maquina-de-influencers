@@ -79,6 +79,8 @@ const { VideosGallery } = load("src/components/videos-gallery.tsx", {
   "@/app/actions/videos": {},
   "@/lib/character-edit": { editModelLabel: () => "Test model" },
   "@/lib/finalize-edit-client": { canFinalizeExistingEdit: () => false },
+  "@/lib/video-deletion": load("src/lib/video-deletion.ts"),
+  "@/lib/video-library": load("src/lib/video-library.ts"),
   "@/components/video-preview": load("src/components/video-preview.tsx", { "./video-preview.module.css": {} }),
   "./videos-gallery.module.css": {},
 });

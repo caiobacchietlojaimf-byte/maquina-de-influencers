@@ -41,6 +41,9 @@ test("server rendering a cover or preview never emits a video resource before a 
   assert.match(html, /<button[^>]+aria-label="Reproduzir Meu vídeo"/);
 });
 
+const libraryCode = compile("../src/lib/video-library.ts");
+const deletionCode = compile("../src/lib/video-deletion.ts");
+
 test("gallery requests only actual result covers and keeps originals and segments unloaded", () => {
   const components = load(previewCode);
   const gallery = load(galleryCode, {
@@ -50,6 +53,8 @@ test("gallery requests only actual result covers and keeps originals and segment
     "@/lib/character-edit": { editModelLabel: () => "Modelo" },
     "@/lib/finalize-edit-client": { canFinalizeExistingEdit: () => false },
     "@/lib/display-date": { displayDate: () => "10 out." },
+    "@/lib/video-library": load(libraryCode),
+    "@/lib/video-deletion": load(deletionCode),
   });
   const first = { id: "video-1", status: "completed", resultUrl: props.src, kind: "viral", createdAt: 1, thumbnailUrl: "https://media.test/old-reference.jpg", edit: { source: { duration: 18 }, result: { width: 720, height: 1280, duration: 18 }, model: "model", resolution: "720p", sourceUrl: "https://media.test/original.mp4", target: "Personagem", segments: [{ sourceUrl: "part1", resultUrl: "https://media.test/part1.mp4", source: { duration: 9 } }, { sourceUrl: "part2", resultUrl: "https://media.test/part2.mp4", source: { duration: 9 } }] } };
   const second = { ...first, id: "video-2", edit: undefined, resultUrl: "https://media.test/result2.mp4", thumbnailUrl: "https://media.test/actual-result.jpg", thumbnailSourceUrl: "https://media.test/result2.mp4" };
@@ -57,8 +62,19 @@ test("gallery requests only actual result covers and keeps originals and segment
   assert.doesNotMatch(html, /<video\b|<source\b|preload="metadata"|old-reference\.jpg/);
   assert.match(html, /src="\/api\/videos\/video-1\/thumbnail"/);
   assert.match(html, /src="https:\/\/media.test\/actual-result.jpg"/);
-  assert.match(html, /Reproduzir Original/);
-  assert.match(html, /Reproduzir Resultado do trecho 1/);
+  assert.doesNotMatch(html, /original\.mp4|part1\.mp4|part2\.mp4/, "the gallery never references original or segment files before a video is opened");
+  assert.match(html, /aria-label="Ver vídeo: Troca de personagem"/);
+  assert.match(html, /Baixar/);
+  assert.match(html, /href="\/app\/publicar\?video=video-1"/);
+  // Ao abrir um vídeo, original e trechos ficam acessíveis, mas ainda sem nenhum <video> antes do clique.
+  const noop = () => {};
+  const detail = renderToStaticMarkup(createElement(gallery.VideoDetailDialog, { video: first, finalizing: false, cancelling: false, onClose: noop, onFinalize: noop, onCancel: noop, onDelete: noop }));
+  assert.doesNotMatch(detail, /<video\b|<source\b/);
+  assert.match(detail, /Resultado<\/button>/);
+  assert.match(detail, /Comparar original/);
+  assert.match(detail, /Informações/);
+  assert.match(detail, /Baixar vídeo completo/);
+  assert.match(detail, /href="\/app\/publicar\?video=video-1"[^>]*>.*?Preparar publicação/);
 });
 
 /** Exercise component event handlers and timeout cleanup without browser/network media. */

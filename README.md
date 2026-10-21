@@ -11,12 +11,14 @@ A esteira completa dentro de um sistema só:
 
 | Área | O que faz |
 | --- | --- |
-| **Landing page** | Visual Higgsfield: fundo quase preto, acento lima `#dbf902`, Space Grotesk |
-| **Login / Cadastro** | Conta com e-mail e senha (scrypt + cookie HMAC httpOnly), saldo inicial configurado no servidor (padrão zero) |
-| **Início** | Esteira dos 4 passos, créditos, contadores e atalhos |
-| **Vídeos Virais** | **Mineração real do TikTok**: feed de tendências por região (BR/US/ES/JP) com views, likes, música e download sem marca d'água; import por link do TikTok ou .mp4 direto; galeria curada de efeitos virais; duplicação em um clique |
-| **Influencers** | Clone do AI Influencer Studio: 9 tipos de personagem, 18 grupos de traços (150+ opções), dado de sorteio, galeria Explorar com presets oficiais e botão Recriar, aba Movimento com presets Genjutsu |
-| **Vídeos** | Galeria das gerações com polling automático, filtros, download e botão Publicar |
+| **Landing page** | Templates virais próprios, carrossel de destaque, menu e modal de planos; tema claro por padrão com alternância para o escuro |
+| **Login / Cadastro** | Conta com e-mail e senha (scrypt + cookie HMAC httpOnly) ou Login com Google (OpenID Connect; vincula a conta existente com o mesmo e-mail ou cria uma conta sem senha), saldo inicial configurado no servidor (padrão zero) |
+| **Início** | Estúdio de criação com trabalhos recentes, elenco de influencers, créditos e o próximo passo do funil |
+| **Explorar virais** | Coleta contínua (TikTok, Instagram e YouTube, cada fonte com sua trava) em três áreas: Vídeos, Descobrir personagens IA e Efeitos virais; import por link do TikTok ou .mp4 direto; duplicação em um clique |
+| **Influencers** | Criação em quatro etapas (assistente), 9 tipos de personagem, 18 grupos de traços (150+ opções), dado de sorteio, galeria Explorar com presets oficiais e botão Recriar, aba Movimento com presets Genjutsu |
+| **Criar vídeos** | Estúdio de geração com referência de template, perfil ou viral |
+| **Meus vídeos** | Biblioteca das gerações com polling automático, filtros, visualização em modal, download e botão Publicar |
+| **Aprender** | Módulos com página própria em `/app/modulos/[slug]` |
 | **Publicar** | Conexão de contas (TikTok OAuth oficial / Instagram Graph API), fila de publicação com agendamento, agendador rodando no servidor |
 
 ## Produção
@@ -26,7 +28,34 @@ A esteira completa dentro de um sistema só:
 O deploy na Vercel clona este repositório (público) durante o build. Para atualizar:
 faça push na main e dispare um novo deploy. Atenção: na Vercel o banco JSON vive
 em /tmp (efêmero) — contas e gerações podem resetar entre instâncias/deploys.
-Para persistência real, troque por Postgres/Supabase.
+Para persistência real, troque por Postgres/Supabase. O Web Analytics da Vercel
+está ativo (`@vercel/analytics`, no layout raiz).
+
+## Tema
+
+- Tema claro como padrão (creme `#fafaf7`, branco e quase preto `#0f0f12`),
+  com modo escuro opcional. Os tokens ficam em `src/app/globals.css`
+  (`:root[data-theme="light"]` e `:root`), e o tema é aplicado antes da
+  primeira pintura por um script em `next/script`, sem flash.
+- Acento lima `--accent` (`#dbf902`) e destaque rosa `--highlight` nas palavras
+  em evidência e rótulos. Botões em pílula: `.btn-accent` preto no claro e lima
+  no escuro.
+- Tipografia: Bricolage Grotesque (`--font-display`) nos títulos e Geist
+  (`--font-ui`) na interface; títulos sem caixa alta.
+- Telas do app: `src/app/app/app-theme.css` e `src/app/app/home.module.css`;
+  sidebar em card flutuante com o botão "Criar vídeo" no topo e, no celular,
+  menu em gaveta.
+
+## Funil
+
+1. A landing leva o template escolhido (`?template=slug`) e o plano
+   (`?plano=X`) até o login/cadastro, que os repassam em campos ocultos e mostram
+   o cartão "Você escolheu" com a capa do template.
+2. Depois de entrar, quem ainda não tem plano igual ou superior vai para
+   `/app/planos?plano=X&template=slug`; quem já tem pula o checkout e cai em
+   `/app/criar-videos?template=slug`, com o template como referência do vídeo.
+3. Sem influencer criado, a tela de Influencers avisa do template pendente; o
+   Início mostra o próximo passo.
 
 ## Rodando
 
@@ -52,6 +81,7 @@ Copie `.env.example` para `.env.local`:
 | `INSTAGRAM_APP_ID` + `INSTAGRAM_APP_SECRET` | Credenciais próprias do produto Instagram Login; callback em `/api/oauth/instagram/callback` |
 | `SOCIAL_TOKEN_SECRET` | Chave AES-256 de 32 bytes (base64 ou 64hex) estável para cifrar tokens sociais no banco |
 | `PUBLIC_BASE_URL` | Origem HTTPS pública e fixa usada nos callbacks OAuth |
+| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | Login com Google (OpenID Connect, credencial "Aplicativo da Web"); redirect exato em `PUBLIC_BASE_URL/api/auth/google/callback`. Sem o par, o botão avisa que o login está indisponível |
 | `TIKTOK_VERIFIED_MEDIA_PREFIXES` | Prefixos HTTPS do armazenamento verificados no painel TikTok, separados por vírgula |
 | `CRON_SECRET` + `PUBLICATION_CRON_CONFIGURED` | Autenticação do cron e confirmação de que o agendador foi ativado no ambiente |
 
@@ -75,13 +105,70 @@ Copie `.env.example` para `.env.local`:
 
 ### Mineração
 
-- TikTok: feed de tendências por região e resolução de URL via API pública do
-  tikwm.com (sem chave). Cache de 30min no banco; botão "Minerar agora" força.
-- Instagram: a Meta não expõe feed de tendências nem o arquivo do Reel
-  publicamente — importe pela URL direta do vídeo (.mp4) ou use as tendências
-  do TikTok.
-- O servidor também minera sozinho (região BR) a cada 30min via
-  `instrumentation.ts`.
+- **Desligada por padrão**: a coleta automática só roda com
+  `VIRAL_COLLECTION_ENABLED=true`. Sem isso, o cron pode estar declarado e
+  disparar que a rodada encerra em `runViralCollection` sem consultar nenhum
+  provedor, sem lease e sem gravar estado; o agendador local nem é registrado
+  e a página nunca dispara a rodada de segurança. Um deploy de outra alteração
+  não liga a coleta. A busca manual do usuário ("Buscar no TikTok agora" e
+  "Importar link") continua sendo uma ação explícita, independente da trava.
+- Coleta contínua (`src/lib/viral-collector.ts`): o cron `/api/cron/virals`
+  roda a cada 15 min (vercel.json, autenticado por `CRON_SECRET`), com lease
+  contra execuções sobrepostas, cursores persistidos, espera progressiva quando
+  o provedor bloqueia e estado por fonte (última tentativa, último sucesso,
+  novos itens) em `mi_settings`. Fora da Vercel, `instrumentation.ts` chama
+  a mesma rotina no mesmo intervalo. Visitas à página não disparam coleta
+  externa; só uma rodada curta de segurança quando o agendador está parado
+  há mais de dois intervalos.
+- TikTok: busca por nomes dos personagens e termos de influencers virtuais via
+  API pública do tikwm.com (serviço de terceiros, sem chave, com limite de
+  consultas e bloqueios eventuais; não é uma API oficial do TikTok). As
+  métricas dos vídeos descobertos nos últimos 14 dias são renovadas aos poucos;
+  três falhas seguidas marcam o vídeo como indisponível, sem apagá-lo.
+- Instagram (`src/lib/instagram-discovery.ts`): tentativa pela API oficial
+  (aresta `business_discovery`) com a conexão já existente da conta
+  administradora (Instagram API with Instagram Login). Resultado real em
+  2026-10-20: a Meta respondeu "Tried accessing nonexisting field
+  (business_discovery)" para todos os perfis; essa aresta só existe na
+  Instagram API with Facebook Login (conta profissional ligada a uma Página do
+  Facebook, escopos `instagram_basic`, `instagram_manage_insights`,
+  `pages_read_engagement`). Até existir essa outra conexão, o Instagram fica
+  em modo catálogo (acervo verificado + importação manual) e a página não
+  anuncia atualização automática. A página também não mostra mais o status por
+  fonte nem o aviso de coleta desligada.
+- TikTok: a busca via tikwm fica desligada por padrão
+  (`TIKTOK_DISCOVERY_ENABLED=true` liga) porque a fonte respondeu HTTP 403 em
+  2026-10-20; a página mostra o motivo e não repete consultas bloqueadas.
+- Cada vídeo guarda data de descoberta, data de publicação (quando a fonte
+  informa) e data da última atualização de métricas; o indicador "novo"
+  compara a descoberta com a última visita do usuário.
+- YouTube (complemento, desligado por padrão): descoberta pela API oficial
+  (YouTube Data API v3) só com `YOUTUBE_API_KEY` e
+  `YOUTUBE_DISCOVERY_ENABLED=true`; busca Shorts recentes por termos de
+  personagens de IA, uma rodada por hora com duas buscas. Cota oficial
+  (documentação consultada em 2026-10-20): 100 chamadas `search.list` por dia
+  em bucket próprio e 10.000 unidades/dia para os demais métodos, reinício à
+  meia-noite no horário do Pacífico, HTTP 403 `quotaExceeded` ao estourar; o
+  coletor usa 48 buscas + 48 `videos.list` por dia e, ao estourar, espera a
+  virada do dia.
+  Não há arquivo de vídeo: a reprodução usa o player oficial (embed) e o vídeo
+  não serve como referência de movimento. Sem chave, a fonte aparece como
+  "integração pronta, aguardando chave".
+- A página Explorar virais tem três áreas sobre o mesmo acervo, sem repetir
+  consultas externas: **Vídeos** (tudo o que foi coletado + catálogo),
+  **Descobrir personagens IA** (agrupado por perfil: acompanhados, novos
+  perfis com evidência da fonte e candidatos para revisar; nunca por
+  aparência) e **Efeitos virais** (presets executáveis do catálogo local, com
+  prompt/modelo/custo validados, separados das tendências descobertas, que são
+  só inspiração). O catálogo de efeitos não tem métricas de alcance; os
+  números ilustrativos antigos foram removidos. Critério de "tendência
+  descoberta": vídeo da coleta cujo título, legenda ou música cita um efeito
+  do catálogo (nome ou tag específica) ou vocabulário de efeito visual
+  (`EFFECT_VOCABULARY` em `src/lib/effects-catalog.ts`). Em "Descobrir
+  personagens", só perfis acompanhados são verificados; termos de IA no nome
+  ou no título são indícios e o perfil fica marcado como não verificado.
+- Fontes de descoberta para Instagram e TikTok: avaliação e proposta em
+  `docs/fontes-virais-proposta.md` (nenhum provedor contratado).
 
 ### Publicação
 
@@ -135,13 +222,18 @@ preparar, revisar e só então enviar a mídia autorizada.
 src/
   app/
     page.tsx                landing
-    login/                  login + cadastro
-    app/                    shell autenticado (sidebar)
-      virais/               mineração + efeitos + duplicação
-      influencers/          estúdio (criar + movimento + explorar + histórico)
-      videos/               galeria
+    v/                      páginas públicas dos templates virais
+    login/                  login + cadastro (e-mail/senha e Google)
+    app/                    shell autenticado (sidebar, gaveta no celular, esqueleto de carregamento)
+      virais/               coleta + personagens + efeitos + duplicação
+      influencers/          estúdio (assistente em 4 etapas + movimento + explorar + histórico)
+      criar-videos/         estúdio de geração
+      videos/               biblioteca
+      modulos/[slug]/       páginas dos módulos de aprendizado
       publicar/             contas + fila de publicação
     actions/                server actions (auth, influencers, vídeos, virais, posts)
+    api/auth/google/        início e callback do Login com Google
+    api/cron/               cron de publicação e de coleta de virais
     api/oauth/tiktok/       callback do OAuth do TikTok
   components/               client components
   data/                     catálogos (tipos, traços, presets, efeitos)

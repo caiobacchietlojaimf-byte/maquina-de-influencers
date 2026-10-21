@@ -69,7 +69,7 @@ function presetReference(preset: MotionPreset): PublicationReferenceSnapshot {
   return { referenceKind: "preset", sourceTitle: preset.name, keywords: [] };
 }
 function effectReference(effect: ViralEffect): PublicationReferenceSnapshot {
-  // effect.views are explicitly illustrative; never transfer them to analytics/copy.
+  // O catálogo de efeitos não tem métrica real; nada de alcance vai para análise ou legenda.
   return sanitizePublicationReference({ referenceKind: "effect", sourceTitle: effect.name, sceneDescription: effect.description, descriptionIsProposal: true, keywords: effect.tags });
 }
 function viralReference(viral: Viral): PublicationReferenceSnapshot {

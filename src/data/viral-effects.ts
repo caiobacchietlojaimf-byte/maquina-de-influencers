@@ -1,5 +1,8 @@
-/* Efeitos virais (galeria "Viral" da Higgsfield). Alimentam a página de
-   Vídeos Virais como tendências prontas para duplicar com um influencer. */
+/* Efeitos virais executáveis (galeria "Viral" da Higgsfield): cada entrada tem
+   prompt, prévia e configuração completa para gerar com um influencer.
+   O campo `views` é ilustrativo e serve só à vitrine da home pública; o app
+   (listExecutableEffects, contexto de publicação) não o expõe. Métricas reais
+   pertencem aos vídeos coletados, com fonte e data. */
 
 export type ViralEffect = {
   id: string;
@@ -7,7 +10,7 @@ export type ViralEffect = {
   description: string;
   thumbnail: string;
   preview: string;
-  /** Métricas ilustrativas de alcance da tendência (TikTok/Instagram). */
+  /** Alcance ilustrativo, usado só na vitrine da home pública (não é métrica real). */
   views: number;
   platform: "tiktok" | "instagram" | "youtube";
   tags: string[];

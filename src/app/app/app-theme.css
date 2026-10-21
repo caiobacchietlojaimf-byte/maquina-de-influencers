@@ -25,14 +25,14 @@
 .app-sidebar[data-collapsed="true"] .sidebar-cta { width: 44px; height: 44px; margin-inline: auto; padding: 0; }
 
 .nav-item { border-radius: 999px; }
-.app-sidebar { width: 258px; }
-.app-sidebar[data-collapsed="true"] { width: 66px; }
 .app-sidebar .brand { font-size: 13px; letter-spacing: -0.02em; }
 .app-sidebar .sidebar-credits { margin-bottom: 8px; }
 .app-sidebar[data-collapsed="true"] .sidebar-credits { margin-bottom: 8px; }
 
+/* Larguras só no computador: no celular a gaveta usa a largura definida no globals.css. */
 @media (min-width: 761px) {
   .app-sidebar {
+    width: 258px;
     top: 12px;
     height: calc(100dvh - 24px);
     margin: 12px 0 12px 12px;
@@ -41,7 +41,7 @@
     background: var(--panel);
     box-shadow: var(--shadow-2);
   }
-  .app-sidebar[data-collapsed="true"] { padding: 14px 10px 12px; }
+  .app-sidebar[data-collapsed="true"] { width: 66px; padding: 14px 10px 12px; }
 }
 
 :root[data-theme="light"] .sidebar-cta {
@@ -77,7 +77,7 @@
 :root[data-theme="light"] :is(.builder, .studio-hero) { box-shadow: var(--shadow-1); }
 
 /* cards de mídia: raio 16px e moldura branca de 3px */
-:root[data-theme="light"] :is(.preset-card, .gen-card, .viral-card, .video-card) {
+:root[data-theme="light"] :is(.preset-card, .gen-card, .video-card) {
   border: 3px solid #fff;
   border-radius: 16px;
   box-shadow: 0 1px 2px rgba(15, 15, 18, 0.06), 0 8px 20px rgba(15, 15, 18, 0.08);

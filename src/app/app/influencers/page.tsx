@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-import { requirePageUser } from "@/lib/auth";
+import { requirePageUser, sessionUserId } from "@/lib/auth";
 import { listInfluencers } from "@/lib/db";
 import { getUserEntitlements } from "@/lib/plans";
 import { InfluencerStudio } from "@/components/influencer-studio";
@@ -14,8 +14,13 @@ export default async function InfluencersPage({
 }: {
   searchParams: Promise<{ aba?: string; tab?: string; influencer?: string; preset?: string }>;
 }) {
-  const user = await requirePageUser();
-  const { aba, tab, influencer, preset } = await searchParams;
+  // Lista e validação do usuário em paralelo (id vem do cookie assinado).
+  const userId = (await sessionUserId()) ?? "";
+  const [user, influencers, { aba, tab, influencer, preset }] = await Promise.all([
+    requirePageUser(),
+    userId ? listInfluencers(userId) : [],
+    searchParams,
+  ]);
   if (aba === "movimento" || tab === "motion") {
     const params = new URLSearchParams();
     if (influencer) params.set("influencer", influencer);
@@ -26,7 +31,7 @@ export default async function InfluencersPage({
 
   return (
     <InfluencerStudio
-      initialInfluencers={await listInfluencers(user.id)}
+      initialInfluencers={influencers}
       credits={user.credits}
       userId={user.id}
       hasPlan={!!getUserEntitlements(user).planId}

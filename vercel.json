@@ -1,6 +1,19 @@
 {
   "crons": [
-    { "path": "/api/cron/publish", "schedule": "* * * * *" },
-    { "path": "/api/cron/influencers", "schedule": "* * * * *" }
+    {
+      "path": "/api/cron/publish",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/influencers",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/virals",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "regions": [
+    "pdx1"
   ]
 }
