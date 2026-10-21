@@ -29,7 +29,7 @@ const motionItems: TrendingItem[] = MOTIONS.flatMap(([name, title, description, 
 });
 const effectItems: TrendingItem[] = VIRAL_EFFECTS.slice(0, 6).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
 const heroVideos = VIRAIS_PROPRIOS.filter((item) => item.status !== "soon").map((item) => ({ src: viralVideo(item.slug), poster: item.poster }));
-const ownItems: TrendingItem[] = VIRAIS_PROPRIOS.map((item) => ({ id: item.slug, name: item.title, description: item.description, thumbnail: item.poster, preview: viralVideo(item.slug), people: item.people, badge: item.status }));
+const ownItems: TrendingItem[] = VIRAIS_PROPRIOS.map((item) => ({ id: item.slug, name: item.title, description: item.description, thumbnail: item.poster, preview: viralVideo(item.slug), people: item.people, badge: item.status, href: `/v/${item.slug}` }));
 const trending: TrendingItem[] = [
   ...ownItems.filter((item) => item.badge !== "soon"),
   ...motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item])),
@@ -37,7 +37,8 @@ const trending: TrendingItem[] = [
 ];
 const faces = PRESETS.slice(12, 16);
 const navLinks = [
-  { href: "#exemplos", label: "Exemplos" },
+  { href: "#templates", label: "Criar vídeo" },
+  { href: "#exemplos", label: "Em alta" },
   { href: "#como-funciona", label: "Como funciona" },
   { href: "#planos", label: "Planos" },
   { href: "#faq", label: "Dúvidas" },
@@ -93,7 +94,7 @@ export default function LandingPage() {
             <p>Monte um personagem com a sua cara, escolha uma referência viral e transforme tudo em vídeo pronto para TikTok e Instagram — do primeiro traço à publicação.</p>
             <div className={styles.actions}>
               <Link href="/login?modo=cadastro" className="btn btn-accent btn-lg">Criar meu influencer <ArrowRight size={19} /></Link>
-              <a href="#exemplos" className={`btn btn-outline btn-lg ${styles.ghostLg}`}>Ver exemplos</a>
+              <a href="#templates" className={`btn btn-outline btn-lg ${styles.ghostLg}`}><Sparkles size={18} className={styles.spark} /> Criar meu vídeo</a>
             </div>
             <div className={styles.proof}>
               <div className={styles.faces} aria-hidden>
@@ -123,6 +124,15 @@ export default function LandingPage() {
         <p className={styles.trendingSub}>Os efeitos que estão <em>viralizando</em> agora. Escolha um, coloque o seu influencer e gere o vídeo.</p>
         <TrendingRow items={trending} href="/login?modo=cadastro" />
         <p className={styles.mediaNote}>Referências do catálogo Higgsfield integrado ao estúdio. A Máquina de Influencers é um produto independente. Exemplos ilustram possibilidades, não garantem resultado idêntico.</p>
+      </section>
+
+      <section className={`${styles.section} ${styles.templates}`} id="templates">
+        <div className={styles.templatesHead}>
+          <h2>Escolha um <mark>template</mark></h2>
+          <p>Toque no vídeo, mande as fotos e gere o seu.</p>
+          <Sparkles size={26} className={styles.templatesSpark} aria-hidden />
+        </div>
+        <TrendingRow items={ownItems} href="/login?modo=cadastro" layout="grid" />
       </section>
 
       <section className={`${styles.section} ${styles.workflow}`} id="como-funciona">

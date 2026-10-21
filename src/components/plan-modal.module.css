@@ -1,0 +1,63 @@
+.dialog { width: min(480px, calc(100vw - 24px)); max-height: min(860px, calc(100dvh - 24px)); padding: 0; border: 0; border-radius: 28px; background: transparent; color: var(--tx); overflow: visible; }
+.dialog::backdrop { background: rgba(15, 15, 18, .45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); animation: fade .2s ease; }
+.dialog[open] { animation: pop .32s cubic-bezier(.2, .9, .3, 1.2); }
+@keyframes pop { from { opacity: 0; transform: translateY(16px) scale(.97); } }
+@keyframes fade { from { opacity: 0; } }
+
+.sheet { position: relative; display: flex; flex-direction: column; max-height: inherit; overflow: hidden; border-radius: 28px; background: var(--bg); box-shadow: 0 40px 100px -20px rgba(15, 15, 18, .5); }
+.close { position: absolute; top: 14px; left: 14px; z-index: 3; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: rgba(255, 255, 255, .92); color: #0f0f12; box-shadow: 0 4px 12px rgba(15, 15, 18, .2); transition: transform .15s var(--ease); }
+.close:hover { transform: scale(1.06); }
+.close:focus-visible { outline: 2px solid var(--tx); outline-offset: 3px; }
+
+.hero { position: relative; flex-shrink: 0; height: 236px; overflow: hidden; background: #0f0f12; }
+.hero video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(15, 15, 18, .15) 0%, rgba(15, 15, 18, .45) 45%, var(--bg) 100%); }
+.heroText { position: absolute; inset: auto 0 18px; z-index: 2; display: grid; justify-items: center; gap: 8px; padding: 0 24px; text-align: center; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; background: var(--accent); color: #0f0f12; font-size: 12px; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; transform: rotate(-2deg); box-shadow: 0 6px 16px rgba(219, 249, 2, .35); }
+.heroText h2 { margin: 2px 0 0; font-family: var(--font-display); font-size: 36px; font-weight: 800; letter-spacing: -.04em; line-height: 1; color: #fff; text-shadow: 0 2px 18px rgba(15, 15, 18, .45); }
+.heroText h2 em { font-style: normal; color: #ff2e8a; }
+.heroText p { color: rgba(255, 255, 255, .92); font-size: 14px; font-weight: 500; text-shadow: 0 1px 8px rgba(15, 15, 18, .5); }
+:root[data-theme="light"] .heroText h2, :root[data-theme="light"] .heroText p { color: #0f0f12; text-shadow: none; }
+
+.body { display: grid; gap: 14px; padding: 6px 18px 18px; overflow-y: auto; overscroll-behavior: contain; }
+.trust { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; color: var(--tx2); font-size: 12px; font-weight: 600; }
+.trust li { display: inline-flex; align-items: center; gap: 5px; }
+
+.plans { display: grid; gap: 10px; padding-top: 8px; }
+.plan { position: relative; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 12px; width: 100%; padding: 16px; border: 2px solid var(--line); border-radius: 20px; background: var(--panel); text-align: left; transition: border-color .15s var(--ease), box-shadow .15s var(--ease), transform .15s var(--ease); }
+.plan:hover { border-color: var(--line-2); transform: translateY(-1px); }
+.plan[data-active="true"] { border-color: var(--tx); box-shadow: 0 12px 28px -14px rgba(15, 15, 18, .45); }
+.plan:focus-visible { outline: 2px solid var(--tx); outline-offset: 3px; }
+.ribbon { position: absolute; top: -11px; right: 16px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 6px; background: #ff2e8a; color: #fff; font-size: 11px; font-weight: 800; box-shadow: 0 4px 10px rgba(255, 46, 138, .35); }
+.radio { display: grid; place-items: center; width: 24px; height: 24px; border: 2px solid var(--line-2); border-radius: 50%; color: var(--panel); transition: background .15s var(--ease), border-color .15s var(--ease); }
+.plan[data-active="true"] .radio { background: var(--tx); border-color: var(--tx); }
+.planInfo { display: grid; gap: 3px; min-width: 0; }
+.planInfo strong { font-family: var(--font-display); font-size: 19px; font-weight: 800; letter-spacing: -.02em; }
+.planInfo > span { color: var(--tx2); font-size: 12px; line-height: 1.4; }
+.planInfo .meta { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--tx); font-weight: 700; }
+.price { display: grid; justify-items: end; padding: 8px 12px; border-radius: 14px; background: var(--s1); font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; white-space: nowrap; }
+.price small { font: 600 11px var(--font-ui); letter-spacing: 0; color: var(--tx3); }
+.plan[data-active="true"] .price { background: var(--accent); color: #0f0f12; }
+.plan[data-active="true"] .price small { color: rgba(15, 15, 18, .7); }
+
+.features { display: grid; gap: 8px; padding: 14px 16px; border-radius: 16px; background: var(--s1); font-size: 13px; color: var(--tx2); }
+.features li { display: flex; align-items: start; gap: 8px; }
+.features svg { flex-shrink: 0; margin-top: 2px; color: var(--tx); }
+.note { color: var(--tx3); font-size: 11px; line-height: 1.55; text-align: center; }
+
+.footer { flex-shrink: 0; display: grid; gap: 8px; justify-items: center; padding: 14px 18px 18px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 92%, transparent); }
+.footer > span { color: var(--tx3); font-size: 12px; }
+.pay { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; height: 56px; border-radius: 999px; background: var(--accent); color: #0f0f12; font-size: 16px; font-weight: 800; box-shadow: 0 14px 30px -10px rgba(219, 249, 2, .7); transition: transform .15s var(--ease), box-shadow .15s var(--ease); }
+.pay:hover { transform: translateY(-1px); box-shadow: 0 18px 34px -10px rgba(219, 249, 2, .8); }
+.pay:active { transform: scale(.98); }
+.pay:focus-visible { outline: 2px solid var(--tx); outline-offset: 3px; }
+
+@media (max-width: 480px) {
+  .dialog { width: 100vw; max-width: 100vw; max-height: 92dvh; margin: auto 0 0; border-radius: 28px 28px 0 0; }
+  .sheet { border-radius: 28px 28px 0 0; }
+  .dialog[open] { animation: slide .34s cubic-bezier(.2, .9, .3, 1); }
+  .hero { height: 200px; }
+  .plan { grid-template-columns: 22px 1fr auto; padding: 14px 12px; gap: 10px; }
+  .price { font-size: 19px; padding: 7px 10px; }
+}
+@keyframes slide { from { transform: translateY(100%); } }

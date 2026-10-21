@@ -6,11 +6,12 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Clock, Eye, Flame, Sparkles, Users } from "lucide-react";
 import styles from "./trending-row.module.css";
 
-export type TrendingItem = { id: string; name: string; description: string; thumbnail: string; preview: string; views?: number; people?: number; tag?: string; badge: "hot" | "new" | "soon" | null };
+export type TrendingItem = { id: string; name: string; description: string; thumbnail: string; preview: string; views?: number; people?: number; tag?: string; href?: string; badge: "hot" | "new" | "soon" | null };
 
 const views = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 
-export function TrendingRow({ items, href }: { items: ReadonlyArray<TrendingItem>; href: string }) {
+export function TrendingRow({ items, href, layout = "row" }: { items: ReadonlyArray<TrendingItem>; href: string; layout?: "row" | "grid" }) {
+  const grid = layout === "grid";
   const trackRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; left: number; moved: boolean } | null>(null);
 
@@ -29,16 +30,16 @@ export function TrendingRow({ items, href }: { items: ReadonlyArray<TrendingItem
   };
 
   return <div className={styles.wrap}>
-    <div className={styles.arrows}>
+    {grid ? null : <div className={styles.arrows}>
       <button type="button" onClick={() => step(-1)} aria-label="Ver anteriores"><ChevronLeft size={18} /></button>
       <button type="button" onClick={() => step(1)} aria-label="Ver próximos"><ChevronRight size={18} /></button>
-    </div>
+    </div>}
     <div
       ref={trackRef}
-      className={styles.track}
+      className={grid ? styles.grid : styles.track}
       role="list"
       onPointerDown={(event) => {
-        if (event.pointerType !== "mouse") return;
+        if (grid || event.pointerType !== "mouse") return;
         drag.current = { x: event.clientX, left: event.currentTarget.scrollLeft, moved: false };
       }}
       onPointerMove={(event) => {
@@ -71,7 +72,7 @@ export function TrendingRow({ items, href }: { items: ReadonlyArray<TrendingItem
         if (soon) return <div key={item.id} role="listitem" className={styles.card} data-soon="true">{content}</div>;
         return <Link
           key={item.id}
-          href={href}
+          href={item.href ?? href}
           role="listitem"
           className={styles.card}
           draggable={false}
