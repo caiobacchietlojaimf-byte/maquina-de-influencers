@@ -98,5 +98,14 @@
 :root[data-theme="light"] .recreate-btn { background: var(--tx); color: #fff; }
 :root[data-theme="light"] .recreate-btn:hover { background: var(--accent); color: var(--accent-ink); }
 
+/* no celular, a descrição da conta quebra linha em vez de virar "Conex…" */
+@media (max-width: 640px) {
+  .account-card { flex-wrap: wrap; }
+  .account-card .info { flex: 1 1 calc(100% - 54px); }
+  .account-card .info span { white-space: normal; }
+  .account-card > :is(.btn, button, a, form) { flex: 1 1 100%; }
+  .account-card > form > :is(.btn, button) { width: 100%; }
+}
+
 /* passos do estúdio e aviso */
 :root[data-theme="light"] .notice { border-color: var(--accent-14); background: var(--accent-08); }
