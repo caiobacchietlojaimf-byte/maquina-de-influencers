@@ -9,6 +9,7 @@ import { HeroCarousel } from "@/components/hero-carousel";
 import { TrendingRow, type TrendingItem } from "@/components/trending-row";
 import { VIRAL_EFFECTS } from "@/data/viral-effects";
 import { MOTION_PRESETS } from "@/data/motion-presets";
+import { VIRAIS_PROPRIOS, viralVideo } from "@/data/virais-proprios";
 import { LandingMenu } from "@/components/landing-menu";
 import Image from "next/image";
 import styles from "./landing.module.css";
@@ -28,7 +29,12 @@ const motionItems: TrendingItem[] = MOTIONS.flatMap(([name, title, description, 
   return preset ? [{ id: preset.id, name: title, description, thumbnail: preset.thumbnail, preview: preset.preview, tag, badge: preset.category === "trending" ? "hot" as const : null }] : [];
 });
 const effectItems: TrendingItem[] = VIRAL_EFFECTS.slice(0, 6).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
-const trending: TrendingItem[] = motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item]));
+const ownItems: TrendingItem[] = VIRAIS_PROPRIOS.map((item) => ({ id: item.slug, name: item.title, description: item.description, thumbnail: item.poster, preview: viralVideo(item.slug), people: item.people, badge: item.status }));
+const trending: TrendingItem[] = [
+  ...ownItems.filter((item) => item.badge !== "soon"),
+  ...motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item])),
+  ...ownItems.filter((item) => item.badge === "soon"),
+];
 const faces = PRESETS.slice(12, 16);
 const navLinks = [
   { href: "#exemplos", label: "Exemplos" },

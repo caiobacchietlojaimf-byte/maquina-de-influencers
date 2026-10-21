@@ -22,6 +22,11 @@
 .badge { position: absolute; top: 10px; right: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 800; line-height: 1.2; box-shadow: 0 4px 10px rgba(15, 15, 18, .18); }
 .hot { background: #ff2e8a; color: #fff; }
 .new { background: var(--accent); color: #0f0f12; }
+.soon { background: #0f0f12; color: #fff; }
+.card[data-soon="true"] { cursor: default; }
+.card[data-soon="true"] .media img { filter: grayscale(1); }
+.card[data-soon="true"] strong, .card[data-soon="true"] .desc { color: var(--tx3); }
+.card[data-soon="true"]:hover .media { transform: none; }
 .chip { position: absolute; left: 10px; bottom: 10px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 8px; background: #fff; color: #0f0f12; font-size: 12px; font-weight: 700; box-shadow: 0 2px 8px rgba(15, 15, 18, .16); }
 
 .card strong { font-family: var(--font-display); font-size: 17px; font-weight: 800; letter-spacing: -.02em; line-height: 1.25; }
