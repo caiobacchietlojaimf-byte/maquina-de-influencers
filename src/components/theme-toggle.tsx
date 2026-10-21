@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 
-const KEY = "mi-theme-v1";
+const KEY = "mi-theme-v2";
 const EVENT = "mi-theme-change";
 type Theme = "light" | "dark";
 
@@ -13,29 +13,22 @@ function applyTheme(theme: Theme) {
 }
 
 function subscribe(listener: () => void) {
-  const media = window.matchMedia("(prefers-color-scheme: light)");
-  const systemTheme = () => {
-    try { if (localStorage.getItem(KEY)) return; } catch { /* Preferência só nesta aba. */ }
-    applyTheme(media.matches ? "light" : "dark");
-  };
   const storageTheme = (event: StorageEvent) => {
     if (event.key !== KEY) return;
-    applyTheme(event.newValue === "light" || event.newValue === "dark" ? event.newValue : media.matches ? "light" : "dark");
+    applyTheme(event.newValue === "dark" ? "dark" : "light");
   };
   window.addEventListener(EVENT, listener);
   window.addEventListener("storage", storageTheme);
-  media.addEventListener("change", systemTheme);
   return () => {
     window.removeEventListener(EVENT, listener);
     window.removeEventListener("storage", storageTheme);
-    media.removeEventListener("change", systemTheme);
   };
 }
 
-function getTheme(): Theme { return document.documentElement.dataset.theme === "light" ? "light" : "dark"; }
+function getTheme(): Theme { return document.documentElement.dataset.theme === "dark" ? "dark" : "light"; }
 
 export function ThemeToggle({ compact = false }: { compact?: boolean }) {
-  const theme = useSyncExternalStore(subscribe, getTheme, () => "dark" as Theme);
+  const theme = useSyncExternalStore(subscribe, getTheme, () => "light" as Theme);
   const next = theme === "dark" ? "light" : "dark";
   const label = next === "light" ? "Ativar tema claro" : "Ativar tema escuro";
   return <button type="button" className="theme-toggle" data-compact={compact} title={label} aria-label={label}

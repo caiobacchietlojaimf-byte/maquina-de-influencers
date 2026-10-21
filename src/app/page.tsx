@@ -2,18 +2,17 @@ import Link from "next/link";
 import { ArrowRight, BookOpen, Check, Clapperboard, Infinity, Layers3, Plus, ScanFace, Send, Sparkles, Wand2 } from "lucide-react";
 import { HERO_VIDEOS } from "@/data/hero";
 import PRESETS from "@/data/influencer-presets.json";
-import { CHARACTER_TYPES } from "@/data/character-types";
 import { PLAN_CATALOG } from "@/lib/plans";
 import { LogoMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeroCarousel } from "@/components/hero-carousel";
-import { GalleryCarousel } from "@/components/gallery-carousel";
+import { TrendingRow, type TrendingItem } from "@/components/trending-row";
+import { VIRAL_EFFECTS } from "@/data/viral-effects";
 import { LandingMenu } from "@/components/landing-menu";
 import Image from "next/image";
 import styles from "./landing.module.css";
 
-const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
-const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.preview.thumb || item.preview.url, label: typeLabel(item.tier) }));
+const trending: TrendingItem[] = VIRAL_EFFECTS.slice(0, 10).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
 const faces = PRESETS.slice(12, 16);
 const navLinks = [
   { href: "#exemplos", label: "Exemplos" },
@@ -94,13 +93,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className={styles.section} id="exemplos">
-        <div className={styles.sectionHeading}>
-          <span className={styles.eyebrow}>Catálogo do estúdio</span>
-          <h2>Personalidades que saem do comum.</h2>
-          <p>Referências reais do catálogo. Use como ponto de partida e recrie com os seus traços.</p>
+      <section className={`${styles.section} ${styles.trending}`} id="exemplos">
+        <div className={styles.trendingHead}>
+          <h2>Em alta</h2>
+          <span className={styles.readyChip}><Check size={14} strokeWidth={3} /> Pronto pra recriar</span>
         </div>
-        <GalleryCarousel items={gallery} />
+        <p className={styles.trendingSub}>Os efeitos que estão <em>viralizando</em> agora. Escolha um, coloque o seu influencer e gere o vídeo.</p>
+        <TrendingRow items={trending} href="/login?modo=cadastro" />
         <p className={styles.mediaNote}>Referências do catálogo Higgsfield integrado ao estúdio. A Máquina de Influencers é um produto independente. Exemplos ilustram possibilidades, não garantem resultado idêntico.</p>
       </section>
 

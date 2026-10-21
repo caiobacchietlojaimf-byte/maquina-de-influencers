@@ -1,6 +1,6 @@
-/* Máquina de Influencers — design system no estilo Higgsfield.
-   Fundo quase preto, um único acento lima #dbf902, Space Grotesk para
-   display em caixa alta, Inter para o resto. */
+/* Máquina de Influencers — tema claro por padrão (creme, branco e quase
+   preto), acentos lima #dbf902 e rosa #ff2e8a, botões em pílula, Bricolage
+   Grotesque nos títulos e Geist no texto. O escuro segue como opção. */
 
 :root {
   --bg: #0a0a0b;
@@ -35,27 +35,28 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f6f7f3;
+  --bg: #fafaf7;
   --panel: #ffffff;
-  --s1: #f0f2eb;
-  --s2: #e9ece2;
-  --s3: #dde3d3;
-  --s4: #cdd6bf;
-  --line: rgba(30, 42, 15, 0.14);
-  --line-2: rgba(30, 42, 15, 0.24);
-  --tx: #19200f;
-  --tx2: #4d5844;
-  --tx3: #606c55;
-  --accent-text: #4b6400;
-  --accent-08: rgba(106, 140, 0, 0.08);
-  --accent-14: rgba(106, 140, 0, 0.14);
-  --accent-32: rgba(84, 112, 0, 0.48);
-  --danger: #a52c1b;
-  --danger-bg: rgba(165, 44, 27, 0.07);
-  --danger-line: rgba(165, 44, 27, 0.27);
-  --shadow-1: 0 1px 2px rgba(30, 42, 15, 0.06);
-  --shadow-2: 0 4px 12px rgba(30, 42, 15, 0.06), 0 16px 40px rgba(30, 42, 15, 0.08);
-  --shadow-3: 0 8px 24px rgba(30, 42, 15, 0.08), 0 32px 88px rgba(30, 42, 15, 0.12);
+  --s1: #f3f3ef;
+  --s2: #ecece7;
+  --s3: #e2e2dc;
+  --s4: #d3d3cc;
+  --line: rgba(15, 15, 18, 0.08);
+  --line-2: rgba(15, 15, 18, 0.14);
+  --tx: #0f0f12;
+  --tx2: #55555d;
+  --tx3: #6b6b73;
+  --accent-text: #e0136f;
+  --accent-08: rgba(255, 46, 138, 0.08);
+  --accent-14: rgba(255, 46, 138, 0.14);
+  --accent-32: rgba(255, 46, 138, 0.34);
+  --pink: #ff2e8a;
+  --danger: #b4261a;
+  --danger-bg: rgba(180, 38, 26, 0.07);
+  --danger-line: rgba(180, 38, 26, 0.27);
+  --shadow-1: 0 1px 2px rgba(15, 15, 18, 0.06);
+  --shadow-2: 0 4px 12px rgba(15, 15, 18, 0.05), 0 12px 24px rgba(15, 15, 18, 0.08);
+  --shadow-3: 0 8px 24px rgba(15, 15, 18, 0.08), 0 28px 64px rgba(15, 15, 18, 0.12);
   --color-scheme: light;
 }
 
@@ -2245,7 +2246,21 @@ textarea.input {
 :root[data-theme="light"] .chip[data-active="true"],
 :root[data-theme="light"] .mode-tabs button[data-active="true"],
 :root[data-theme="light"] .builder-tabs button[data-active="true"] { background: var(--tx); border-color: var(--tx); color: var(--panel); }
-:root[data-theme="light"] .landing-nav { background: rgba(246, 247, 243, .94); }
+:root[data-theme="light"] .landing-nav { background: rgba(250, 250, 247, .94); }
+
+/* ---------- estilo pílula (tema claro padrão) ---------- */
+.btn, .btn-lg, .btn-sm, .theme-toggle { border-radius: 999px; }
+.btn { font-weight: 700; }
+:root[data-theme="light"] .btn-accent { background: var(--tx); color: #fff; box-shadow: 0 12px 24px rgba(15, 15, 18, .22); }
+:root[data-theme="light"] .btn-accent:hover { background: #26262c; }
+:root[data-theme="light"] .btn-accent svg:first-child:not(:only-child) { color: var(--accent); }
+:root[data-theme="light"] .btn-ghost { background: var(--panel); border-color: var(--line-2); }
+:root[data-theme="light"] .btn-ghost:hover { background: var(--s1); }
+:root[data-theme="light"] .btn-outline:hover { border-color: var(--tx); color: var(--tx); }
+:root[data-theme="light"] ::selection { background: rgba(219, 249, 2, .55); color: var(--tx); }
+h1, h2, h3 { font-weight: 800; }
+:root[data-theme="light"] { --logo: var(--tx); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

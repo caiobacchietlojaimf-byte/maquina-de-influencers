@@ -3,7 +3,7 @@ const LOGO_PATH = "M130 955L130 695Q130 688 135 683L482 343Q518 312 560 340Q575 
 export function LogoMark({ size = 26 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="118 160 1020 1020" fill="none" aria-hidden>
-      <path d={LOGO_PATH} fill="var(--accent-text)" />
+      <path d={LOGO_PATH} fill="var(--logo, var(--accent))" />
     </svg>
   );
 }

@@ -1,16 +1,16 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Space_Grotesk } from "next/font/google";
+import { Bricolage_Grotesque, Geist } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "./globals.css";
 
-const inter = Inter({
+const ui = Geist({
   subsets: ["latin"],
   variable: "--font-inter",
   display: "swap",
 });
 
-const grotesk = Space_Grotesk({
+const grotesk = Bricolage_Grotesque({
   subsets: ["latin"],
   variable: "--font-grotesk",
   display: "swap",
@@ -27,17 +27,17 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  colorScheme: "dark light",
-  themeColor: [{ media: "(prefers-color-scheme: dark)", color: "#0a0a0b" }, { media: "(prefers-color-scheme: light)", color: "#f6f7f3" }],
+  colorScheme: "light dark",
+  themeColor: "#fafaf7",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     /* translate="no": o app já é PT-BR; o auto-tradutor do Chrome reescreve o
        DOM e quebra a hidratação do React (textos somem nos accordions). */
-    <html lang="pt-BR" translate="no" data-theme="dark" suppressHydrationWarning className={`${inter.variable} ${grotesk.variable}`}>
+    <html lang="pt-BR" translate="no" data-theme="light" suppressHydrationWarning className={`${ui.variable} ${grotesk.variable}`}>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('mi-theme-v1');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'}catch(e){}})();` }} />
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{document.documentElement.dataset.theme=localStorage.getItem('mi-theme-v2')==='dark'?'dark':'light'}catch(e){}})();` }} />
         <meta name="google" content="notranslate" />
         {/* Os temas nativos dispensam reprocessamento por extensões. */}
         <meta name="darkreader-lock" />

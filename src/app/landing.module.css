@@ -44,8 +44,8 @@
 .reel video:nth-child(1) { transform: translateX(12%) rotate(-5deg) scale(.88); transform-origin: right center; }
 .reel video:nth-child(3) { transform: translateX(-12%) rotate(5deg) scale(.88); transform-origin: left center; }
 .reel video:nth-child(2) { position: relative; z-index: 2; border-color: rgba(255, 255, 255, .18); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, .8), 0 0 0 6px rgba(255, 255, 255, .03); }
-.float { position: absolute; z-index: 120; pointer-events: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: rgba(14, 15, 16, .72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow-2); color: #f0f2f2; font-size: 12px; font-weight: 600; white-space: nowrap; animation: bob 7s var(--ease) infinite; }
-.float svg { color: var(--accent); }
+.float { position: absolute; z-index: 120; pointer-events: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: 999px; background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow-2); color: var(--tx); font-size: 12px; font-weight: 700; white-space: nowrap; animation: bob 7s var(--ease) infinite; }
+.float svg { color: var(--accent-text); }
 .floatTop { top: 9%; left: 2%; }
 .floatBottom { bottom: 19%; right: 2%; animation-delay: -3.5s; }
 .liveDot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-14); flex-shrink: 0; }
@@ -66,6 +66,11 @@
 .section h2, .finalCta h2 { font-family: var(--font-display); font-size: clamp(32px, 4vw, 52px); font-weight: 700; line-height: 1.05; letter-spacing: -.05em; margin: 14px 0 0; text-wrap: balance; }
 .sectionHeading > p { margin-top: 16px; font-size: 16px; line-height: 1.65; color: var(--tx2); }
 
+.trendingHead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-right: 100px; }
+.trending h2 { margin: 0; font-size: clamp(26px, 2.6vw, 34px); }
+.readyChip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; background: var(--accent); color: #0f0f12; font-size: 13px; font-weight: 800; transform: rotate(-2deg); box-shadow: 0 6px 14px rgba(219, 249, 2, .35); }
+.trendingSub { margin: 10px 0 26px; color: var(--tx2); font-size: 15px; line-height: 1.6; max-width: 560px; }
+.trendingSub em { font-style: normal; font-weight: 700; color: var(--accent-text); }
 .mediaNote, .planNote { color: var(--tx3); font-size: 12px; line-height: 1.7; margin-top: 20px; text-align: center; max-width: 720px; margin-inline: auto; }
 
 .workflow { position: relative; }
