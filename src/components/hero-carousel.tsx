@@ -16,6 +16,7 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
   const trackRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
+  const move = useRef({ from: active, to: active, n: 0 });
 
   const stepPx = () => (trackRef.current?.offsetWidth ?? 1) * 0.46 * 0.56;
 
@@ -47,12 +48,18 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
     return () => window.clearTimeout(timer);
   }, [active, paused, dragX, go]);
 
-  const offsetOf = (index: number) => {
-    let d = index - active;
+  const circular = (value: number) => {
+    let d = value;
     if (d > count / 2) d -= count;
     if (d < -count / 2) d += count;
     return d;
   };
+  const offsetOf = (index: number) => circular(index - active);
+
+  if (move.current.to !== active) move.current = { from: move.current.to, to: active, n: move.current.n + 1 };
+  const { from, n: moveCount } = move.current;
+  const shift = circular(active - from);
+  const wraps = (index: number) => from !== active && offsetOf(index) !== circular(index - from) - shift;
 
   return <div
     className={styles.carousel}
@@ -73,6 +80,7 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
       className={styles.track}
       data-dragging={dragX !== null}
       onPointerDown={(event) => {
+        if (event.pointerType === "mouse") event.preventDefault();
         dragStart.current = event.clientX;
         dragged.current = false;
       }}
@@ -90,6 +98,7 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
         const d = offsetOf(index);
         const pos = d + (dragX ?? 0) / stepPx();
         const abs = Math.min(Math.abs(pos), 3);
+        const teleport = wraps(index);
         return <button
           key={video.src}
           type="button"
@@ -103,6 +112,7 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
             zIndex: Math.round(100 - abs * 10),
             opacity: abs > 2.4 ? 0 : 1,
             filter: abs < 0.05 ? "none" : `brightness(${1 - Math.min(abs, 2.5) * 0.28}) saturate(.85)`,
+            ...(teleport ? { transition: "none", animation: `${moveCount % 2 ? styles.fadeA : styles.fadeB} .45s ease` } : null),
           }}
           onClick={() => { if (!dragged.current && d !== 0) go(index); }}
         >

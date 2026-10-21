@@ -79,6 +79,7 @@ export function GalleryCarousel({ items }: { items: ReadonlyArray<{ id: string; 
       onKeyDown={holdAuto}
       onPointerDown={(event) => {
         if (event.pointerType !== "mouse") return;
+        event.preventDefault();
         drag.current = { x: event.clientX, left: event.currentTarget.scrollLeft };
         event.currentTarget.setPointerCapture(event.pointerId);
         event.currentTarget.dataset.dragging = "true";
