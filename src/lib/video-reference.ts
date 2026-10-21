@@ -1,7 +1,7 @@
 export const MAX_REFERENCE_BYTES = 50 * 1024 * 1024;
 export type VideoMetadata = { duration: number; width: number; height: number; hasAudio: boolean; frameCount?: number; videoDuration?: number; audioDuration?: number };
 export type StudioReference = {
-  kind: "profile" | "viral" | "upload";
+  kind: "profile" | "viral" | "template" | "upload";
   id: string;
   name: string;
   videoUrl: string;

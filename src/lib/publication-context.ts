@@ -3,6 +3,7 @@ import "server-only";
 import { AI_PROFILES, type AiProfile, type ProfilePost } from "@/data/ai-profiles";
 import { MOTION_PRESETS, type MotionPreset } from "@/data/motion-presets";
 import { VIRAL_EFFECTS, type ViralEffect } from "@/data/viral-effects";
+import { getReadyTemplate } from "@/data/virais-proprios";
 import { getViral, type Influencer, type Video, type Viral } from "./db";
 import type { EditSource } from "./character-edit";
 
@@ -91,6 +92,10 @@ export async function capturePublicationReference(source: EditSource | { kind: "
   if (source.kind === "preset") {
     const preset = MOTION_PRESETS.find(p => p.id === source.id);
     return preset ? presetReference(preset) : { referenceKind: "preset", keywords: [] };
+  }
+  if (source.kind === "template") {
+    const template = getReadyTemplate(source.id);
+    return template ? sanitizePublicationReference({ referenceKind: "preset", sourceTitle: template.title, sceneDescription: template.description, descriptionIsProposal: true, keywords: [] }) : { referenceKind: "preset", keywords: [] };
   }
   const viral = await getViral(source.id);
   return viral ? viralReference(viral) : { referenceKind: "viral", keywords: [] };

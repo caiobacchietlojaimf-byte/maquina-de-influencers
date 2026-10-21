@@ -58,5 +58,10 @@ export const VIRAIS_PROPRIOS: readonly ViralProprio[] = [
   v("you-vs-you", "Você vs Você", "Frente a frente com você mesmo, anos depois", 2, "soon"),
 ];
 
+const DURATIONS: Record<string, number> = { "the-box": 13.8, "roadtrip-vibes": 14, "hotel-lobby": 14, "rain-dance": 14.1, spotlight: 15, "cowboy-crew": 8 };
+
 export const viralVideo = (slug: string) => `/virais/${slug}.mp4`;
+export const viralDuration = (slug: string) => DURATIONS[slug] ?? 0;
 export const getViral = (slug: string) => VIRAIS_PROPRIOS.find((item) => item.slug === slug);
+/** Só templates liberados podem virar referência de geração. */
+export const getReadyTemplate = (slug: unknown) => (typeof slug === "string" ? VIRAIS_PROPRIOS.find((item) => item.slug === slug && item.status !== "soon") : undefined);

@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { getInfluencer, getViral } from "@/lib/db";
 import { getProfile } from "@/data/ai-profiles";
 import { getMotionPreset } from "@/data/motion-presets";
+import { getReadyTemplate, viralVideo } from "@/data/virais-proprios";
 import { isAiCharacterVideo } from "@/lib/ai-discovery";
 import { readUploadedReference } from "@/lib/uploaded-reference";
 import { publicMediaUrl, readPublicVideo } from "@/lib/video-media";
@@ -50,6 +51,8 @@ export async function prepareCharacterEdit(input: { influencerId: string; source
       if (viral && isAiCharacterVideo(viral)) { url = viral.playUrl; name = viral.title; }
     } else if (source.kind === "preset") {
       const preset = getMotionPreset(source.id); url = preset?.drivingVideo; name = preset?.name;
+    } else if (source.kind === "template") {
+      const template = getReadyTemplate(source.id); url = template && viralVideo(template.slug); name = template?.title;
     } else if (source.kind === "upload") {
       const uploaded = readUploadedReference(source.token, user.id); url = uploaded.videoUrl; name = uploaded.name;
     }

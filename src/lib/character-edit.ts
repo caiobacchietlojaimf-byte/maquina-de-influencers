@@ -31,7 +31,7 @@ export const MAIN_CHARACTER_TARGET = "Identify the main character of the source 
 // Official undiscounted input-second rates. Never assume account promotions.
 // https://open.higgsfield.ai/models/higgsfield/genjutsu/object-swap/v1.0/playground
 export const EDIT_RATES = { "480p": 0.318, "720p": 0.681, "1080p": 1.632 } as const;
-export type EditSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset"; id: string } | { kind: "upload"; token: string };
+export type EditSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset" | "template"; id: string } | { kind: "upload"; token: string };
 export type EditQuote = {
   token: string; name: string; sourceUrl: string; metadata: VideoMetadata;
   resolution: EditResolution; estimatedUsd: number; creditCost: number; expiresAt: number;

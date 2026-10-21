@@ -55,7 +55,7 @@ function PasswordInput({
   );
 }
 
-export function AuthCard({ initialMode, planId }: { initialMode: "login" | "cadastro"; planId?: PlanId }) {
+export function AuthCard({ initialMode, planId, planName, template }: { initialMode: "login" | "cadastro"; planId?: PlanId; planName?: string; template?: { slug: string; title: string; poster: string } }) {
   const [mode, setMode] = useState<"login" | "cadastro">(initialMode);
   const [loginState, login, loginPending] = useActionState<AuthState, FormData>(loginAction, null);
   const [registerState, register, registerPending] = useActionState<AuthState, FormData>(
@@ -68,6 +68,14 @@ export function AuthCard({ initialMode, planId }: { initialMode: "login" | "cada
 
   return (
     <div className="auth-card">
+      {template || planName ? <div className="auth-context">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        {template ? <img src={template.poster} alt="" /> : null}
+        <span>
+          <small>Você escolheu</small>
+          <b>{[template?.title, planName ? `Plano ${planName}` : null].filter(Boolean).join(" · ")}</b>
+        </span>
+      </div> : null}
       <h1>{mode === "login" ? "Bem-vindo de volta" : "Crie sua conta"}</h1>
       <div className="auth-tabs" role="tablist">
         <button type="button" data-active={mode === "login"} onClick={() => setMode("login")}>
@@ -81,6 +89,7 @@ export function AuthCard({ initialMode, planId }: { initialMode: "login" | "cada
       {mode === "login" ? (
         <form className="auth-form" action={login}>
           <input type="hidden" name="planId" value={planId ?? ""}/>
+          <input type="hidden" name="template" value={template?.slug ?? ""}/>
           {error ? <div className="auth-error">{error}</div> : null}
           <div className="field">
             <label htmlFor="login-email">E-mail</label>
@@ -97,6 +106,7 @@ export function AuthCard({ initialMode, planId }: { initialMode: "login" | "cada
       ) : (
         <form className="auth-form" action={register}>
           <input type="hidden" name="planId" value={planId ?? ""}/>
+          <input type="hidden" name="template" value={template?.slug ?? ""}/>
           {error ? <div className="auth-error">{error}</div> : null}
           <div className="field">
             <label htmlFor="reg-name">Nome</label>
@@ -114,7 +124,7 @@ export function AuthCard({ initialMode, planId }: { initialMode: "login" | "cada
             {pending ? <span className="spinner" /> : "Criar minha conta"}
           </button>
           <p style={{ color: "var(--tx3)", fontSize: 12, textAlign: "center" }}>
-            Conheça a plataforma e escolha seu plano para começar a gerar.
+            {planName ? "Depois de criar a conta, você paga no PIX e já começa a gerar." : "Conheça a plataforma e escolha seu plano para começar a gerar."}
           </p>
         </form>
       )}

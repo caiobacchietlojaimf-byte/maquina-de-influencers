@@ -14,6 +14,9 @@ import { EDIT_ENGINES, type EditEngine, type EditQuote, type EditResolution, typ
 import { verifyVideoReferenceAction } from "@/app/actions/video-reference";
 import { MAX_REFERENCE_BYTES, type StudioReference } from "@/lib/video-reference";
 import { MOTION_PRESETS, type MotionPreset } from "@/data/motion-presets";
+import { getReadyTemplate, viralDuration, viralVideo } from "@/data/virais-proprios";
+
+const PENDING_TEMPLATE_KEY = "mi-template";
 import { creditsToUsd } from "@/lib/credit-pricing";
 import type { Influencer } from "@/lib/db";
 import { groupInfluencerVersions, influencerRootId, influencerVersionLabel } from "@/lib/influencer-versions";
@@ -74,6 +77,16 @@ export function VideoStudio({
   const [resolution, setResolution] = useState<EditResolution>("auto");
   const engineConfig = EDIT_ENGINES[engine];
   const modelDefinesResolution = engineConfig.resolutions.length === 1 && engineConfig.resolutions[0] === "auto";
+  // O template escolhido na home sobrevive à ida até "Criar influencer".
+  useEffect(() => {
+    try {
+      if (initialReference?.kind === "template") { sessionStorage.setItem(PENDING_TEMPLATE_KEY, initialReference.id); return; }
+      if (initialReference || initialPresetId) return;
+      const template = getReadyTemplate(sessionStorage.getItem(PENDING_TEMPLATE_KEY));
+      if (template) setReference({ kind: "template", id: template.slug, name: template.title, videoUrl: viralVideo(template.slug), thumbnail: template.poster, duration: viralDuration(template.slug) });
+    } catch { /* Sem sessionStorage, o template só vale nesta página. */ }
+  }, [initialReference, initialPresetId]);
+  const forgetTemplate = () => { try { sessionStorage.removeItem(PENDING_TEMPLATE_KEY); } catch { /* idem */ } };
   const referenceReady = reference ? reference.duration >= 4 && reference.duration <= 30 : Boolean(presetId);
   const busy = submitting || uploading || preparing || exporting;
   const targetReady = targetMode !== "manual" || prompt.trim().length >= 8;
@@ -134,6 +147,7 @@ export function VideoStudio({
   function editSource(): EditSource {
     if (reference?.kind === "profile") return { kind: "profile", handle: reference.handle!, id: reference.id };
     if (reference?.kind === "viral") return { kind: "viral", id: reference.id };
+    if (reference?.kind === "template") return { kind: "template", id: reference.id };
     if (reference?.kind === "upload") return { kind: "upload", token: reference.token! };
     return { kind: "preset", id: presetId! };
   }
@@ -224,7 +238,7 @@ export function VideoStudio({
       const blob = await upload(`video-references/${uploadUserId}/${crypto.randomUUID()}.mp4`, file, { access: "public", contentType: "video/mp4", handleUploadUrl: "/api/video-reference/upload", onUploadProgress: event => setProgress(Math.round(event.percentage)) });
       const result = await verifyVideoReferenceAction(blob.pathname, file.name);
       if ("error" in result) throw new Error(result.error);
-      setReference(result.reference); setPresetId(null); setPrompt(""); setTargetMode("main");
+      setReference(result.reference); setPresetId(null); setPrompt(""); setTargetMode("main"); forgetTemplate();
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Falha no envio. Tente novamente."); }
     finally { URL.revokeObjectURL(localUrl); setUploading(false); }
   }
@@ -306,7 +320,7 @@ export function VideoStudio({
                 <div className={styles.selection}>
                   <video key={reference.videoUrl} className={styles.preview} src={reference.videoUrl} poster={reference.thumbnail} controls playsInline preload="metadata" aria-label={`Vídeo de referência: ${reference.name}`} />
                   <b>{reference.name}</b>
-                  <span>{reference.kind === "upload" ? "Vídeo enviado" : "Referência dos Vídeos Virais"} · {Math.round(reference.duration)}s</span>
+                  <span>{reference.kind === "upload" ? "Vídeo enviado" : reference.kind === "template" ? "Template escolhido" : "Referência dos Vídeos Virais"} · {Math.round(reference.duration)}s</span>
                   {!referenceReady && <p className={styles.error} role="status">Esta referência tem {Math.round(reference.duration)}s. Envie um recorte de 4 a 30 segundos para trocar o personagem.</p>}
                 </div>
               ) : preset ? (
@@ -316,7 +330,7 @@ export function VideoStudio({
                   <span>Referência selecionada</span>
                 </div>
               ) : null}
-              {(reference || preset) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setReference(null); setPresetId(null); setPrompt(""); setTargetMode("main"); setError(null); }}><X size={14} />Trocar vídeo</button>}
+              {(reference || preset) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setReference(null); setPresetId(null); setPrompt(""); setTargetMode("main"); setError(null); forgetTemplate(); }}><X size={14} />Trocar vídeo</button>}
             </fieldset>
 
             <div className={`field ${styles.editFields}`}>
@@ -425,7 +439,7 @@ export function VideoStudio({
                   preview={item.preview}
                   active={!reference && presetId === item.id}
                   disabled={busy}
-                  onPick={() => { setPresetId(item.id); setReference(null); setPrompt(""); setTargetMode("main"); setError(null); }}
+                  onPick={() => { setPresetId(item.id); setReference(null); setPrompt(""); setTargetMode("main"); setError(null); forgetTemplate(); }}
                 />
               ))}
             </div>

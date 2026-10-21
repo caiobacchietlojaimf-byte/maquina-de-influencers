@@ -22,7 +22,7 @@ const orderLabel = (order: Order) => order.planId ? getPlan(order.planId)?.name 
 const exchangeDate = (date: string) => /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.split("-").reverse().join("/") : "data indisponível";
 const DEFAULT_PACK = CREDIT_PACKS.find(pack => pack.credits === 100)!.id;
 
-export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan, supportEmail, mode = "plan", creditQuote = null }: {
+export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan, supportEmail, mode = "plan", creditQuote = null, nextStep }: {
   name: string;
   orders: Order[];
   enabled: boolean;
@@ -31,6 +31,7 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
   supportEmail?: string;
   mode?: "plan" | "credits";
   creditQuote?: CreditPurchaseQuote | null;
+  nextStep?: { href: string; label: string };
 }) {
   const router = useRouter();
   const creditMode = mode === "credits";
@@ -271,7 +272,7 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
           <RotateCcw size={16} aria-hidden="true" />{refreshingId ? "Conferindo…" : current.status === "pending" ? "Já paguei · conferir pagamento" : "Conferir este pedido"}
         </button> : null}
         {current.status === "failed" ? <><p className={styles.muted}>O provedor confirmou que este pagamento não foi concluído. Você pode {creditMode ? "escolher um pacote" : "escolher um plano"} e iniciar outro pedido.</p><button type="button" className="btn btn-accent" disabled={pending || refreshingId !== null} onClick={newOrder}>{creditMode ? "Comprar mais créditos" : "Escolher outro plano / novo pedido"}</button></> : null}
-        {current.status === "paid" ? <><p className={styles.muted}>{creditMode ? "Pagamento confirmado. Os créditos desta compra foram adicionados ao seu saldo, sem alterar seu plano." : "Pagamento confirmado. Seus créditos e acessos são atualizados após a confirmação."}</p><Link href="/app/influencers" className="btn btn-accent">Criar meu influencer</Link></> : null}
+        {current.status === "paid" ? <><p className={styles.muted}>{creditMode ? "Pagamento confirmado. Os créditos desta compra foram adicionados ao seu saldo, sem alterar seu plano." : "Pagamento confirmado. Seus créditos e acessos são atualizados após a confirmação."}</p><Link href={nextStep?.href ?? "/app/influencers"} className="btn btn-accent">{nextStep?.label ?? "Criar meu influencer"}</Link></> : null}
         {current.status === "refunded" ? <p className={styles.muted}>{creditMode ? "Este pagamento foi estornado e os créditos desta compra foram revistos. Seu plano permanece o mesmo." : "Este pagamento foi estornado. Os créditos e acessos vinculados ao pedido foram revistos."}</p> : null}
         {current.status === "paid" || current.status === "refunded" ? <button type="button" className="btn btn-ghost" disabled={pending || refreshingId !== null} onClick={newOrder}>{creditMode ? "Comprar mais créditos" : "Voltar aos planos"}</button> : null}
       </div>}

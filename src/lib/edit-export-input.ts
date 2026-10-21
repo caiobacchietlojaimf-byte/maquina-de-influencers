@@ -14,5 +14,5 @@ export function isEditExportInput(value: unknown): value is PrepareEditInput {
   const source = input.source as Record<string, unknown>;
   if (source.kind === "upload") return typeof source.token === "string" && source.token.length > 0 && source.token.length <= 16_384;
   if (source.kind === "profile") return identifier(source.id) && identifier(source.handle);
-  return (source.kind === "viral" || source.kind === "preset") && identifier(source.id);
+  return (source.kind === "viral" || source.kind === "preset" || source.kind === "template") && identifier(source.id);
 }

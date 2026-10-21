@@ -631,10 +631,14 @@ textarea.input {
 }
 .auth-card h1 {
   font-family: var(--font-display);
-  text-transform: uppercase;
-  font-size: 24px;
-  letter-spacing: -0.02em;
+  font-size: 26px;
+  letter-spacing: -0.03em;
 }
+.auth-context { display: flex; align-items: center; gap: 12px; margin: -8px -8px 20px; padding: 8px 12px 8px 8px; border-radius: 16px; background: var(--s1); border: 1px solid var(--line); }
+.auth-context img { width: 64px; height: 36px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
+.auth-context span { display: grid; line-height: 1.3; min-width: 0; }
+.auth-context small { color: var(--tx3); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.auth-context b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .auth-tabs {
   margin-top: 18px;
   display: grid;

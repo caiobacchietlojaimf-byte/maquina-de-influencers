@@ -6,9 +6,17 @@ import { clearSessionCookie, hashPassword, setSessionCookie, verifyPassword } fr
 import { createUser, findUserByEmail } from "@/lib/db";
 import { rateLimit, requestIdentity } from "@/lib/rate-limit";
 import { getSystemSettings } from "@/lib/commerce";
-import { getPlan } from "@/lib/plans";
+import { getPlan, getUserEntitlements, PLAN_RANK } from "@/lib/plans";
+import { getReadyTemplate } from "@/data/virais-proprios";
 
 export type AuthState = { error?: string } | null;
+
+function nextPath(formData: FormData): string {
+  const plan = getPlan(formData.get("planId"));
+  const template = getReadyTemplate(formData.get("template"));
+  if (plan) return `/app/planos?plano=${plan.id}${template ? `&template=${template.slug}` : ""}`;
+  return template ? `/app/criar-videos?template=${template.slug}` : "/app";
+}
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -32,7 +40,7 @@ export async function registerAction(_prev: AuthState, formData: FormData): Prom
   const { hash, salt } = hashPassword(password);
   const user = await createUser({ name, email, passwordHash: hash, salt, credits: initialCredits() });
   await setSessionCookie(user.id);
-  redirect(getPlan(formData.get("planId")) ? `/app/planos?plano=${getPlan(formData.get("planId"))!.id}` : "/app");
+  redirect(nextPath(formData));
 }
 
 export async function loginAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
@@ -48,7 +56,21 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
     return { error: "E-mail ou senha incorretos" };
   }
   await setSessionCookie(user.id);
-  redirect(getPlan(formData.get("planId")) ? `/app/planos?plano=${getPlan(formData.get("planId"))!.id}` : "/app");
+  redirect(alreadyCovered(user, formData.get("planId")) ? nextPath(withoutPlan(formData)) : nextPath(formData));
+}
+
+/** Quem já tem um plano igual ou superior ao escolhido não volta ao checkout. */
+function alreadyCovered(user: Parameters<typeof getUserEntitlements>[0], wanted: unknown): boolean {
+  const active = getUserEntitlements(user).planId;
+  const plan = getPlan(wanted);
+  return !!active && (!plan || PLAN_RANK[active] >= PLAN_RANK[plan.id]);
+}
+
+function withoutPlan(formData: FormData): FormData {
+  const copy = new FormData();
+  const template = formData.get("template");
+  if (typeof template === "string") copy.set("template", template);
+  return copy;
 }
 
 export async function logoutAction() {

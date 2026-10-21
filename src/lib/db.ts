@@ -90,7 +90,7 @@ export type CaptionCacheEntry = {
   /** Only pre-submission limits may expire; uncertain paid calls never retry. */
   retryAt?: number;
 };
-export type PublicationSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset"; id: string } | { kind: "upload" };
+export type PublicationSource = { kind: "profile"; handle: string; id: string } | { kind: "viral" | "preset" | "template"; id: string } | { kind: "upload" };
 
 export type Video = {
   creditCost?: number;
