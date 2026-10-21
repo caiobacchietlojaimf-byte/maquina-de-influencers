@@ -78,6 +78,7 @@
 .templatesSpark { position: absolute; top: 4px; right: 0; color: var(--highlight); fill: currentColor; }
 .spark { color: var(--highlight); }
 .hl { font-style: normal; color: var(--highlight); }
+:global(:root[data-theme="dark"]) .eyebrow { color: var(--highlight); }
 .mediaNote, .planNote { color: var(--tx3); font-size: 12px; line-height: 1.7; margin-top: 20px; text-align: center; max-width: 720px; margin-inline: auto; }
 
 .workflow { position: relative; }
