@@ -20,13 +20,13 @@
 /* hero */
 .heroBand { position: relative; isolation: isolate; border-bottom: 1px solid var(--line); }
 .heroGlow { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-.heroGlow::before { content: ""; position: absolute; inset: -30% -10% auto; height: 120%; background: radial-gradient(38% 45% at 72% 30%, var(--accent-14), transparent 70%), radial-gradient(30% 36% at 10% 10%, var(--accent-08), transparent 70%); }
+.heroGlow::before { content: ""; position: absolute; inset: -30% -10% auto; height: 120%; background: radial-gradient(38% 45% at 72% 30%, color-mix(in srgb, var(--highlight) 9%, transparent), transparent 70%), radial-gradient(30% 36% at 10% 10%, var(--accent-08), transparent 70%); }
 .heroGlow::after { content: ""; position: absolute; inset: 0; background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 64px 64px; mask-image: radial-gradient(70% 60% at 50% 30%, #000 20%, transparent 75%); -webkit-mask-image: radial-gradient(70% 60% at 50% 30%, #000 20%, transparent 75%); opacity: .6; }
 .hero { width: min(var(--wrap), 100%); margin-inline: auto; padding: clamp(40px, 6vw, 80px) var(--gutter) 40px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); align-items: center; gap: clamp(32px, 4vw, 56px); }
 .badge { display: inline-flex; align-items: center; gap: 9px; padding: 7px 14px 7px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--s1); color: var(--tx2); font-size: 13px; font-weight: 500; }
 .badgeDot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-14); }
 .hero h1 { font-family: var(--font-display); font-size: clamp(42px, 5vw, 66px); font-weight: 700; letter-spacing: -.055em; line-height: .98; margin: 24px 0; text-wrap: balance; }
-.hero h1 em { font-style: normal; color: var(--accent-text); }
+.hero h1 em { font-style: normal; color: var(--highlight); }
 .heroCopy > p { color: var(--tx2); max-width: 520px; font-size: 18px; line-height: 1.6; }
 .actions { display: flex; align-items: center; gap: 12px; margin: 36px 0 32px; flex-wrap: wrap; }
 .ghostLg { font-size: 16px; }
@@ -70,7 +70,7 @@
 .trending h2 { margin: 0; font-size: clamp(26px, 2.6vw, 34px); }
 .readyChip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 8px; background: var(--accent); color: #0f0f12; font-size: 13px; font-weight: 800; transform: rotate(-2deg); box-shadow: 0 6px 14px rgba(219, 249, 2, .35); }
 .trendingSub { margin: 10px 0 26px; color: var(--tx2); font-size: 15px; line-height: 1.6; max-width: 560px; }
-.trendingSub em { font-style: normal; font-weight: 700; color: var(--accent-text); }
+.trendingSub em { font-style: normal; font-weight: 700; color: var(--highlight); }
 .mediaNote, .planNote { color: var(--tx3); font-size: 12px; line-height: 1.7; margin-top: 20px; text-align: center; max-width: 720px; margin-inline: auto; }
 
 .workflow { position: relative; }
@@ -120,8 +120,8 @@
 .faqList details p { color: var(--tx2); font-size: 14px; line-height: 1.75; padding-bottom: 22px; margin-top: -4px; }
 
 .finalWrap { width: min(var(--wrap), 100%); margin-inline: auto; padding: clamp(20px, 3vw, 36px) var(--gutter) clamp(44px, 5vw, 72px); }
-.finalCta { position: relative; overflow: hidden; isolation: isolate; display: grid; justify-items: center; gap: 16px; text-align: center; padding: clamp(44px, 6vw, 72px) 24px; border: 1px solid var(--accent-32); border-radius: 32px; background: var(--panel); }
-.finalCta::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(60% 80% at 50% 0%, var(--accent-14), transparent 70%), radial-gradient(40% 60% at 50% 120%, var(--accent-08), transparent 70%); }
+.finalCta { position: relative; overflow: hidden; isolation: isolate; display: grid; justify-items: center; gap: 16px; text-align: center; padding: clamp(44px, 6vw, 72px) 24px; border: 1px solid var(--line-2); border-radius: 32px; background: var(--panel); }
+.finalCta::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(60% 80% at 50% 0%, color-mix(in srgb, var(--highlight) 8%, transparent), transparent 70%), radial-gradient(40% 60% at 50% 120%, var(--accent-08), transparent 70%); }
 .finalCta > svg { color: var(--accent-text); }
 .finalCta h2 { margin: 0; }
 .finalCta p { color: var(--tx2); font-size: 17px; line-height: 1.65; margin-bottom: 10px; }
