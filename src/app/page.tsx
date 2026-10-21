@@ -143,7 +143,7 @@ export default function LandingPage() {
       <section className={`${styles.section} ${styles.templates}`} id="templates">
         <div className={styles.templatesHead}>
           <h2>Escolha um <mark>template</mark></h2>
-          <p>Toque no vídeo, mande as fotos e gere o seu.</p>
+          <p>Toque no vídeo e coloque você ou o seu influencer na cena.</p>
           <Sparkle size={26} className={styles.templatesSpark} aria-hidden />
         </div>
         <TrendingRow items={ownItems.filter((item) => item.badge !== "soon")} more={ownItems.filter((item) => item.badge === "soon")} href="/login?modo=cadastro" layout="grid" />
