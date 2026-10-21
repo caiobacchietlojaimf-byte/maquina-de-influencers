@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BicepsFlexed,
   Blend,
@@ -13,7 +13,6 @@ import {
   Compass,
   Dices,
   Download,
-  Drama,
   Eye,
   Gem,
   Glasses,
@@ -130,7 +129,8 @@ export function InfluencerStudio({
   const [error, setError] = useState<string | null>(null);
 
   /* ----- lado direito ----- */
-  const [rightTab, setRightTab] = useState<RightTab>("explore");
+  // Quem já tem influencers volta direto para eles; quem está começando vê a galeria.
+  const [rightTab, setRightTab] = useState<RightTab>(initialInfluencers.length ? "history" : "explore");
   const [viewer, setViewer] = useState<Preset | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
@@ -271,22 +271,37 @@ export function InfluencerStudio({
     window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, []);
 
+  // Sanfona de um grupo por vez: a lista fica curta e o grupo aberto continua à vista.
+  const toggleGroup = useCallback((groupId: string, open: boolean) => {
+    setOpenGroups(open ? {} : { [groupId]: true });
+    if (!open) requestAnimationFrame(() => document.getElementById(`${studioId}-${groupId}-head`)?.scrollIntoView({ block: "nearest" }));
+  }, [studioId]);
+
   const groups = useMemo(() => groupsFor(tier), [tier]);
+  const pickedCount = Object.values(selection).reduce((total, ids) => total + (ids?.length ?? 0), 0);
+  const tierLabel = TIER_LABEL[tier] ?? tier;
+  const promptField = (
+    <div className="field">
+      <label htmlFor={`${studioId}-prompt`} className={creationMode === "form" ? "sr-only" : undefined}>{creationMode === "prompt" ? "Como será seu influencer?" : "Roupa e detalhes extras"}</label>
+      <textarea id={`${studioId}-prompt`} className={`input ${styles.promptInput}`} rows={4} maxLength={3000} value={prompt} disabled={busy} required={creationMode === "prompt"} placeholder={creationMode === "prompt" ? "Use o rosto da imagem. Corpo inteiro, camiseta preta, calça jeans e tênis branco…" : "Ex.: jaqueta vermelha aberta, camiseta branca e calça preta."} onChange={(event) => setPrompt(event.target.value)} />
+    </div>
+  );
   /* =========================================================== */
 
   return (
     <div className={`studio ${styles.studio}`}>
       {/* ------------------- construtor (esquerda) ------------------- */}
       <aside className="builder">
-        <div className="builder-head">
-          <div className="kicker">Crie seu próprio personagem com</div>
-          <h2>Influenciador de IA</h2>
+        <div className={`builder-head ${styles.builderHead}`}>
+          <h2>Novo influencer</h2>
+          <div className="kicker">Escolha como criar e aperte Gerar.</div>
         </div>
         <div className={styles.creationModes} role="group" aria-label="Como criar o influencer">
-          <button type="button" aria-pressed={creationMode === "form"} disabled={busy} onClick={() => { setCreationMode("form"); setError(null); }}>Formulário</button>
-          <button type="button" aria-pressed={creationMode === "prompt"} disabled={busy} onClick={() => { setCreationMode("prompt"); setError(null); }}>Imagem + prompt</button>
+          <button type="button" aria-pressed={creationMode === "form"} disabled={busy} onClick={() => { setCreationMode("form"); setError(null); }}>Montar por traços</button>
+          <button type="button" aria-pressed={creationMode === "prompt"} disabled={busy} onClick={() => { setCreationMode("prompt"); setError(null); }}>Foto + descrição</button>
         </div>
         <div className="builder-scroll">
+          <StepLabel n={1} title={creationMode === "prompt" ? "Imagem e nome" : "Foto e nome"} hint={creationMode === "prompt" ? undefined : "Opcional"} />
           <ReferenceUpload
             label={creationMode === "prompt" ? "Adicionar imagem do personagem" : "Envie sua foto"}
             required={creationMode === "prompt"}
@@ -310,19 +325,15 @@ export function InfluencerStudio({
             />
           </div>
 
-          <div className="field">
-            <label htmlFor={`${studioId}-prompt`}>{creationMode === "prompt" ? "Como será seu influencer?" : "Roupa e detalhes extras"}{creationMode === "form" ? <span className={styles.optionalLabel}>Opcional</span> : null}</label>
-            <textarea id={`${studioId}-prompt`} className={`input ${styles.promptInput}`} rows={4} maxLength={3000} value={prompt} disabled={busy} required={creationMode === "prompt"} placeholder={creationMode === "prompt" ? "Use o rosto da imagem. Corpo inteiro, camiseta preta, calça jeans e tênis branco…" : "Ex.: jaqueta vermelha aberta, camiseta branca e calça preta."} onChange={(event) => setPrompt(event.target.value)} />
-          </div>
+          {creationMode === "prompt" ? <>
+          <StepLabel n={2} title="Descrição" />
+          {promptField}
+          </> : null}
 
           {creationMode === "form" ? <>
+          <StepLabel n={2} title="Tipo de personagem" hint={tierLabel} />
           <section className="trait-section" data-open="true">
-            <div className="trait-head" style={{ cursor: "default" }}>
-              <Drama size={15} style={{ color: "var(--tx3)" }} />
-              <span>Tipo de personagem</span>
-              <span className="count">⋅ {CHARACTER_TYPES.length}</span>
-            </div>
-            <div className={styles.optionGrid} role="group" aria-label="Tipo de personagem">
+            <div className={styles.optionGrid} role="group" aria-label="Tipo de personagem" style={{ paddingTop: 10 }}>
               {CHARACTER_TYPES.map((type) => (
                 <button
                   type="button"
@@ -344,6 +355,15 @@ export function InfluencerStudio({
             </div>
           </section>
 
+          <StepLabel n={3} title="Aparência" hint={pickedCount ? `${pickedCount} ${pickedCount === 1 ? "escolha" : "escolhas"}` : "Opcional"}>
+            <button type="button" className={styles.stepAction} disabled={busy} onClick={rollDice}>
+              <Dices size={14} aria-hidden="true" /> Sortear
+            </button>
+            {pickedCount ? <button type="button" className={styles.stepAction} disabled={busy} onClick={() => setSelection({})}>
+              <RotateCcw size={13} aria-hidden="true" /> Limpar
+            </button> : null}
+          </StepLabel>
+
           {groups.map((group) => {
             const opts = optionsFor(group, tier);
             const picked = selection[group.id] ?? [];
@@ -357,11 +377,12 @@ export function InfluencerStudio({
               <section key={group.id} className="trait-section" data-open={open}>
                 <button
                   type="button"
+                  id={`${studioId}-${group.id}-head`}
                   className="trait-head"
                   disabled={referenceLoading || styleReferenceLoading}
                   aria-expanded={open}
                   aria-controls={`${studioId}-${group.id}`}
-                  onClick={() => setOpenGroups((prev) => ({ ...prev, [group.id]: !open }))}
+                  onClick={() => toggleGroup(group.id, open)}
                 >
                   {GroupIcon ? <GroupIcon size={15} style={{ color: "var(--tx3)", flexShrink: 0 }} /> : null}
                   <span>{group.label}</span>
@@ -408,45 +429,46 @@ export function InfluencerStudio({
               </section>
             );
           })}
+
+          <StepLabel n={4} title="Roupa e detalhes" hint="Opcional" />
+          {promptField}
           </> : null}
         </div>
 
-        <div className="builder-footer">
+        <div className={`builder-footer ${styles.builderFooter}`} data-mode={creationMode}>
           {creationMode === "form" ? <button type="button" className="dice-btn" title="Sortear visual" aria-label="Sortear visual" disabled={busy} onClick={rollDice}>
             <Dices size={20} />
           </button> : null}
           <button type="button" className="generate-btn" disabled={busy || credits < generationCost || (creationMode === "prompt" && (!reference || !prompt.trim()))} onClick={generateSheet}>
-            {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar <span className="cost">✦ {generationCost}</span></>}
+            {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar influencer <span className="cost">✦ {generationCost}</span></>}
           </button>
+          {credits < generationCost ? <p className={styles.builderNotice}>Você precisa de {generationCost} créditos para gerar. Saldo: ✦ {credits.toLocaleString("pt-BR")}.</p> : null}
+          {error ? (
+            <div className={`auth-error ${styles.footerError}`} role="alert">
+              {error}
+            </div>
+          ) : null}
         </div>
-        {credits < generationCost ? <p className={styles.builderNotice}>Você precisa de {generationCost} créditos para gerar.</p> : null}
-        {error ? (
-          <div className="auth-error" role="alert" style={{ margin: "0 14px 14px" }}>
-            {error}
-          </div>
-        ) : null}
       </aside>
 
       {/* ------------------- explorar / histórico (direita) ------------------- */}
       <section>
-        <div className="explore-bar">
-          <button type="button" className="chip" data-active={rightTab === "explore"} aria-pressed={rightTab === "explore"} onClick={() => setRightTab("explore")}>
-            <Compass size={14} />
-            Explorar
-          </button>
-          <button type="button" className="chip" data-active={rightTab === "history"} aria-pressed={rightTab === "history"} onClick={() => setRightTab("history")}>
-            <Clock size={14} />
-            Meus Influencers
-          </button>
-          {rightTab === "history" ? (
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportOpen(true)}>
-              <Upload size={14} aria-hidden="true" />
-              Importar influencer
+        <div className={`explore-bar ${styles.exploreBar}`}>
+          <div className={styles.tabs} role="group" aria-label="O que ver">
+            <button type="button" aria-pressed={rightTab === "history"} onClick={() => setRightTab("history")}>
+              <Clock size={15} aria-hidden="true" />
+              Meus influencers
+              <span className={styles.tabCount}>{rootInfluencers.length}</span>
             </button>
-          ) : null}
-          <span style={{ marginLeft: "auto", color: "var(--tx3)", fontSize: 12.5 }}>
-            ✦ {credits.toLocaleString("pt-BR")} créditos
-          </span>
+            <button type="button" aria-pressed={rightTab === "explore"} onClick={() => setRightTab("explore")}>
+              <Compass size={15} aria-hidden="true" />
+              Explorar
+            </button>
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setImportOpen(true)}>
+            <Upload size={14} aria-hidden="true" />
+            Importar
+          </button>
         </div>
         {refreshError ? <div className={styles.refreshNotice} role="status">
           <span>{refreshError}</span>
@@ -528,11 +550,17 @@ export function InfluencerStudio({
           ) : (
             <div className="empty-state">
               <div className="big">Nenhum influencer ainda</div>
-              <p>Monte o personagem na coluna da esquerda e aperte Gerar.</p>
-              <button type="button" className="btn btn-accent" disabled={busy} onClick={rollDice}>
-                <Dices size={16} />
-                Sortear um visual
-              </button>
+              <p>Monte o personagem no painel “Novo influencer” e aperte Gerar, ou comece por um pronto da galeria.</p>
+              <div className={styles.emptyActions}>
+                <button type="button" className="btn btn-accent" disabled={busy} onClick={rollDice}>
+                  <Dices size={16} />
+                  Sortear um visual
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => setRightTab("explore")}>
+                  <Compass size={16} />
+                  Ver galeria
+                </button>
+              </div>
             </div>
           )
         ) : null}
@@ -561,6 +589,16 @@ export function InfluencerStudio({
 }
 
 /* ---------------- subcomponentes ---------------- */
+
+function StepLabel({ n, title, hint, children }: { n: number; title: string; hint?: string; children?: ReactNode }) {
+  return (
+    <div className={styles.stepLabel}>
+      <span className={styles.stepNumber} aria-hidden="true">{n}</span>
+      <span className={styles.stepTitle}>{title}{hint ? <small>{hint}</small> : null}</span>
+      {children ? <span className={styles.stepActions}>{children}</span> : null}
+    </div>
+  );
+}
 
 function PresetViewer({ preset, disabled, onClose, onRecreate }: {
   preset: Preset;
