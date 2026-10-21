@@ -78,6 +78,7 @@
 
 /* Gerar sempre à vista: o rodapé gruda no fim da tela enquanto o painel rola. */
 .builderFooter { position: sticky; bottom: 0; z-index: 4; background: var(--panel); border-radius: 0 0 20px 20px; box-shadow: 0 -12px 24px -12px rgba(0, 0, 0, 0.45); }
+:global(:root[data-theme="light"]) .builderFooter { box-shadow: 0 -12px 24px -16px rgba(15, 15, 18, 0.18); }
 .builderFooter[data-mode="prompt"] { grid-template-columns: minmax(0, 1fr); }
 .builderFooter > :is(p, div) { grid-column: 1 / -1; }
 .builderFooter .builderNotice { padding: 0; }

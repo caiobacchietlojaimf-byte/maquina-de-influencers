@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { BookOpen, ChevronUp, Clapperboard, Coins, CreditCard, Flame, Home, LogOut, Menu, Plus, Send, ShieldCheck, Users, Wand2 } from "lucide-react";
+import { BookOpen, ChevronUp, Clapperboard, Coins, CreditCard, Flame, Home, LogOut, Menu, Plus, Send, ShieldCheck, Sparkles, Users, Wand2 } from "lucide-react";
 
 import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
@@ -134,18 +134,11 @@ export function AppSidebar({
         </Link>
       </div>
 
-      <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
-        <span className="sidebar-credits-icon" aria-hidden="true"><Coins size={15} /></span>
-        <span className="sidebar-credits-label" data-hide={collapsed}>
-          <span>Créditos</span>
-          <strong data-empty={credits <= 0}>{credits.toLocaleString("pt-BR")}</strong>
-        </span>
-        <strong className="sidebar-credits-mini" data-empty={credits <= 0} aria-hidden="true">{compactNumber(credits)}</strong>
-        <Link href="/app/creditos" className="sidebar-buy-credits" aria-label="Comprar créditos" title="Comprar créditos" aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
-          onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
-          <Plus size={15} strokeWidth={2.4} aria-hidden="true" />
-        </Link>
-      </div>
+      <Link href="/app/criar-videos" className="sidebar-cta" title={collapsed ? "Criar vídeo" : undefined} aria-label="Criar vídeo"
+        onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
+        <Sparkles size={17} aria-hidden="true" />
+        <span data-hide={collapsed}>Criar vídeo</span>
+      </Link>
 
       <nav aria-label="Menu principal">
         {GROUPS.map((group) => (
@@ -179,6 +172,18 @@ export function AppSidebar({
       </nav>
 
       <div className="sidebar-footer" ref={profileRoot}>
+      <div className="sidebar-credits" role="group" aria-label={`${credits.toLocaleString("pt-BR")} créditos disponíveis`} title={`${credits.toLocaleString("pt-BR")} créditos disponíveis`}>
+        <span className="sidebar-credits-icon" aria-hidden="true"><Coins size={15} /></span>
+        <span className="sidebar-credits-label" data-hide={collapsed}>
+          <span>Créditos</span>
+          <strong data-empty={credits <= 0}>{credits.toLocaleString("pt-BR")}</strong>
+        </span>
+        <strong className="sidebar-credits-mini" data-empty={credits <= 0} aria-hidden="true">{compactNumber(credits)}</strong>
+        <Link href="/app/creditos" className="sidebar-buy-credits" aria-label="Comprar créditos" title="Comprar créditos" aria-current={pathname.startsWith("/app/creditos") ? "page" : undefined}
+          onClick={() => { setProfileOpen(false); if (window.innerWidth < 760) setCollapsed(true); }}>
+          <Plus size={15} strokeWidth={2.4} aria-hidden="true" />
+        </Link>
+      </div>
         {profileOpen && <div id={profileId} className="profile-panel" ref={profilePanel}>
           <div className="profile-heading"><strong>{displayName}</strong><span>{email}</span></div>
           <div className="profile-options" aria-label="Opções do perfil">

@@ -7,6 +7,8 @@ import { isAdmin } from "@/lib/admin";
 import { AppSidebar } from "@/components/app-sidebar";
 import { getSystemSettings } from "@/lib/commerce";
 
+import "./app-theme.css";
+
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const user = await currentUser();
   if (!user) redirect("/login");

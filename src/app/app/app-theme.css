@@ -1,0 +1,102 @@
+/* Área logada: sidebar em card flutuante, item ativo em pílula e cards de
+   mídia com moldura branca. Carregado depois do globals.css (layout do app),
+   então vence nas mesmas especificidades sem mexer no design system. */
+
+/* ---------- sidebar ---------- */
+
+.sidebar-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 42px;
+  margin-bottom: 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: background 0.15s var(--ease), transform 0.12s var(--ease), box-shadow 0.15s var(--ease);
+}
+.sidebar-cta:hover { background: var(--accent-strong); }
+.sidebar-cta:active { transform: scale(0.98); }
+.sidebar-cta svg { flex-shrink: 0; }
+.app-sidebar[data-collapsed="true"] .sidebar-cta { width: 44px; height: 44px; margin-inline: auto; padding: 0; }
+
+.nav-item { border-radius: 999px; }
+.app-sidebar { width: 258px; }
+.app-sidebar[data-collapsed="true"] { width: 66px; }
+.app-sidebar .brand { font-size: 13px; letter-spacing: -0.02em; }
+.app-sidebar .sidebar-credits { margin-bottom: 8px; }
+.app-sidebar[data-collapsed="true"] .sidebar-credits { margin-bottom: 8px; }
+
+@media (min-width: 761px) {
+  .app-sidebar {
+    top: 12px;
+    height: calc(100dvh - 24px);
+    margin: 12px 0 12px 12px;
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    background: var(--panel);
+    box-shadow: var(--shadow-2);
+  }
+  .app-sidebar[data-collapsed="true"] { padding: 14px 10px 12px; }
+}
+
+:root[data-theme="light"] .sidebar-cta {
+  background: var(--tx);
+  color: #fff;
+  box-shadow: 0 10px 22px rgba(15, 15, 18, 0.2);
+}
+:root[data-theme="light"] .sidebar-cta:hover { background: #26262c; }
+:root[data-theme="light"] .sidebar-cta svg { color: var(--accent); }
+
+/* item ativo: pílula preta com texto branco */
+:root[data-theme="light"] .nav-item { color: #3a3a42; }
+:root[data-theme="light"] .nav-item svg { color: #3a3a42; }
+:root[data-theme="light"] .nav-item:hover { background: var(--s1); color: var(--tx); }
+:root[data-theme="light"] .nav-item[data-active="true"] { background: var(--tx); color: #fff; }
+:root[data-theme="light"] .nav-item[data-active="true"] svg { color: var(--accent); }
+:root[data-theme="light"] .nav-item[data-active="true"] .nav-tag { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.75); }
+:root[data-theme="light"] .nav-item[data-active="true"]::before { display: none; }
+:root[data-theme="light"] .sidebar-credits { background: var(--bg); }
+:root[data-theme="light"] .sidebar-credits-icon,
+:root[data-theme="light"] .user-row .avatar { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+
+/* ---------- conteúdo ---------- */
+
+@media (min-width: 761px) {
+  .app-main { padding-top: 36px; }
+}
+:root[data-theme="light"] .page-head h1,
+:root[data-theme="light"] .page-header h1 { font-size: clamp(30px, 3.4vw, 42px); letter-spacing: -0.045em; }
+
+/* cards e painéis brancos com sombra suave em vez de borda */
+:root[data-theme="light"] :is(.builder, .studio-hero, .card, .empty-state, .trait-section) { border-color: var(--line); }
+:root[data-theme="light"] :is(.builder, .studio-hero) { box-shadow: var(--shadow-1); }
+
+/* cards de mídia: raio 16px e moldura branca de 3px */
+:root[data-theme="light"] :is(.preset-card, .gen-card, .viral-card, .video-card) {
+  border: 3px solid #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 15, 18, 0.06), 0 8px 20px rgba(15, 15, 18, 0.08);
+}
+
+/* selos pequenos: raio 6px, fonte 11px peso 800 */
+:root[data-theme="light"] .preset-card .tier-tag,
+:root[data-theme="light"] .gen-card .status-tag {
+  border-radius: 6px;
+  padding: 3px 7px;
+  background: #fff;
+  color: var(--tx);
+  font-size: 11px;
+  font-weight: 800;
+  backdrop-filter: none;
+  box-shadow: 0 2px 6px rgba(15, 15, 18, 0.14);
+}
+:root[data-theme="light"] .recreate-btn { background: var(--tx); color: #fff; }
+:root[data-theme="light"] .recreate-btn:hover { background: var(--accent); color: var(--accent-ink); }
+
+/* passos do estúdio e aviso */
+:root[data-theme="light"] .notice { border-color: var(--accent-14); background: var(--accent-08); }

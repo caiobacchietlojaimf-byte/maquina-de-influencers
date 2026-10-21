@@ -33,3 +33,8 @@
 @media(max-width:600px) { .filters select { width:100%; } .grid { gap:14px; } .media { max-height:530px; } }
 .dialog { position:fixed; inset:0; margin:auto; color:var(--tx); max-height:90dvh; overflow:auto; } .dialog::backdrop { background:rgb(0 0 0 / .75); backdrop-filter:blur(5px); }
 .platform { display:block; font-size:10px; color:var(--tx3); margin-top:2px; }
+
+/* tema claro: card branco com moldura, selo rosa e mídia arredondada */
+:global(:root[data-theme="light"]) .card { border:3px solid #fff; border-radius:18px; box-shadow:0 1px 2px rgba(15,15,18,.06), 0 8px 20px rgba(15,15,18,.08); }
+:global(:root[data-theme="light"]) .media { border-radius:14px; overflow:hidden; }
+:global(:root[data-theme="light"]) .badge { border-radius:6px; padding:3px 7px; background:var(--pink); color:#fff; font-weight:800; }
