@@ -66,6 +66,7 @@ const faq = [
   { q: "A troca fica exatamente igual ao vídeo original?", a: "O original é a base da edição, mas a fidelidade visual varia com o modelo, a referência, os cortes e os movimentos. Confira a estimativa antes de gerar e revise personagem, cenário e áudio ao finalizar." },
   { q: "O plano inclui vídeos ilimitados?", a: "Não. As gerações no estúdio usam créditos. A área Criação Ilimitada prevista no Max é uma trilha de aprendizado; GPU e provedores externos continuam sujeitos a limites e cobranças." },
   { q: "O pagamento renova sozinho?", a: "A modalidade prevista é PIX por 30 dias, com renovação manual. O checkout apresenta o plano, o valor e o período antes do pagamento." },
+  { q: "Dá para colocar várias pessoas no mesmo vídeo?", a: "Sim, uma de cada vez. Cada geração troca uma pessoa do vídeo pelo seu influencer. Para trocar mais alguém, envie o vídeo gerado como nova referência e repita. Cada geração usa créditos." },
   { q: "Como escolho minhas referências?", a: "Prefira material que você tem autorização para usar, com personagem visível, boa luz e movimentos fáceis de acompanhar. Revise o conteúdo antes de publicar e confira as regras da rede social." },
 ];
 

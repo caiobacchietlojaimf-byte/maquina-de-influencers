@@ -59,10 +59,11 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
     <details className={styles.info}>
       <summary>Como funciona <ChevronDown size={18} aria-hidden /></summary>
       <ol>
-        <li><b>1 ·</b> Envie {total} {total === 1 ? "foto" : "fotos"}: uma pessoa por foto, nítida e de frente.</li>
-        <li><b>2 ·</b> Confira a ordem: cada foto vira a pessoa descrita na caixa dela.</li>
+        <li><b>1 ·</b> Crie o seu influencer a partir de uma foto nítida e de frente.</li>
+        <li><b>2 ·</b> Escolha quem do vídeo ele vai substituir: {total === 1 ? "a pessoa principal." : `qualquer uma das ${total} pessoas da cena.`}</li>
         <li><b>3 ·</b> Toque em Gerar. O vídeo mantém os movimentos, a câmera e o áudio do original.</li>
       </ol>
+      {total > 1 ? <p>Cada geração troca uma pessoa. Para colocar mais amigos na cena, envie o vídeo gerado como nova referência e troque a próxima pessoa.</p> : null}
       <p>Dicas: evite fotos em grupo, óculos escuros, sombras fortes, filtros e fotos de baixa qualidade.</p>
     </details>
 
@@ -81,7 +82,7 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
     <button type="button" className={styles.generate} onClick={() => setPlans("generate")}>
       <Sparkles size={18} /> Gerar meu vídeo
     </button>
-    <p className={styles.hint}>Escolha um plano, envie {total === 1 ? "a foto" : `as ${total} fotos`} e gere o seu. Ao enviar, você confirma que tem autorização de quem está nas fotos e aceita os <Link href="/termos">Termos de Uso</Link> e a <Link href="/privacidade">Política de Privacidade</Link>.</p>
+    <p className={styles.hint}>Escolha um plano, crie o seu influencer e gere o seu. Ao enviar fotos, você confirma que tem autorização de quem aparece nelas e aceita os <Link href="/termos">Termos de Uso</Link> e a <Link href="/privacidade">Política de Privacidade</Link>.</p>
 
     <PlanModal
       open={plans !== null}
