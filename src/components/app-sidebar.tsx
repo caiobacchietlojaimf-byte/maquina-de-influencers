@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
-import { BookOpen, ChevronUp, Clapperboard, Coins, CreditCard, Flame, Home, LogOut, Menu, Plus, Send, ShieldCheck, Sparkles, Users, Wand2, X } from "lucide-react";
+import { BookOpen, ChevronUp, Clapperboard, Coins, CreditCard, Flame, Home, LogOut, Menu, Plus, Send, ShieldCheck, Users, Wand2, X } from "lucide-react";
 
 import { LogoMark } from "./logo";
 import { ThemeToggle } from "./theme-toggle";
@@ -184,11 +184,6 @@ export function AppSidebar({
             <span>Máquina de Influencers</span>
           </Link>
         </div>
-
-        <Link href="/app/criar-videos" className="sidebar-cta" title={rail ? "Criar vídeo" : undefined} aria-label="Criar vídeo" onClick={closeMenus}>
-          <Sparkles size={17} aria-hidden="true" />
-          <span data-hide={rail}>Criar vídeo</span>
-        </Link>
 
         <nav aria-label="Menu principal">
           {GROUPS.map((group) => (

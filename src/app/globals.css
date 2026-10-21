@@ -1129,13 +1129,13 @@ textarea.input {
   bottom: 9px;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--accent);
+  background: var(--highlight);
 }
 .app-sidebar[data-collapsed="true"] .nav-item[data-active="true"]::before {
   left: -10px;
 }
 .nav-item[data-active="true"] svg {
-  color: var(--accent-text);
+  color: var(--highlight);
 }
 .nav-tag {
   margin-left: auto;
@@ -1292,7 +1292,7 @@ textarea.input {
 .app-main .display { text-transform: none; letter-spacing: -0.035em; }
 .page-header { margin-bottom: 28px; }
 .page-header h1 { font-family: var(--font-display); font-size: clamp(28px, 3vw, 36px); font-weight: 700; letter-spacing: -.04em; line-height: 1.1; margin-bottom: 10px; }
-.page-header h1 > span { color: var(--accent-text); }
+.page-header h1 > span { color: var(--highlight); }
 .page-header > p { color: var(--tx2); font-size: 14px; line-height: 1.7; max-width: 660px; }
 
 /* ================= ESTÚDIO DE INFLUENCER ================= */

@@ -4,26 +4,6 @@
 
 /* ---------- sidebar ---------- */
 
-.sidebar-cta {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 42px;
-  margin-bottom: 18px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: 14px;
-  font-weight: 700;
-  white-space: nowrap;
-  transition: background 0.15s var(--ease), transform 0.12s var(--ease), box-shadow 0.15s var(--ease);
-}
-.sidebar-cta:hover { background: var(--accent-strong); }
-.sidebar-cta:active { transform: scale(0.98); }
-.sidebar-cta svg { flex-shrink: 0; }
-.app-sidebar[data-collapsed="true"] .sidebar-cta { width: 44px; height: 44px; margin-inline: auto; padding: 0; }
-
 .nav-item { border-radius: 999px; }
 .app-sidebar .brand { font-size: 13px; letter-spacing: -0.02em; }
 .app-sidebar .sidebar-credits { margin-bottom: 8px; }
@@ -43,14 +23,6 @@
   }
   .app-sidebar[data-collapsed="true"] { width: 66px; padding: 14px 10px 12px; }
 }
-
-:root[data-theme="light"] .sidebar-cta {
-  background: var(--tx);
-  color: #fff;
-  box-shadow: 0 10px 22px rgba(15, 15, 18, 0.2);
-}
-:root[data-theme="light"] .sidebar-cta:hover { background: #26262c; }
-:root[data-theme="light"] .sidebar-cta svg { color: var(--accent); }
 
 /* item ativo: pílula preta com texto branco */
 :root[data-theme="light"] .nav-item { color: #3a3a42; }
