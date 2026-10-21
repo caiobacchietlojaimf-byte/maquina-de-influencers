@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowRight, BookOpen, Check, Clapperboard, Infinity, Layers3, Plus, ScanFace, Send, Sparkles, Wand2 } from "lucide-react";
-import { HERO_VIDEOS } from "@/data/hero";
 import PRESETS from "@/data/influencer-presets.json";
 import { PLAN_CATALOG } from "@/lib/plans";
 import { LogoMark } from "@/components/logo";
@@ -29,6 +28,7 @@ const motionItems: TrendingItem[] = MOTIONS.flatMap(([name, title, description, 
   return preset ? [{ id: preset.id, name: title, description, thumbnail: preset.thumbnail, preview: preset.preview, tag, badge: preset.category === "trending" ? "hot" as const : null }] : [];
 });
 const effectItems: TrendingItem[] = VIRAL_EFFECTS.slice(0, 6).map((item) => ({ id: item.id, name: item.name, description: item.description, thumbnail: item.thumbnail, preview: item.preview, views: item.views, badge: item.views >= 40_000_000 ? "hot" : null }));
+const heroVideos = VIRAIS_PROPRIOS.filter((item) => item.status !== "soon").map((item) => ({ src: viralVideo(item.slug), poster: item.poster }));
 const ownItems: TrendingItem[] = VIRAIS_PROPRIOS.map((item) => ({ id: item.slug, name: item.title, description: item.description, thumbnail: item.poster, preview: viralVideo(item.slug), people: item.people, badge: item.status }));
 const trending: TrendingItem[] = [
   ...ownItems.filter((item) => item.badge !== "soon"),
@@ -104,7 +104,7 @@ export default function LandingPage() {
           </div>
 
           <div className={styles.stage}>
-            <HeroCarousel videos={HERO_VIDEOS} />
+            <HeroCarousel videos={heroVideos} />
             <div className={`${styles.float} ${styles.floatTop}`}><Wand2 size={15} /> Personagem gerado</div>
             <div className={`${styles.float} ${styles.floatBottom}`}><span className={styles.liveDot} /> Pronto para publicar</div>
           </div>
