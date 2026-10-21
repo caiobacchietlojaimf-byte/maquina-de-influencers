@@ -42,8 +42,8 @@ const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.pre
 const faces = PRESETS.slice(12, 16);
 const navLinks = [
   { href: "#templates", label: "Criar vídeo" },
-  { href: "#influencers", label: "Influencers" },
   { href: "#exemplos", label: "Em alta" },
+  { href: "#influencers", label: "Influencers" },
   { href: "#como-funciona", label: "Como funciona" },
   { href: "#planos", label: "Planos" },
   { href: "#faq", label: "Dúvidas" },
@@ -121,15 +121,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className={styles.section} id="influencers">
-        <div className={styles.sectionHeading}>
-          <span className={styles.eyebrow}>Influencers do catálogo</span>
-          <h2>Personalidades que <em className={styles.hl}>saem do comum.</em></h2>
-          <p>Escolha um pronto para começar ou recrie com os seus traços.</p>
-        </div>
-        <GalleryCarousel items={gallery} />
-      </section>
-
       <section className={`${styles.section} ${styles.trending}`} id="exemplos">
         <div className={styles.trendingHead}>
           <h2>Em alta</h2>
@@ -138,6 +129,15 @@ export default function LandingPage() {
         <p className={styles.trendingSub}>Os efeitos que estão <em>viralizando</em> agora. Escolha um, coloque o seu influencer e gere o vídeo.</p>
         <TrendingRow items={trending} href="/login?modo=cadastro" />
         <p className={styles.mediaNote}>Referências do catálogo Higgsfield integrado ao estúdio. A Máquina de Influencers é um produto independente. Exemplos ilustram possibilidades, não garantem resultado idêntico.</p>
+      </section>
+
+      <section className={styles.section} id="influencers">
+        <div className={styles.sectionHeading}>
+          <span className={styles.eyebrow}>Influencers do catálogo</span>
+          <h2>Personalidades que <em className={styles.hl}>saem do comum.</em></h2>
+          <p>Escolha um pronto para começar ou recrie com os seus traços.</p>
+        </div>
+        <GalleryCarousel items={gallery} />
       </section>
 
       <section className={`${styles.section} ${styles.templates}`} id="templates">
