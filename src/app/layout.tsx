@@ -5,7 +5,6 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { siteUrl } from "@/lib/site-url";
 import { Analytics } from "@vercel/analytics/next";
-import Script from "next/script";
 
 const ui = Geist({
   subsets: ["latin"],
@@ -54,12 +53,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
        DOM e quebra a hidratação do React (textos somem nos accordions). */
     <html lang="pt-BR" translate="no" data-theme="light" suppressHydrationWarning className={`${ui.variable} ${grotesk.variable}`}>
       <head>
+        {/* Síncrono de propósito: aplica o tema antes da primeira pintura. */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){try{document.documentElement.dataset.theme=localStorage.getItem('mi-theme-v2')==='dark'?'dark':'light'}catch(e){}})();` }} />
         <meta name="google" content="notranslate" />
         {/* Os temas nativos dispensam reprocessamento por extensões. */}
         <meta name="darkreader-lock" />
       </head>
       <body>
-        <Script id="mi-theme" strategy="beforeInteractive" dangerouslySetInnerHTML={{ __html: `(function(){try{document.documentElement.dataset.theme=localStorage.getItem('mi-theme-v2')==='dark'?'dark':'light'}catch(e){}})();` }} />
         {children}
         <Analytics />
       </body>
