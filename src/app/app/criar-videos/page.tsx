@@ -1,5 +1,6 @@
 import { VideoStudio } from "@/components/video-studio";
 import { requirePageUser } from "@/lib/auth";
+import { getUserEntitlements } from "@/lib/plans";
 import { getViral, listInfluencers } from "@/lib/db";
 import { getProfile } from "@/data/ai-profiles";
 import { isAiCharacterVideo } from "@/lib/ai-discovery";
@@ -40,6 +41,7 @@ export default async function CreateVideosPage({
       initialError={(params.video || params.viral || params.template) && !reference ? "Referência não encontrada. Escolha outro vídeo ou envie um arquivo." : undefined}
       uploadUserId={user.id}
       credits={user.credits}
+      hasPlan={!!getUserEntitlements(user).planId}
     />
   );
 }

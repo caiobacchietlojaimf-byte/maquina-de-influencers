@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ArrowRight, BookOpen, Check, Clapperboard, Coins, Flame, Send, Users, Wand2 } from "lucide-react";
+import { ArrowRight, BookOpen, Check, Clapperboard, Coins, Flame, Send, Sparkles, Users, Wand2 } from "lucide-react";
 
 import { requirePageUser } from "@/lib/auth";
+import { getUserEntitlements } from "@/lib/plans";
 import { listInfluencers, listPosts, listVideos } from "@/lib/db";
 import { isConfigured } from "@/lib/platform";
 import { groupInfluencerVersions } from "@/lib/influencer-versions";
@@ -22,6 +23,9 @@ export default async function HomePage() {
   const influencerCount = groupInfluencerVersions(influencers).length;
   const postedCount = posts.filter((p) => p.status === "posted").length;
   const firstName = user.name.split(" ")[0];
+  const { planId } = getUserEntitlements(user);
+  // Próximo passo do cliente: sem saldo → planos ou créditos; sem influencer → criar um.
+  const stage = user.credits <= 0 ? (planId ? "credits" : "plan") : influencerCount === 0 ? "influencer" : "video";
 
   const steps = [
     {
@@ -68,16 +72,41 @@ export default async function HomePage() {
             Olá, <span>{firstName}</span>
           </h1>
           <p>
-            A esteira completa da máquina: minerar o viral, criar o influencer, gerar o vídeo e
-            publicar. Tudo aqui dentro.
+            {stage === "plan"
+              ? "Para começar a gerar, escolha um plano. Ele já vem com créditos para criar seu influencer e os primeiros vídeos."
+              : stage === "credits"
+                ? "Seus créditos acabaram. Recarregue para continuar criando influencers e vídeos."
+                : stage === "influencer"
+                  ? "Comece criando seu influencer. Depois é só escolher um vídeo de referência e gerar."
+                  : "A esteira completa da máquina: minerar o viral, criar o influencer, gerar o vídeo e publicar. Tudo aqui dentro."}
           </p>
           <div className={styles.heroActions}>
-            <Link href="/app/criar-videos" className="btn btn-accent">
-              <Wand2 size={17} /> Criar vídeo
-            </Link>
-            <Link href="/app/influencers" className="btn btn-ghost">
-              <Users size={17} /> Criar influencer
-            </Link>
+            {stage === "plan" ? (
+              <Link href="/app/planos" className="btn btn-accent">
+                <Sparkles size={17} /> Escolher meu plano
+              </Link>
+            ) : stage === "credits" ? (
+              <Link href="/app/creditos" className="btn btn-accent">
+                <Coins size={17} /> Comprar créditos
+              </Link>
+            ) : stage === "influencer" ? (
+              <Link href="/app/influencers" className="btn btn-accent">
+                <Users size={17} /> Criar influencer
+              </Link>
+            ) : (
+              <Link href="/app/criar-videos" className="btn btn-accent">
+                <Wand2 size={17} /> Criar vídeo
+              </Link>
+            )}
+            {stage === "video" ? (
+              <Link href="/app/influencers" className="btn btn-ghost">
+                <Users size={17} /> Criar influencer
+              </Link>
+            ) : (
+              <Link href="/app/virais" className="btn btn-ghost">
+                <Flame size={17} /> Ver vídeos virais
+              </Link>
+            )}
           </div>
         </div>
 
@@ -88,8 +117,8 @@ export default async function HomePage() {
           <span className={styles.balanceLabel}>Saldo disponível</span>
           <strong>{user.credits.toLocaleString("pt-BR")}</strong>
           <span className={styles.balanceUnit}>créditos</span>
-          <Link href="/app/creditos" className={styles.balanceLink}>
-            Comprar créditos <ArrowRight size={15} />
+          <Link href={planId ? "/app/creditos" : "/app/planos"} className={styles.balanceLink}>
+            {planId ? "Comprar créditos" : "Ver planos"} <ArrowRight size={15} />
           </Link>
         </div>
       </section>

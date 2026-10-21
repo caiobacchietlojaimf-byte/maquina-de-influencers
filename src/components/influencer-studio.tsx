@@ -1,10 +1,13 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowRight,
   BicepsFlexed,
+  Clapperboard,
   Blend,
   CalendarDays,
   Check,
@@ -46,6 +49,7 @@ import { INFLUENCER_EDIT_COST, INFLUENCER_PROMPT_COST, SHEET_COST } from "@/lib/
 import { displayDate } from "@/lib/display-date";
 import { CHARACTER_TYPES, type CharacterTier } from "@/data/character-types";
 import { HERO_VIDEOS } from "@/data/hero";
+import { getReadyTemplate } from "@/data/virais-proprios";
 import { HeroReel } from "./hero-reel";
 import PRESETS from "@/data/influencer-presets.json";
 import { groupsFor, optionsFor, pruneSelection, randomSelection, type Selection, type TraitGroup } from "@/data/traits";
@@ -100,12 +104,15 @@ export function InfluencerStudio({
   initialInfluencers,
   credits,
   userId,
+  hasPlan = false,
 }: {
   initialInfluencers: Influencer[];
   credits: number;
   userId: string;
+  hasPlan?: boolean;
 }) {
   const [importOpen, setImportOpen] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState<{ slug: string; title: string } | null>(null);
   const router = useRouter();
   const studioId = useId();
   const mounted = useRef(true);
@@ -148,6 +155,14 @@ export function InfluencerStudio({
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; };
+  }, []);
+
+  // Template escolhido em Criar Vídeos que aguarda este influencer (ver video-studio).
+  useEffect(() => {
+    try {
+      const template = getReadyTemplate(sessionStorage.getItem("mi-template"));
+      if (template) setPendingTemplate({ slug: template.slug, title: template.title });
+    } catch { /* sem sessionStorage, nada a lembrar */ }
   }, []);
 
   // Older influencers may still point at an expiring provider link; one poll
@@ -442,7 +457,8 @@ export function InfluencerStudio({
           <button type="button" className="generate-btn" disabled={busy || credits < generationCost || (creationMode === "prompt" && (!reference || !prompt.trim()))} onClick={generateSheet}>
             {submitting ? <><span className="spinner" aria-hidden="true" /> Enviando…</> : <>Gerar influencer <span className="cost">✦ {generationCost}</span></>}
           </button>
-          {credits < generationCost ? <p className={styles.builderNotice}>Você precisa de {generationCost} créditos para gerar. Saldo: ✦ {credits.toLocaleString("pt-BR")}.</p> : null}
+          {credits < generationCost ? <p className={styles.builderNotice}>Você precisa de {generationCost} {generationCost === 1 ? "crédito" : "créditos"} para gerar. Saldo: ✦ {credits.toLocaleString("pt-BR")}.{" "}
+            <Link href={hasPlan ? "/app/creditos" : "/app/planos"}>{hasPlan ? "Comprar créditos" : "Escolher um plano"}</Link></p> : null}
           {error ? (
             <div className={`auth-error ${styles.footerError}`} role="alert">
               {error}
@@ -470,6 +486,16 @@ export function InfluencerStudio({
             Importar
           </button>
         </div>
+        {pendingTemplate ? <div className={styles.templateNotice} role="status">
+          <Clapperboard size={18} aria-hidden="true" />
+          <span>
+            <b>Seu vídeo com {pendingTemplate.title} está esperando.</b>{" "}
+            {rootInfluencers.some((item) => item.status === "completed") ? "Quando seu influencer estiver pronto, volte e escolha-o no vídeo." : "Crie seu influencer aqui e depois volte para gerar o vídeo."}
+          </span>
+          <Link href={`/app/criar-videos?template=${encodeURIComponent(pendingTemplate.slug)}`} className="btn btn-accent btn-sm">
+            Voltar ao vídeo <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        </div> : null}
         {refreshError ? <div className={styles.refreshNotice} role="status">
           <span>{refreshError}</span>
           <button type="button" className="btn btn-sm btn-ghost" disabled={refreshing} onClick={() => { void refreshInfluencers(); }}>

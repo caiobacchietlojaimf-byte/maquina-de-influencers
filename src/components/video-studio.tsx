@@ -33,6 +33,7 @@ export function VideoStudio({
   initialError,
   uploadUserId,
   credits,
+  hasPlan = false,
 }: {
   initialInfluencers: Influencer[];
   initialInfluencerId?: string;
@@ -40,6 +41,7 @@ export function VideoStudio({
   initialReference?: StudioReference;
   initialError?: string;
   uploadUserId: string;
+  hasPlan?: boolean;
   credits: number;
 }) {
   const router = useRouter();
@@ -381,7 +383,7 @@ export function VideoStudio({
 
           <div className={`builder-footer ${styles.footer}`}>
             <p className={styles.creditBalance}>Saldo: <b>{credits.toLocaleString("pt-BR")} créditos</b></p>
-            {!enoughCredits && quote ? <p className={styles.error} role="status">Você precisa de {quote.creditCost} créditos. <Link href="/app/creditos">Comprar créditos</Link></p> : null}
+            {!enoughCredits && quote ? <p className={styles.error} role="status">Você precisa de {quote.creditCost} créditos. <Link href={hasPlan ? "/app/creditos" : "/app/planos"}>{hasPlan ? "Comprar créditos" : "Escolher um plano"}</Link></p> : null}
             {error ? <p className="auth-error" role="alert">{error}</p> : null}
             {preparing ? <div className={styles.preparation}>
               <p role="status" aria-live="polite">{prepareMessage}</p>

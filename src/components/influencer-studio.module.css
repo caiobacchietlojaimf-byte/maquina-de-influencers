@@ -82,6 +82,11 @@
 .builderFooter[data-mode="prompt"] { grid-template-columns: minmax(0, 1fr); }
 .builderFooter > :is(p, div) { grid-column: 1 / -1; }
 .builderFooter .builderNotice { padding: 0; }
+.builderNotice a { color: var(--tx); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.templateNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-1); color: var(--tx2); font-size: 13.5px; line-height: 1.5; }
+.templateNotice > svg { flex-shrink: 0; color: var(--accent-text); }
+.templateNotice > span { flex: 1 1 260px; }
+.templateNotice b { color: var(--tx); }
 .footerError { margin: 0; }
 
 /* abas da direita */

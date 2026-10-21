@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requirePageUser } from "@/lib/auth";
 import { listInfluencers } from "@/lib/db";
+import { getUserEntitlements } from "@/lib/plans";
 import { InfluencerStudio } from "@/components/influencer-studio";
 
 export const metadata = { title: "Influencers" };
@@ -28,6 +29,7 @@ export default async function InfluencersPage({
       initialInfluencers={await listInfluencers(user.id)}
       credits={user.credits}
       userId={user.id}
+      hasPlan={!!getUserEntitlements(user).planId}
     />
   );
 }
