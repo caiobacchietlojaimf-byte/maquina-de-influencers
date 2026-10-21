@@ -158,6 +158,12 @@
 .targetChoice { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; cursor: pointer; }
 .targetChoice:has(input:checked) { border-color: var(--accent); background: var(--s1); }
 .targetChoice input { accent-color: var(--accent); flex-shrink: 0; }
+.templatePeople { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.templatePeople button { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); text-align: left; font-size: 12px; transition: border-color .15s var(--ease), background .15s var(--ease); }
+.templatePeople button:hover { border-color: var(--line-2); background: var(--s1); }
+.templatePeople button[data-active="true"] { border-color: var(--tx); background: var(--s1); }
+.templatePeople b { font-size: 12px; }
+.templatePeople span { color: var(--tx2); line-height: 1.35; }
 .quote a { text-decoration: underline; }
 .preparation { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--s1); }
 .preparation p { color: var(--tx); font-size: 12.5px; line-height: 1.5; }

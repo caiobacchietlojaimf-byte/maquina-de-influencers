@@ -86,6 +86,7 @@ export function VideoStudio({
       if (template) setReference({ kind: "template", id: template.slug, name: template.title, videoUrl: viralVideo(template.slug), thumbnail: template.poster, duration: viralDuration(template.slug) });
     } catch { /* Sem sessionStorage, o template só vale nesta página. */ }
   }, [initialReference, initialPresetId]);
+  const templateSlots = reference?.kind === "template" ? getReadyTemplate(reference.id)?.slots ?? [] : [];
   const forgetTemplate = () => { try { sessionStorage.removeItem(PENDING_TEMPLATE_KEY); } catch { /* idem */ } };
   const referenceReady = reference ? reference.duration >= 4 && reference.duration <= 30 : Boolean(presetId);
   const busy = submitting || uploading || preparing || exporting;
@@ -347,6 +348,14 @@ export function VideoStudio({
                 </legend>
                 <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "main"} onChange={() => setTargetMode("main")} />Personagem principal (automático)</label>
                 <label className={styles.targetChoice}><input type="radio" name={`${formId}-target`} checked={targetMode === "manual"} disabled={engine === "fal-wan"} onChange={() => setTargetMode("manual")} />Indicar uma pessoa{engine === "fal-wan" ? " (use Kling)" : ""}</label>
+                {templateSlots.length > 0 && engine !== "fal-wan" ? <div className={styles.templatePeople} role="group" aria-label="Pessoas deste template">
+                  {templateSlots.map((slot) => {
+                    const description = `${slot.label}: ${slot.hint}. Manter todas as outras pessoas como estão.`;
+                    return <button key={slot.label + slot.hint} type="button" data-active={targetMode === "manual" && prompt === description} onClick={() => { setTargetMode("manual"); setPrompt(description); }}>
+                      <b>{slot.label}</b><span>{slot.hint}</span>
+                    </button>;
+                  })}
+                </div> : null}
                 {targetMode === "manual" && <>
               <label htmlFor={`${formId}-prompt`} className={styles.fieldLabel}>Descreva a pessoa no vídeo</label>
               <textarea
