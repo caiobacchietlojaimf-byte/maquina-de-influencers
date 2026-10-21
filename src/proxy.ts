@@ -2,8 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /* Renovação deslizante da sessão: toda visita a /app* com sessão válida
    re-emite o cookie com mais 30 dias — quem usa o site não desloga nunca.
-   Roda no Edge, então o HMAC é WebCrypto e o segredo vem só de AUTH_SECRET
-   (sem env, o middleware não mexe em nada e o cookie original segue valendo). */
+   O HMAC usa WebCrypto e o segredo vem só de AUTH_SECRET
+   (sem env, o proxy não mexe em nada e o cookie original segue valendo). */
 
 const COOKIE = "mi_session";
 const TTL_S = 60 * 60 * 24 * 30;
@@ -35,7 +35,7 @@ async function sign(payload: string, secret: string): Promise<string> {
   return toBase64Url(signature);
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const secret = process.env.AUTH_SECRET?.trim();
   const token = request.cookies.get(COOKIE)?.value;
   if (!secret || !token) return NextResponse.next();

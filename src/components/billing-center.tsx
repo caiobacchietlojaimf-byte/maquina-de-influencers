@@ -245,7 +245,10 @@ export function BillingCenter({ name, orders, enabled, currentPlan, initialPlan,
       </button>)}
     </div>
     <p className={styles.muted}>Valores de lançamento em definição. Pagamento único via PIX, renovação manual. Os créditos são adicionados após a confirmação. Aulas gravadas de Criação Ilimitada ainda não disponíveis; GPU e serviços externos têm custos próprios.</p></>}
-    {!enabled ? <div className={styles.notice}>Checkout em configuração. Os pagamentos ainda não estão disponíveis.</div> : null}
+    {!enabled ? <div className={styles.notice}>
+      <p><b>O pagamento online está sendo ativado.</b> {creditMode ? "Para comprar créditos agora, fale com a gente que liberamos pelo PIX manualmente." : "Para liberar seu plano agora, fale com a gente: enviamos o PIX e ativamos sua conta assim que ele cair."}</p>
+      {supportEmail ? <a className="btn btn-accent" href={`mailto:${supportEmail}?subject=${encodeURIComponent(creditMode ? "Quero comprar créditos" : `Quero ativar o plano ${PLAN_CATALOG.find((plan) => plan.id === planId)?.name ?? ""}`)}&body=${encodeURIComponent(`Olá! Meu nome é ${name} e quero ${creditMode ? "comprar créditos" : `ativar o plano ${PLAN_CATALOG.find((plan) => plan.id === planId)?.name ?? ""}`} na Máquina de Influencers.`)}`}><Mail size={16} aria-hidden="true" />Falar com a equipe</a> : null}
+    </div> : null}
     {enabled || current ? <section className={styles.panel} aria-busy={pending || refreshingId !== null}>
       {!current ? <form onSubmit={checkout} className={styles.form}>
         <h2>{creditMode ? `Adicionar ${pack.credits.toLocaleString("pt-BR")} créditos` : `Começar com ${plan.name}`}</h2>
