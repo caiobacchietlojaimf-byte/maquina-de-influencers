@@ -35,7 +35,6 @@ const ownItems: TrendingItem[] = VIRAIS_PROPRIOS.map((item) => ({ id: item.slug,
 const trending: TrendingItem[] = [
   ...ownItems.filter((item) => item.badge !== "soon"),
   ...motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item])),
-  ...ownItems.filter((item) => item.badge === "soon"),
 ];
 const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
 const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.preview.thumb || item.preview.url, label: typeLabel(item.tier) }));
@@ -146,7 +145,7 @@ export default function LandingPage() {
           <p>Toque no vídeo, mande as fotos e gere o seu.</p>
           <Sparkles size={26} className={styles.templatesSpark} aria-hidden />
         </div>
-        <TrendingRow items={ownItems} href="/login?modo=cadastro" layout="grid" />
+        <TrendingRow items={ownItems.filter((item) => item.badge !== "soon")} more={ownItems.filter((item) => item.badge === "soon")} href="/login?modo=cadastro" layout="grid" />
       </section>
 
       <section className={`${styles.section} ${styles.workflow}`} id="como-funciona">

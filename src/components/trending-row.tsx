@@ -1,17 +1,19 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Clock, Eye, Flame, Sparkles, Users } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Clock, Eye, Flame, Sparkles, Users } from "lucide-react";
 import styles from "./trending-row.module.css";
 
 export type TrendingItem = { id: string; name: string; description: string; thumbnail: string; preview: string; views?: number; people?: number; tag?: string; href?: string; badge: "hot" | "new" | "soon" | null };
 
 const views = new Intl.NumberFormat("pt-BR", { notation: "compact", maximumFractionDigits: 1 });
 
-export function TrendingRow({ items, href, layout = "row" }: { items: ReadonlyArray<TrendingItem>; href: string; layout?: "row" | "grid" }) {
+export function TrendingRow({ items: baseItems, more = [], href, layout = "row" }: { items: ReadonlyArray<TrendingItem>; more?: ReadonlyArray<TrendingItem>; href: string; layout?: "row" | "grid" }) {
   const grid = layout === "grid";
+  const [showMore, setShowMore] = useState(false);
+  const items = showMore ? [...baseItems, ...more] : baseItems;
   const trackRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; left: number; moved: boolean } | null>(null);
 
@@ -83,5 +85,11 @@ export function TrendingRow({ items, href, layout = "row" }: { items: ReadonlyAr
         >{content}</Link>;
       })}
     </div>
+    {more.length ? <div className={styles.moreWrap}>
+      <button type="button" className={styles.more} aria-expanded={showMore} onClick={() => setShowMore(!showMore)}>
+        {showMore ? "Ver menos" : <>Ver mais <span>{more.length} em breve</span></>}
+        <ChevronDown size={18} className={styles.moreIcon} data-open={showMore} aria-hidden />
+      </button>
+    </div> : null}
   </div>;
 }
