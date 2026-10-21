@@ -27,12 +27,12 @@ Generated from project sources at 2026-10-08T14:22:21.504Z.
 
 ### Colors
 
-- `--accent`: `#d1fe17` (src/app/globals.css)
-- `--accent-strong`: `#ddfe51` (src/app/globals.css)
+- `--accent`: `#dbf902` (src/app/globals.css)
+- `--accent-strong`: `#e6fb4d` (src/app/globals.css)
 - `--accent-ink`: `#1a1a1a` (src/app/globals.css)
-- `--accent-08`: `rgba(209, 254, 23, 0.08)` (src/app/globals.css)
-- `--accent-14`: `rgba(209, 254, 23, 0.14)` (src/app/globals.css)
-- `--accent-32`: `rgba(209, 254, 23, 0.32)` (src/app/globals.css)
+- `--accent-08`: `rgba(219, 249, 2, 0.08)` (src/app/globals.css)
+- `--accent-14`: `rgba(219, 249, 2, 0.14)` (src/app/globals.css)
+- `--accent-32`: `rgba(219, 249, 2, 0.32)` (src/app/globals.css)
 
 ### Typography
 

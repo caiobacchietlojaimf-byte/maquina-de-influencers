@@ -1,9 +1,11 @@
 .carousel { display: grid; gap: 20px; }
-.track { --gap: 16px; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * var(--gap)) / 3); column-gap: var(--gap); overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: 20px; }
+.track { --gap: 16px; display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 2 * var(--gap)) / 3); column-gap: var(--gap); overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; border-radius: 20px; }
 .track::-webkit-scrollbar { display: none; }
+.track { cursor: grab; }
+.track[data-dragging="true"] { cursor: grabbing; }
 .track:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 4px; }
 
-.card { --c: #c9d98a; position: relative; overflow: hidden; margin: 0; scroll-snap-align: start; aspect-ratio: 4 / 5; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(110% 80% at 50% 28%, color-mix(in srgb, var(--c) 55%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 70%, #000)); opacity: 0; transform: translateY(24px) scale(.97); }
+.card { --c: #c9d98a; position: relative; overflow: hidden; margin: 0; aspect-ratio: 4 / 5; border: 1px solid var(--line); border-radius: 20px; background: radial-gradient(110% 80% at 50% 28%, color-mix(in srgb, var(--c) 55%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 70%, #000)); opacity: 0; transform: translateY(24px) scale(.97); }
 .carousel[data-visible="true"] .card { animation: rise-in .8s var(--ease) forwards; }
 .card:nth-child(6n + 2) { --c: #b6c4d4; }
 .card:nth-child(6n + 3) { --c: #d6c0a0; }
@@ -16,8 +18,8 @@
 .card:hover figcaption { transform: translateY(-2px); }
 
 .controls { display: flex; align-items: center; gap: 10px; }
-.progress { flex: 1; height: 3px; border-radius: 999px; background: var(--line-2); overflow: hidden; margin-right: 10px; }
-.progress span { display: block; height: 100%; background: var(--accent-text); border-radius: inherit; transform-origin: left; transition: transform .35s var(--ease); }
+.progress { flex: 1; height: 2px; border-radius: 999px; background: var(--line-2); overflow: hidden; margin-right: 10px; }
+.progress span { display: block; height: 100%; background: var(--accent-text); border-radius: inherit; transform-origin: left; }
 .arrow { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--line-2); border-radius: 50%; background: var(--s1); color: var(--tx2); transition: color .15s var(--ease), border-color .15s var(--ease), background .15s var(--ease); }
 .arrow:hover { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .arrow:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; }

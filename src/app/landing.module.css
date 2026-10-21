@@ -43,7 +43,7 @@
 .reel video:nth-child(1) { transform: translateX(12%) rotate(-5deg) scale(.88); transform-origin: right center; }
 .reel video:nth-child(3) { transform: translateX(-12%) rotate(5deg) scale(.88); transform-origin: left center; }
 .reel video:nth-child(2) { position: relative; z-index: 2; border-color: rgba(255, 255, 255, .18); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, .8), 0 0 0 6px rgba(255, 255, 255, .03); }
-.float { position: absolute; z-index: 20; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: rgba(14, 15, 16, .72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow-2); color: #f0f2f2; font-size: 12px; font-weight: 600; white-space: nowrap; animation: bob 7s var(--ease) infinite; }
+.float { position: absolute; z-index: 120; pointer-events: none; display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 999px; background: rgba(14, 15, 16, .72); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow-2); color: #f0f2f2; font-size: 12px; font-weight: 600; white-space: nowrap; animation: bob 7s var(--ease) infinite; }
 .float svg { color: var(--accent); }
 .floatTop { top: 9%; left: 2%; }
 .floatBottom { bottom: 19%; right: 2%; animation-delay: -3.5s; }

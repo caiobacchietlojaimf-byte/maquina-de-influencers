@@ -11,9 +11,24 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
   const count = videos.length;
   const [active, setActive] = useState(Math.floor(count / 2));
   const [paused, setPaused] = useState(false);
+  const [dragX, setDragX] = useState<number | null>(null);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const trackRef = useRef<HTMLDivElement>(null);
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
+
+  const stepPx = () => (trackRef.current?.offsetWidth ?? 1) * 0.46 * 0.56;
+
+  const endDrag = (clientX: number | null) => {
+    if (dragStart.current === null) return;
+    const dx = clientX === null ? 0 : clientX - dragStart.current;
+    dragStart.current = null;
+    setDragX(null);
+    if (Math.abs(dx) < 6) return;
+    dragged.current = true;
+    const shift = Math.round(-dx / stepPx()) || (Math.abs(dx) > SWIPE_PX ? (dx < 0 ? 1 : -1) : 0);
+    if (shift) go(active + shift);
+  };
 
   const go = useCallback((index: number) => setActive(((index % count) + count) % count), [count]);
 
@@ -27,10 +42,10 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
   }, [active]);
 
   useEffect(() => {
-    if (paused || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (paused || dragX !== null || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timer = window.setTimeout(() => go(active + 1), AUTO_ADVANCE_MS);
     return () => window.clearTimeout(timer);
-  }, [active, paused, go]);
+  }, [active, paused, dragX, go]);
 
   const offsetOf = (index: number) => {
     let d = index - active;
@@ -54,21 +69,27 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
     }}
   >
     <div
+      ref={trackRef}
       className={styles.track}
-      onPointerDown={(event) => { dragStart.current = event.clientX; dragged.current = false; }}
-      onPointerUp={(event) => {
+      data-dragging={dragX !== null}
+      onPointerDown={(event) => {
+        dragStart.current = event.clientX;
+        dragged.current = false;
+      }}
+      onPointerMove={(event) => {
         if (dragStart.current === null) return;
         const dx = event.clientX - dragStart.current;
-        dragStart.current = null;
-        if (Math.abs(dx) < SWIPE_PX) return;
-        dragged.current = true;
-        go(dx < 0 ? active + 1 : active - 1);
+        if (dragX === null && Math.abs(dx) <= 4) return;
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.setPointerCapture(event.pointerId);
+        setDragX(dx);
       }}
-      onPointerCancel={() => { dragStart.current = null; }}
+      onPointerUp={(event) => endDrag(event.clientX)}
+      onPointerCancel={() => endDrag(null)}
     >
       {videos.map((video, index) => {
         const d = offsetOf(index);
-        const abs = Math.abs(d);
+        const pos = d + (dragX ?? 0) / stepPx();
+        const abs = Math.min(Math.abs(pos), 3);
         return <button
           key={video.src}
           type="button"
@@ -78,10 +99,10 @@ export function HeroCarousel({ videos }: { videos: ReadonlyArray<{ src: string; 
           aria-current={d === 0}
           tabIndex={d === 0 ? 0 : -1}
           style={{
-            transform: `translate(-50%, -50%) translateX(${d * 56}%) scale(${1 - abs * 0.13}) rotate(${d * 3}deg)`,
-            zIndex: 10 - abs,
-            opacity: abs > 2 ? 0 : 1,
-            filter: d === 0 ? "none" : `brightness(${1 - abs * 0.28}) saturate(.85)`,
+            transform: `translate(-50%, -50%) translateX(${pos * 56}%) scale(${1 - abs * 0.13}) rotate(${pos * 3}deg)`,
+            zIndex: Math.round(100 - abs * 10),
+            opacity: abs > 2.4 ? 0 : 1,
+            filter: abs < 0.05 ? "none" : `brightness(${1 - Math.min(abs, 2.5) * 0.28}) saturate(.85)`,
           }}
           onClick={() => { if (!dragged.current && d !== 0) go(index); }}
         >

@@ -22,11 +22,11 @@
     "colorMode": "dark",
     "colors": {
       "--accent": {
-        "value": "#d1fe17",
+        "value": "#dbf902",
         "source": "src/app/globals.css"
       },
       "--accent-strong": {
-        "value": "#ddfe51",
+        "value": "#e6fb4d",
         "source": "src/app/globals.css"
       },
       "--accent-ink": {
@@ -34,15 +34,15 @@
         "source": "src/app/globals.css"
       },
       "--accent-08": {
-        "value": "rgba(209, 254, 23, 0.08)",
+        "value": "rgba(219, 249, 2, 0.08)",
         "source": "src/app/globals.css"
       },
       "--accent-14": {
-        "value": "rgba(209, 254, 23, 0.14)",
+        "value": "rgba(219, 249, 2, 0.14)",
         "source": "src/app/globals.css"
       },
       "--accent-32": {
-        "value": "rgba(209, 254, 23, 0.32)",
+        "value": "rgba(219, 249, 2, 0.32)",
         "source": "src/app/globals.css"
       }
     },
@@ -93,7 +93,7 @@
   },
   "constraints": {
     "must": [
-      "Oferecer temas escuro e claro persistentes, preservando o acento lima #d1fe17 nos botões",
+      "Oferecer temas escuro e claro persistentes, preservando o acento lima #dbf902 nos botões",
       "Player deve mostrar vídeo real e controles acessíveis",
       "Métricas observadas, sem estimar views a partir de curtidas"
     ],

@@ -11,7 +11,7 @@ A esteira completa dentro de um sistema só:
 
 | Área | O que faz |
 | --- | --- |
-| **Landing page** | Visual Higgsfield: fundo quase preto, acento lima `#d1fe17`, Space Grotesk |
+| **Landing page** | Visual Higgsfield: fundo quase preto, acento lima `#dbf902`, Space Grotesk |
 | **Login / Cadastro** | Conta com e-mail e senha (scrypt + cookie HMAC httpOnly), saldo inicial configurado no servidor (padrão zero) |
 | **Início** | Esteira dos 4 passos, créditos, contadores e atalhos |
 | **Vídeos Virais** | **Mineração real do TikTok**: feed de tendências por região (BR/US/ES/JP) com views, likes, música e download sem marca d'água; import por link do TikTok ou .mp4 direto; galeria curada de efeitos virais; duplicação em um clique |
