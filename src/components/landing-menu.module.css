@@ -9,5 +9,5 @@
 .actions { display: grid; gap: 10px; }
 .actions > a { width: 100%; height: 50px; }
 @keyframes drop { from { opacity: 0; transform: translateY(-8px); } }
-@media (max-width: 1050px) { .toggle { display: grid; } }
+@media (max-width: 1200px) { .toggle { display: grid; } }
 @media (min-width: 761px) { .panel { padding-top: 88px; } }

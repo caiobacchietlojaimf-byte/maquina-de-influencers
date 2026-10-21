@@ -6,6 +6,8 @@ import { LogoMark } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeroCarousel } from "@/components/hero-carousel";
 import { TrendingRow, type TrendingItem } from "@/components/trending-row";
+import { GalleryCarousel } from "@/components/gallery-carousel";
+import { CHARACTER_TYPES } from "@/data/character-types";
 import { VIRAL_EFFECTS } from "@/data/viral-effects";
 import { MOTION_PRESETS } from "@/data/motion-presets";
 import { VIRAIS_PROPRIOS, viralVideo } from "@/data/virais-proprios";
@@ -35,9 +37,12 @@ const trending: TrendingItem[] = [
   ...motionItems.flatMap((item, index) => (effectItems[index] ? [item, effectItems[index]] : [item])),
   ...ownItems.filter((item) => item.badge === "soon"),
 ];
+const typeLabel = (tier: string) => CHARACTER_TYPES.find((type) => type.id === tier)?.label ?? "Personagem de IA";
+const gallery = PRESETS.slice(0, 12).map((item) => ({ id: item.id, src: item.preview.thumb || item.preview.url, label: typeLabel(item.tier) }));
 const faces = PRESETS.slice(12, 16);
 const navLinks = [
   { href: "#templates", label: "Criar vídeo" },
+  { href: "#influencers", label: "Influencers" },
   { href: "#exemplos", label: "Em alta" },
   { href: "#como-funciona", label: "Como funciona" },
   { href: "#planos", label: "Planos" },
@@ -114,6 +119,15 @@ export default function LandingPage() {
         <div className={styles.stats}>
           {stats.map((item) => <div key={item.label}><span className={styles.statIcon}><item.icon size={18} /></span><p><strong>{item.value}</strong><span>{item.label}</span></p></div>)}
         </div>
+      </section>
+
+      <section className={styles.section} id="influencers">
+        <div className={styles.sectionHeading}>
+          <span className={styles.eyebrow}>Influencers do catálogo</span>
+          <h2>Personalidades que <em className={styles.hl}>saem do comum.</em></h2>
+          <p>Escolha um pronto para começar ou recrie com os seus traços.</p>
+        </div>
+        <GalleryCarousel items={gallery} />
       </section>
 
       <section className={`${styles.section} ${styles.trending}`} id="exemplos">
