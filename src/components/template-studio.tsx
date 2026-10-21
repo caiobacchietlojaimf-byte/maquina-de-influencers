@@ -30,7 +30,7 @@ export function TemplateStudio({ viral }: { viral: ViralProprio }) {
           <button type="button" data-active={item.slug === viral.slug} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); router.push(`/v/${item.slug}`); }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={item.poster} alt="" />
-            <span><strong>{item.title}</strong><small>{item.people} {item.people === 1 ? "foto" : "fotos"}</small></span>
+            <span><strong>{item.title}</strong><small>{item.people} {item.people === 1 ? "pessoa" : "pessoas"}</small></span>
           </button>
         </li>)}
       </ul>

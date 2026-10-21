@@ -64,7 +64,7 @@ export function TrendingRow({ items: baseItems, more = [], href, layout = "row" 
             {item.badge === "hot" ? <span className={`${styles.badge} ${styles.hot}`}><Flame size={12} /> Em alta</span> : null}
             {item.badge === "new" ? <span className={`${styles.badge} ${styles.new}`}><Sparkles size={12} /> Novo</span> : null}
             {soon ? <span className={`${styles.badge} ${styles.soon}`}><Clock size={12} /> Em breve</span> : null}
-            {item.people ? <span className={styles.chip}><Users size={13} /> {item.people} {item.people === 1 ? "foto" : "fotos"}</span>
+            {item.people ? <span className={styles.chip}><Users size={13} /> {item.people} {item.people === 1 ? "pessoa" : "pessoas"}</span>
               : item.views ? <span className={styles.chip}><Eye size={13} /> {views.format(item.views)}</span>
               : <span className={styles.chip}><Users size={13} /> {item.tag ?? "Movimento"}</span>}
           </div>
